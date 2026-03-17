@@ -1,0 +1,407 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Branch — represents a physical location / branch of Akshaya Patra
+model Branch {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  location    String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  departments Department[]
+
+  @@map("branches")
+}
+
+/// Department — organizational unit within a branch
+model Department {
+  id              String            @id @default(cuid())
+  name            String
+  branchId        String
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  branchManagerId String?
+  supervisorId    String?
+  bestEmployees   BestEmployee[]
+  departmentRoles DepartmentRole[]
+  branch          Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  shortlistStage1 ShortlistStage1[]
+  shortlistStage2 ShortlistStage2[]
+  shortlistStage3 ShortlistStage3[]
+  users           User[]
+
+  @@unique([name, branchId])
+  @@index([branchId])
+  @@map("departments")
+}
+
+/// User — all employees, supervisors, managers, and admins
+model User {
+  id                    String                     @id @default(cuid())
+  empCode               String?                    @unique
+  name                  String
+  email                 String                     @unique
+  password              String
+  role                  Role                       @default(EMPLOYEE)
+  departmentId          String?
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
+  designation           String?
+  auditLogs             AuditLog[]
+  bestEmployees         BestEmployee[]
+  bmReceived            BranchManagerEvaluation[]  @relation("EmployeeBMEval")
+  bmEvaluations         BranchManagerEvaluation[]  @relation("BMGiven")
+  cmEvaluations         ClusterManagerEvaluation[] @relation("CMGiven")
+  cmReceived            ClusterManagerEvaluation[] @relation("EmployeeCMEval")
+  departmentRoles       DepartmentRole[]
+  notifications         Notification[]
+  selfAssessments       SelfAssessment[]
+  shortlistStage1       ShortlistStage1[]
+  shortlistStage2       ShortlistStage2[]
+  shortlistStage3       ShortlistStage3[]
+  supervisorReceived    SupervisorEvaluation[]     @relation("EmployeeSupEval")
+  supervisorEvaluations SupervisorEvaluation[]     @relation("SupervisorGiven")
+  department            Department?                @relation(fields: [departmentId], references: [id])
+
+  @@index([departmentId])
+  @@index([role])
+  @@index([departmentId, role])
+  @@map("users")
+}
+
+/// Quarter — evaluation period (e.g. Q1-2025)
+model Quarter {
+  id                    String                     @id @default(cuid())
+  name                  String                     @unique
+  status                QuarterStatus              @default(ACTIVE)
+  startDate             DateTime
+  endDate               DateTime
+  questionCount         Int                        @default(15)
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
+  bestEmployees         BestEmployee?
+  bmEvaluations         BranchManagerEvaluation[]
+  cmEvaluations         ClusterManagerEvaluation[]
+  quarterQuestions      QuarterQuestion[]
+  selfAssessments       SelfAssessment[]
+  shortlistStage1       ShortlistStage1[]
+  shortlistStage2       ShortlistStage2[]
+  shortlistStage3       ShortlistStage3[]
+  supervisorEvaluations SupervisorEvaluation[]
+
+  @@index([status])
+  @@map("quarters")
+}
+
+/// Question — individual evaluation question
+model Question {
+  id               String            @id @default(cuid())
+  text             String
+  category         QuestionCategory
+  level            EvaluationLevel
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  textHindi        String            @default("")
+  quarterQuestions QuarterQuestion[]
+
+  @@index([category])
+  @@index([level])
+  @@index([level, isActive])
+  @@map("questions")
+}
+
+/// QuarterQuestion — links a Question to a Quarter (locked set for that quarter)
+model QuarterQuestion {
+  id         String   @id @default(cuid())
+  quarterId  String
+  questionId String
+  createdAt  DateTime @default(now())
+  quarter    Quarter  @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([quarterId, questionId])
+  @@index([quarterId])
+  @@index([questionId])
+  @@map("quarter_questions")
+}
+
+/// SelfAssessment — employee's self-evaluation
+model SelfAssessment {
+  id              String   @id @default(cuid())
+  userId          String
+  quarterId       String
+  answers         Json
+  submittedAt     DateTime @default(now())
+  maxScore        Float
+  normalizedScore Float
+  rawScore        Float
+  quarter         Quarter  @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, quarterId])
+  @@index([quarterId])
+  @@index([userId, quarterId])
+  @@map("self_assessments")
+}
+
+/// SupervisorEvaluation — supervisor evaluates an employee
+model SupervisorEvaluation {
+  id                     String   @id @default(cuid())
+  supervisorId           String
+  employeeId             String
+  quarterId              String
+  answers                Json
+  submittedAt            DateTime @default(now())
+  selfContribution       Float
+  stage2CombinedScore    Float
+  supervisorContribution Float
+  supervisorNormalized   Float
+  supervisorRawScore     Float
+  employee               User     @relation("EmployeeSupEval", fields: [employeeId], references: [id], onDelete: Cascade)
+  quarter                Quarter  @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  supervisor             User     @relation("SupervisorGiven", fields: [supervisorId], references: [id], onDelete: Cascade)
+
+  @@unique([supervisorId, employeeId, quarterId])
+  @@index([employeeId])
+  @@index([quarterId])
+  @@index([employeeId, quarterId])
+  @@map("supervisor_evaluations")
+}
+
+/// BranchManagerEvaluation — branch manager evaluates an employee
+model BranchManagerEvaluation {
+  id                     String   @id @default(cuid())
+  managerId              String
+  employeeId             String
+  quarterId              String
+  answers                Json
+  submittedAt            DateTime @default(now())
+  bmContribution         Float
+  bmNormalized           Float
+  bmRawScore             Float
+  selfContribution       Float
+  stage3CombinedScore    Float
+  supervisorContribution Float
+  employee               User     @relation("EmployeeBMEval", fields: [employeeId], references: [id], onDelete: Cascade)
+  manager                User     @relation("BMGiven", fields: [managerId], references: [id], onDelete: Cascade)
+  quarter                Quarter  @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+
+  @@unique([managerId, employeeId, quarterId])
+  @@index([employeeId])
+  @@index([quarterId])
+  @@index([employeeId, quarterId])
+  @@map("branch_manager_evaluations")
+}
+
+/// ClusterManagerEvaluation — cluster manager gives final evaluation
+model ClusterManagerEvaluation {
+  id                     String   @id @default(cuid())
+  clusterId              String
+  employeeId             String
+  quarterId              String
+  answers                Json
+  finalScore             Float
+  submittedAt            DateTime @default(now())
+  bmContribution         Float
+  cmContribution         Float
+  cmNormalized           Float
+  cmRawScore             Float
+  selfContribution       Float
+  supervisorContribution Float
+  cluster                User     @relation("CMGiven", fields: [clusterId], references: [id], onDelete: Cascade)
+  employee               User     @relation("EmployeeCMEval", fields: [employeeId], references: [id], onDelete: Cascade)
+  quarter                Quarter  @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+
+  @@unique([clusterId, employeeId, quarterId])
+  @@index([employeeId])
+  @@index([quarterId])
+  @@index([employeeId, quarterId])
+  @@map("cluster_manager_evaluations")
+}
+
+/// AuditLog — tracks all significant actions in the system
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  details   Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+/// ShortlistStage1 — Top 10 employees per department after self-assessment
+/// Recalculated atomically after every self-assessment submission
+model ShortlistStage1 {
+  id           String     @id @default(cuid())
+  userId       String
+  quarterId    String
+  departmentId String
+  selfScore    Float
+  rank         Int
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  quarter      Quarter    @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, quarterId])
+  @@unique([departmentId, quarterId, rank])
+  @@index([quarterId])
+  @@index([departmentId])
+  @@map("shortlist_stage1")
+}
+
+/// ShortlistStage2 — Top 5 employees per department after supervisor evaluation
+/// Auto-populated when supervisor completes all 10 evaluations
+model ShortlistStage2 {
+  id              String     @id @default(cuid())
+  userId          String
+  quarterId       String
+  departmentId    String
+  selfScore       Float
+  supervisorScore Float
+  combinedScore   Float
+  rank            Int
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  department      Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  quarter         Quarter    @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, quarterId])
+  @@unique([departmentId, quarterId, rank])
+  @@index([quarterId])
+  @@index([departmentId])
+  @@map("shortlist_stage2")
+}
+
+/// ShortlistStage3 — Top 3 employees per department after branch manager evaluation
+/// Auto-populated when BM completes all 5 evaluations
+model ShortlistStage3 {
+  id              String     @id @default(cuid())
+  userId          String
+  quarterId       String
+  departmentId    String
+  selfScore       Float
+  supervisorScore Float
+  bmScore         Float
+  combinedScore   Float
+  rank            Int
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  department      Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  quarter         Quarter    @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, quarterId])
+  @@unique([departmentId, quarterId, rank])
+  @@index([quarterId])
+  @@index([departmentId])
+  @@map("shortlist_stage3")
+}
+
+/// BestEmployee — winner of "Best Employee of the Quarter"
+/// Determined by highest finalScore after all 4 evaluation stages
+model BestEmployee {
+  id              String     @id @default(cuid())
+  userId          String
+  quarterId       String     @unique
+  departmentId    String
+  selfScore       Float
+  supervisorScore Float
+  bmScore         Float
+  cmScore         Float
+  finalScore      Float
+  createdAt       DateTime   @default(now())
+  department      Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  quarter         Quarter    @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("best_employees")
+}
+
+/// Notification — in-app notifications for users
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+/// BlacklistedToken — invalidated JWTs (logout / forced invalidation)
+model BlacklistedToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([expiresAt])
+  @@map("blacklisted_tokens")
+}
+
+/// DepartmentRole — maps evaluators to departments
+model DepartmentRole {
+  id           String     @id @default(cuid())
+  userId       String
+  departmentId String
+  role         Role
+  assignedAt   DateTime   @default(now())
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, departmentId, role])
+  @@index([departmentId])
+  @@index([userId])
+  @@map("department_roles")
+}
+
+enum Role {
+  EMPLOYEE
+  SUPERVISOR
+  BRANCH_MANAGER
+  CLUSTER_MANAGER
+  ADMIN
+}
+
+enum QuarterStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum QuestionCategory {
+  ATTENDANCE
+  DISCIPLINE
+  PRODUCTIVITY
+  TEAMWORK
+  INITIATIVE
+  COMMUNICATION
+  INTEGRITY
+}
+
+enum EvaluationLevel {
+  SELF
+  SUPERVISOR
+  BRANCH_MANAGER
+  CLUSTER_MANAGER
+}

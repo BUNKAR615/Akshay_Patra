@@ -1,0 +1,303 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import DashboardShell from "../../../components/DashboardShell";
+import EvaluationForm from "../../../components/EvaluationForm";
+import UserProfileCard from "../../../components/UserProfileCard";
+
+async function api(url, opts) {
+    const res = await fetch(url, opts);
+    const json = await res.json();
+    if (!res.ok) {
+        if (res.status === 401) {
+            window.location.replace("/login");
+            return new Promise(() => { }); // never resolves, waits for redirect
+        }
+        throw new Error(json.message || "Something went wrong. Please try again in a moment.");
+    }
+    if (!json.success) throw new Error(json.message || "Something went wrong. Please try again in a moment.");
+    return json.data;
+}
+
+export default function ClusterManagerDashboard() {
+    const [user, setUser] = useState(null);
+    const [currentQuarterName, setCurrentQuarterName] = useState("");
+    const [departmentsData, setDepartmentsData] = useState([]);
+    const [selectedDeptId, setSelectedDeptId] = useState("");
+    const [currentDept, setCurrentDept] = useState(null);
+
+    const [shortlist, setShortlist] = useState([]);
+    const [questions, setQuestions] = useState([]);
+    const [selectedEmployee, setSelectedEmployee] = useState(null);
+    const [progress, setProgress] = useState({ evaluated: 0, total: 0 });
+    const [bestEmployee, setBestEmployee] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [success, setSuccess] = useState("");
+
+    const fetchData = async () => {
+        try {
+            setLoading(true);
+            const [meData, deptsData, qData] = await Promise.all([
+                api("/api/auth/me"),
+                api("/api/cluster-manager/departments"),
+                api("/api/cluster-manager/questions")
+            ]);
+            setUser(meData.user);
+            setCurrentQuarterName(meData.currentQuarter || deptsData.quarter?.name);
+            setDepartmentsData(deptsData.departments);
+            setQuestions(qData.questions);
+
+            if (deptsData.departments && deptsData.departments.length > 0) {
+                // Try to find the first incomplete department
+                const incomplete = deptsData.departments.find(d => !d.completed);
+                const targetDept = incomplete || deptsData.departments[0];
+                handleSelectDept(targetDept.id, deptsData.departments);
+            }
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSelectDept = (deptId, allDepts = departmentsData) => {
+        const dept = allDepts.find(d => d.id === deptId);
+        if (dept) {
+            setSelectedDeptId(deptId);
+            setCurrentDept(dept);
+            setShortlist(dept.shortlist || []);
+            setProgress({ evaluated: dept.evaluated, total: dept.totalToEvaluate });
+            setSelectedEmployee(null);
+            setError("");
+            setSuccess("");
+            setBestEmployee(null);
+        }
+    };
+
+    useEffect(() => { fetchData(); }, []);
+
+    const handleEvaluate = async (answers) => {
+        setError(""); setSuccess("");
+        try {
+            const data = await api("/api/cluster-manager/evaluate", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ employeeId: selectedEmployee.userId, answers }),
+            });
+            setSuccess(`Success! Evaluation completed for ${selectedEmployee.user.name}. Final Score: ${data.evaluation.finalScore.toFixed(1)}`);
+            setSelectedEmployee(null);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+
+            // Refresh department data instead of single shortlist
+            const deptsData = await api("/api/cluster-manager/departments");
+            setDepartmentsData(deptsData.departments);
+
+            // Update current department view
+            const updatedDept = deptsData.departments.find(d => d.id === selectedDeptId);
+            if (updatedDept) {
+                setCurrentDept(updatedDept);
+                setShortlist(updatedDept.shortlist || []);
+                setProgress({ evaluated: updatedDept.evaluated, total: updatedDept.totalToEvaluate });
+            }
+
+            if (data.bestEmployee) {
+                setBestEmployee(data.bestEmployee.winner);
+                setSuccess(`All evaluations complete for ${updatedDept?.name} department! The Best Employee of the Quarter has been finalized.`);
+            }
+        } catch (e) {
+            throw e; // Rethrow so EvaluationForm catches it
+        }
+    };
+
+    if (loading) {
+        return (
+            <DashboardShell user={user} currentQuarter={currentQuarterName} title="Cluster Manager Dashboard">
+                <div className="flex items-center justify-center h-64">
+                    <div className="flex flex-col items-center gap-4">
+                        <div className="animate-spin h-10 w-10 border-4 border-[#003087] border-t-transparent rounded-full" />
+                        <p className="text-[#003087] font-bold text-[16px]">Loading assignments...</p>
+                    </div>
+                </div>
+            </DashboardShell>
+        );
+    }
+
+    return (
+        <DashboardShell user={user} currentQuarter={currentQuarterName} title="Cluster Manager Final Evaluation">
+            {/* Profile Card */}
+            {user && (
+                <UserProfileCard
+                    user={user}
+                    extraInfo={{ label: "Scope", value: "All Departments", color: "text-[#F57C00]" }}
+                />
+            )}
+            {/* Department selector */}
+            <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-xl p-5 mb-6 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center border border-[#FFE082] shrink-0 text-[#F57C00] shadow-sm">
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                        </div>
+                        <div>
+                            <p className="text-[13px] text-[#F57C00] font-bold uppercase tracking-wider mb-0.5">Global Cluster Manager</p>
+                            <p className="text-[20px] font-black text-[#F57C00] leading-tight">Jaipur Branch</p>
+                            {user?.designation && <p className="text-[14px] text-[#F57C00]/80 font-medium mt-1">{user.designation}</p>}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-lg p-3 border border-[#FFE082] flex flex-col sm:flex-row items-center gap-3">
+                    <label className="text-[14px] font-bold text-[#F57C00] uppercase tracking-wider whitespace-nowrap">Select Department:</label>
+                    <div className="relative w-full">
+                        <select
+                            value={selectedDeptId}
+                            onChange={(e) => handleSelectDept(e.target.value)}
+                            className="w-full px-4 py-2 bg-[#FFF8E1] border border-[#FFE082] rounded-lg text-[#1A1A2E] font-bold focus:outline-none focus:ring-2 focus:ring-[#F57C00] appearance-none cursor-pointer"
+                        >
+                            {departmentsData.map(dept => (
+                                <option key={dept.id} value={dept.id}>
+                                    {dept.name} — {dept.completed ? "✅ Completed" : `⏳ ${dept.evaluated}/${dept.totalToEvaluate} Evaluated`}
+                                </option>
+                            ))}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-[#F57C00]">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {bestEmployee && (
+                <div className="bg-white border-4 border-[#F57C00] rounded-2xl p-8 md:p-10 mb-8 text-center shadow-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-48 h-48 bg-[#FFF8E1] rounded-bl-full -z-10 opacity-70"></div>
+                    <div className="absolute bottom-0 left-0 w-32 h-32 bg-[#FFF8E1] rounded-tr-full -z-10 opacity-70"></div>
+
+                    <span className="text-6xl mb-4 block drop-shadow-md">🏆</span>
+                    <h2 className="text-[28px] md:text-[32px] font-black text-[#003087] mb-2">{currentDept?.name} Best Employee!</h2>
+                    <p className="text-[24px] font-bold text-[#F57C00] mb-6">{bestEmployee.user?.name}</p>
+
+                    <div className="inline-block bg-[#FFF8E1] px-8 py-3 rounded-2xl border-2 border-[#FFE082] shadow-sm mb-8">
+                        <p className="text-[14px] text-[#666666] font-bold uppercase tracking-wider mb-1">Final Combined Score</p>
+                        <p className="text-[36px] font-black text-[#00843D] leading-none">{bestEmployee.finalScore?.toFixed(1)}<span className="text-[18px] text-[#666666] font-bold">/100</span></p>
+                    </div>
+
+                    <h3 className="text-[15px] font-bold text-[#333333] mb-4 uppercase tracking-wider">Score Breakdown</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
+                        <div className="bg-[#F5F5F5] rounded-xl p-4 shadow-sm border border-[#E0E0E0]">
+                            <p className="text-[#666666] text-[12px] font-bold uppercase tracking-wider mb-1">Self Assessment</p>
+                            <p className="text-[#003087] font-black text-[22px]">{bestEmployee.selfScore?.toFixed(1)}</p>
+                        </div>
+                        <div className="bg-[#F5F5F5] rounded-xl p-4 shadow-sm border border-[#E0E0E0]">
+                            <p className="text-[#666666] text-[12px] font-bold uppercase tracking-wider mb-1">Supervisor</p>
+                            <p className="text-[#003087] font-black text-[22px]">{bestEmployee.supervisorScore?.toFixed(1)}</p>
+                        </div>
+                        <div className="bg-[#F5F5F5] rounded-xl p-4 shadow-sm border border-[#E0E0E0]">
+                            <p className="text-[#666666] text-[12px] font-bold uppercase tracking-wider mb-1">Branch Mgr</p>
+                            <p className="text-[#003087] font-black text-[22px]">{bestEmployee.bmScore?.toFixed(1)}</p>
+                        </div>
+                        <div className="bg-[#E8F5E9] border border-[#A5D6A7] rounded-xl p-4 shadow-sm">
+                            <p className="text-[#1B5E20] text-[12px] font-bold uppercase tracking-wider mb-1">Cluster Mgr</p>
+                            <p className="text-[#00843D] font-black text-[22px]">{bestEmployee.cmScore?.toFixed(1)}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="bg-white border border-[#E0E0E0] rounded-xl p-6 mb-8 shadow-sm">
+                <div className="flex justify-between items-end mb-3">
+                    <div>
+                        <span className="text-[14px] text-[#666666] font-bold uppercase tracking-wider block mb-1">
+                            {currentDept?.name} Evaluation Progress
+                        </span>
+                        <span className="text-[15px] font-medium text-[#333333]">{progress.evaluated} of {progress.total} employees evaluated</span>
+                    </div>
+                    <span className="text-[24px] font-black text-[#003087] leading-none">{progress.evaluated}/{progress.total}</span>
+                </div>
+                <div className="w-full bg-[#F5F5F5] rounded-full h-3 border border-[#E0E0E0] overflow-hidden">
+                    <div className="bg-[#00843D] h-full rounded-full transition-all duration-700 relative" style={{ width: `${progress.total > 0 ? (progress.evaluated / progress.total) * 100 : 0}%` }}>
+                        <div className="absolute inset-0 bg-white/20 w-full" style={{ backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.15) 75%, transparent 75%, transparent)', backgroundSize: '1rem 1rem' }}></div>
+                    </div>
+                </div>
+            </div>
+
+            {error && <div className="mb-6 p-4 bg-[#FFEBEE] border-l-4 border-[#D32F2F] rounded-r-lg text-[#D32F2F] text-[15px] font-bold shadow-sm">{error}</div>}
+            {success && <div className="mb-6 p-5 bg-[#E8F5E9] border-l-4 border-[#00843D] rounded-r-lg text-[#1B5E20] text-[15px] font-bold shadow-sm flex gap-3 items-center">
+                <svg className="w-6 h-6 text-[#00843D] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                {success}
+            </div>}
+
+            {selectedEmployee ? (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+                    <button onClick={() => setSelectedEmployee(null)} className="min-h-[44px] min-w-[80px] px-4 py-2 text-[14px] font-bold text-[#003087] bg-white border border-[#003087] rounded-lg hover:bg-[#003087] hover:text-white transition-all mb-6 flex items-center gap-2 cursor-pointer shadow-sm">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                        Back to Employee List
+                    </button>
+
+                    <div className="bg-[#E3F2FD] border border-[#90CAF9] rounded-xl p-6 mb-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <p className="text-[13px] text-[#003087]/80 font-bold uppercase tracking-wider mb-1">Final Evaluation For ({currentDept?.name})</p>
+                            <p className="text-[#003087] font-black text-[22px] leading-tight">{selectedEmployee.user.name}</p>
+                        </div>
+                        <div className="bg-white px-4 py-2 rounded-lg border border-[#90CAF9] text-center shrink-0">
+                            <p className="text-[12px] text-[#666666] font-bold uppercase mb-0.5">Shortlist Rank</p>
+                            <p className="text-[20px] font-black text-[#003087]">#{selectedEmployee.rank}</p>
+                        </div>
+                    </div>
+
+                    <EvaluationForm
+                        questions={questions}
+                        onSubmit={handleEvaluate}
+                        submitLabel={`Submit Final Evaluation for ${selectedEmployee.user.name.split(' ')[0]}`}
+                        draftKey={user?.id && selectedDeptId ? `draft_eval_${user.id}_${selectedEmployee.userId}_${selectedDeptId}` : null}
+                    />
+                </div>
+            ) : (
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between mb-4">
+                        <p className="text-[#1A1A2E] font-bold text-[18px]">Top 3 Shortlisted Employees ({currentDept?.name})</p>
+                        <span className="text-[13px] text-[#666666] font-medium bg-[#F5F5F5] px-3 py-1 rounded-full border border-[#E0E0E0] hidden sm:block">Blind evaluation — previous scores hidden</span>
+                    </div>
+
+                    {shortlist.length === 0 ? (
+                        <div className="bg-white border-2 border-[#E0E0E0] border-dashed rounded-2xl p-12 text-center shadow-sm">
+                            <span className="text-5xl block mb-4 opacity-50">📋</span>
+                            <h3 className="text-[20px] font-bold text-[#333333] mb-2">No Evaluations Pending</h3>
+                            <p className="text-[#666666] text-[16px] max-w-md mx-auto">There are no employees waiting for your evaluation at this time in {currentDept?.name}. This may be because Stage 3 has not concluded yet.</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 gap-4">
+                            {shortlist.map((entry) => (
+                                <div key={entry.userId} className={`bg-white border-2 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-200 ${entry.alreadyEvaluated ? "border-[#A5D6A7] bg-[#F1F8E9] shadow-sm opacity-80 zoom-in-95" : "border-[#E0E0E0] shadow-sm hover:border-[#003087]/50 hover:shadow-md"}`}>
+                                    <div className="flex items-center gap-5">
+                                        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-[16px] shrink-0 border-2 ${entry.alreadyEvaluated ? "bg-[#E8F5E9] text-[#2E7D32] border-[#A5D6A7]" : "bg-[#FFF8E1] text-[#F57C00] border-[#FFE082]"}`}>
+                                            #{entry.rank}
+                                        </div>
+                                        <div>
+                                            <p className="text-[18px] font-bold text-[#003087] leading-tight mb-1">{entry.user.name}</p>
+                                            <p className="text-[#666666] text-[14px] font-medium">{entry.user.email}</p>
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 sm:mt-0">
+                                        {entry.alreadyEvaluated ? (
+                                            <span className="min-h-[44px] text-[14px] px-6 py-2.5 rounded-lg bg-white text-[#2E7D32] border border-[#A5D6A7] font-bold shadow-sm flex items-center gap-2 justify-center w-full sm:w-auto">
+                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                                Evaluated
+                                            </span>
+                                        ) : (
+                                            <button onClick={() => setSelectedEmployee(entry)} className="min-h-[44px] min-w-[120px] text-[15px] px-6 py-3 bg-[#003087] text-white rounded-lg hover:bg-[#00843D] transition-colors cursor-pointer font-bold shadow flex items-center gap-2 justify-center w-full sm:w-auto">
+                                                Start Evaluation
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+        </DashboardShell>
+    );
+}
