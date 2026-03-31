@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { ok, serverError } from "../../../../lib/api-response";
@@ -26,28 +29,28 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
         for (const assessment of assessments) {
             const qId = assessment.quarterId;
 
-            // Check Stage 1 shortlist
+            // Check Stage 1 shortlist (existence only, no scores/ranks)
             const stage1 = await prisma.shortlistStage1.findFirst({
                 where: { userId, quarterId: qId },
-                select: { rank: true },
+                select: { id: true },
             });
 
-            // Check Stage 2 shortlist
+            // Check Stage 2 shortlist (existence only)
             const stage2 = await prisma.shortlistStage2.findFirst({
                 where: { userId, quarterId: qId },
-                select: { rank: true, combinedScore: true },
+                select: { id: true },
             });
 
-            // Check Stage 3 shortlist
+            // Check Stage 3 shortlist (existence only)
             const stage3 = await prisma.shortlistStage3.findFirst({
                 where: { userId, quarterId: qId },
-                select: { rank: true, combinedScore: true },
+                select: { id: true },
             });
 
             // Check if Best Employee
             const bestEmployee = await prisma.bestEmployee.findFirst({
                 where: { userId, quarterId: qId },
-                select: { finalScore: true },
+                select: { id: true },
             });
 
             // Determine highest stage reached
@@ -58,32 +61,25 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
             if (bestEmployee) highestStage = 4;
 
             // Also check if they had supervisor/BM/CM evaluations even if
-            // they didn't make it to the next shortlist
+            // they didn't make it to the next shortlist (existence only, no scores)
             const supEval = await prisma.supervisorEvaluation.findFirst({
                 where: { employeeId: userId, quarterId: qId },
-                select: { combinedScore: true },
+                select: { id: true },
             });
             const bmEval = await prisma.branchManagerEvaluation.findFirst({
                 where: { employeeId: userId, quarterId: qId },
-                select: { combinedScore: true },
+                select: { id: true },
             });
             const cmEval = await prisma.clusterManagerEvaluation.findFirst({
                 where: { employeeId: userId, quarterId: qId },
-                select: { finalScore: true },
+                select: { id: true },
             });
 
+            // BLIND SCORING: No ranks or scores exposed to employees
             history.push({
                 quarter: assessment.quarter,
-                selfScore: assessment.totalScore,
                 submittedAt: assessment.submittedAt,
-                stage1Rank: stage1?.rank || null,
-                stage2Rank: stage2?.rank || null,
-                stage3Rank: stage3?.rank || null,
-                supervisorScore: supEval?.combinedScore || null,
-                bmScore: bmEval?.combinedScore || null,
-                cmFinalScore: cmEval?.finalScore || null,
                 isBestEmployee: !!bestEmployee,
-                bestEmployeeFinalScore: bestEmployee?.finalScore || null,
                 highestStage,
                 stageLabels: {
                     1: "Self Assessment",

@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { created, fail, notFound, conflict, serverError, validateBody } from "../../../../lib/api-response";
@@ -21,6 +24,11 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
 
         const employee = await prisma.user.findUnique({ where: { id: data.employeeId }, select: { id: true, departmentId: true } });
         if (!employee) return notFound("Employee not found");
+
+        const hasAccess = await prisma.departmentRoleMapping.findFirst({
+            where: { userId: user.userId, departmentId: employee.departmentId, role: "BRANCH_MANAGER" }
+        });
+        if (!hasAccess) return fail("You are not assigned to evaluate this department.");
 
         // Guard: employee in Stage 2 shortlist (for their department)
         const shortlistEntry = await prisma.shortlistStage2.findFirst({
@@ -113,16 +121,18 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
 
         const response = {
             message: "Evaluation submitted successfully",
-            evaluation: { id: result.evaluation.id, employeeId: data.employeeId, bmScore: bmNormalized, combinedScore: combined, submittedAt: result.evaluation.submittedAt },
+            evaluation: { id: result.evaluation.id, employeeId: data.employeeId, submittedAt: result.evaluation.submittedAt, evaluated: true },
             progress: { evaluated: result.evaluatedCount, total: result.shortlistCount, remaining: result.shortlistCount - result.evaluatedCount },
         };
 
         if (result.stage3Created) {
             const stage3 = await prisma.shortlistStage3.findMany({
-                where: { departmentId: employee.departmentId, quarterId: activeQuarter.id }, orderBy: { rank: "asc" },
-                include: { user: { select: { id: true, name: true, email: true } } },
+                where: { departmentId: employee.departmentId, quarterId: activeQuarter.id },
+                select: { userId: true, user: { select: { id: true, name: true } } },
             });
-            response.stage3Shortlist = { message: "All done! Top 3 auto-selected for Stage 3.", shortlist: stage3 };
+            // BLIND SCORING: Only expose names, no scores/ranks/emails
+            const sanitizedShortlist = stage3.map(s => ({ userId: s.userId, name: s.user.name }));
+            response.stage3Shortlist = { message: "All done! Top employees auto-selected for Stage 3.", shortlist: sanitizedShortlist };
 
             // Notify shortlisted employees
             await createNotification(

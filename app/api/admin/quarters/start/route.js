@@ -1,9 +1,13 @@
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 import prisma from "../../../../../lib/prisma";
 import { withRole } from "../../../../../lib/withRole";
 import { created, fail, conflict, serverError, validateBody } from "../../../../../lib/api-response";
 import { startQuarterSchema } from "../../../../../lib/validators";
 import { notifyAllEmployees, createNotification } from "../../../../../lib/notifications";
 import { getDepartmentSize, logSmallDepartmentRule } from "../../../../../lib/department-rules";
+import { assignQuestionsToEmployees } from "../../../../../lib/questionAssigner";
 
 // ── Fisher-Yates (Knuth) shuffle — true O(n) randomness ──
 function fisherYatesShuffle(arr) {
@@ -92,36 +96,16 @@ function selectSimple(questions, count) {
  */
 export const POST = withRole(["ADMIN"], async (request, { user }) => {
     try {
-        // Parse body — allow empty body for auto-defaults
-        let data = {};
-        try {
-            const body = await request.json();
-            data = body || {};
-        } catch {
-            // empty body is fine — we'll use defaults
-        }
+        const { data, error } = await validateBody(request, startQuarterSchema);
+        if (error) return error;
 
-        // Auto-generate quarter name if not provided
-        if (!data.name) {
-            const now = new Date();
-            const month = now.getMonth(); // 0-11
-            const year = now.getFullYear();
-            const qNum = month < 3 ? 4 : month < 6 ? 1 : month < 9 ? 2 : 3;
-            // Financial year: Q4 belongs to previous year start
-            const fyYear = qNum >= 1 && qNum <= 3 ? year : year - 1;
-            data.name = `Q${qNum}-${fyYear}`;
-        }
-
-        // Default dates
-        const start = data.startDate ? new Date(data.startDate) : new Date();
-        const end = data.endDate ? new Date(data.endDate) : new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); // 90 days
+        const start = new Date(data.dateRange.startDate);
+        const end = new Date(data.dateRange.endDate);
+        
         if (isNaN(start.getTime()) || isNaN(end.getTime())) {
             return fail("Invalid date format. Use ISO format (YYYY-MM-DD)");
         }
         if (end <= start) return fail("endDate must be after startDate");
-
-        // Default question count
-        data.questionCount = data.questionCount || 15;
 
         // Guard: only one ACTIVE quarter allowed
         const activeQuarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
@@ -130,8 +114,8 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         }
 
         // Guard: duplicate name
-        const existing = await prisma.quarter.findUnique({ where: { name: data.name } });
-        if (existing) return conflict(`Quarter "${data.name}" already exists`);
+        const existing = await prisma.quarter.findUnique({ where: { name: data.quarterName } });
+        if (existing) return conflict(`Quarter "${data.quarterName}" already exists`);
 
         // ── Check if question bank is EMPTY ──
         const totalQuestions = await prisma.question.count({ where: { isActive: true } });
@@ -145,7 +129,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         const bmQuestions = await prisma.question.findMany({ where: { level: "BRANCH_MANAGER", isActive: true } });
         const cmQuestions = await prisma.question.findMany({ where: { level: "CLUSTER_MANAGER", isActive: true } });
 
-        const selfCount = data.questionCount || 15; // admin-set, default 15
+        const selfCount = data.questionCount; // strictly admin-set
         const supCount = 5;
         const bmCount = 4;
         const cmCount = 3;
@@ -177,14 +161,18 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             ...selectedCm.map(q => q.id),
         ];
 
-        const quarter = await prisma.$transaction(async (tx) => {
+        const { quarter, assignmentStats } = await prisma.$transaction(async (tx) => {
             const q = await tx.quarter.create({
-                data: { name: data.name, status: "ACTIVE", startDate: start, endDate: end, questionCount: data.questionCount || 15 },
+                data: { name: data.quarterName, status: "ACTIVE", startDate: start, endDate: end, questionCount: data.questionCount },
             });
             await tx.quarterQuestion.createMany({
                 data: allSelectedIds.map((questionId) => ({ quarterId: q.id, questionId })),
             });
-            return q;
+
+            // ── Assign per-employee randomized SELF question sets ──
+            const stats = await assignQuestionsToEmployees(tx, q.id, selfQuestions, selfCount);
+
+            return { quarter: q, assignmentStats: stats };
         });
 
         console.log("Saved to DB (Quarter):", quarter);
@@ -194,7 +182,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         });
 
         // Notify all employees
-        await notifyAllEmployees(`${data.name} evaluation is now open. Please complete your self-assessment.`);
+        await notifyAllEmployees(`New evaluation quarter started for ${data.quarterName}. Please complete your self-assessment.`);
 
         // ── Auto-winner check for single-employee departments ──
         const allDepartments = await prisma.department.findMany({ select: { id: true, name: true } });
@@ -235,7 +223,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
 
                     await createNotification(
                         singleEmployee.id,
-                        `🏆 You are automatically the Best Employee of ${data.name} (only employee in ${dept.name}).`
+                        `🏆 You are automatically the Best Employee of ${data.quarterName} (only employee in ${dept.name}).`
                     );
 
                     logSmallDepartmentRule({
@@ -264,8 +252,9 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         }
 
         const responseData = {
-            message: `Quarter "${data.name}" started with ${allSelectedIds.length} questions locked (${selectedSelf.length} SELF, ${selectedSup.length} SUP, ${selectedBm.length} BM, ${selectedCm.length} CM).${warningMsg}`,
+            message: `Quarter "${data.quarterName}" started with ${allSelectedIds.length} questions locked (${selectedSelf.length} SELF, ${selectedSup.length} SUP, ${selectedBm.length} BM, ${selectedCm.length} CM). ${assignmentStats.totalEmployees} employees assigned unique question sets.${warningMsg}`,
             quarter: result,
+            assignmentStats,
         };
         if (autoWinners.length > 0) {
             responseData.autoWinners = autoWinners;

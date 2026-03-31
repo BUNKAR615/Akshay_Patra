@@ -135,7 +135,7 @@ export const GET = withRole(["ADMIN"], async () => {
             }
 
             // Did someone from this department win?
-            const deptWinner = bestEmployeeDoc?.departmentId === did ? { id: bestEmployeeDoc.user.id, name: bestEmployeeDoc.user.name } : null;
+            const deptWinner = (quarter.status === "CLOSED" && bestEmployeeDoc?.departmentId === did) ? { id: bestEmployeeDoc.user.id, name: bestEmployeeDoc.user.name } : null;
 
             resultDepartments.push({
                 departmentId: did,
@@ -189,7 +189,7 @@ export const GET = withRole(["ADMIN"], async () => {
                 totalEmployees: overallTotalEmployees,
                 totalSubmitted: overallSubmitted,
                 overallPercentage,
-                quarterWinner: bestEmployeeDoc ? {
+                quarterWinner: (quarter.status === "CLOSED" && bestEmployeeDoc) ? {
                     id: bestEmployeeDoc.user.id,
                     name: bestEmployeeDoc.user.name,
                     department: departments.find(d => d.id === bestEmployeeDoc.departmentId)?.name || ""

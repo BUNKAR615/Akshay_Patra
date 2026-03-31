@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 import prisma from "../../../../../lib/prisma";
 import { withRole } from "../../../../../lib/withRole";
 import { ok, fail, notFound, serverError } from "../../../../../lib/api-response";
@@ -25,6 +28,11 @@ export const GET = withRole(["ADMIN"], async (request) => {
 
         const quarter = await prisma.quarter.findUnique({ where: { id: quarterId } });
         if (!quarter) return notFound("Quarter not found");
+
+        // BLIND SCORING: Only allow full export for closed quarters
+        if (quarter.status === "ACTIVE") {
+            return fail("Cannot export scores for an active quarter. Blind scoring rules prevent access to numeric performance data until the quarter is closed.");
+        }
 
         const departments = await prisma.department.findMany({
             select: { id: true, name: true },

@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 import prisma from "../../../../../lib/prisma";
 import { withRole } from "../../../../../lib/withRole";
 import { created, fail, conflict, serverError, validateBody } from "../../../../../lib/api-response";
@@ -34,7 +37,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
 
         // For SUPERVISOR and BRANCH_MANAGER — only one per department
         if (data.role === "SUPERVISOR" || data.role === "BRANCH_MANAGER") {
-            const existing = await prisma.departmentRole.findFirst({
+            const existing = await prisma.departmentRoleMapping.findFirst({
                 where: { departmentId: data.departmentId, role: data.role },
                 include: { user: { select: { name: true, email: true } } },
             });
@@ -45,9 +48,9 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             }
         }
 
-        // Upsert the DepartmentRole + update Department FK + sync user departmentId — atomically
+        // Upsert the DepartmentRoleMapping + update Department FK + sync user departmentId — atomically
         const deptRole = await prisma.$transaction(async (tx) => {
-            const role = await tx.departmentRole.upsert({
+            const role = await tx.DepartmentRoleMapping.upsert({
                 where: { userId_departmentId_role: { userId: data.userId, departmentId: data.departmentId, role: data.role } },
                 update: { assignedAt: new Date() },
                 create: { userId: data.userId, departmentId: data.departmentId, role: data.role },

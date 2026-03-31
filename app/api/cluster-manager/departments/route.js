@@ -1,6 +1,18 @@
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { ok, notFound, serverError } from "../../../../lib/api-response";
+
+// Fisher-Yates shuffle
+function shuffleArray(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
 
 /** GET /api/cluster-manager/departments */
 export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
@@ -15,8 +27,7 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         const departmentsData = await Promise.all(allDepartments.map(async (dept) => {
             const shortlists = await prisma.shortlistStage3.findMany({
                 where: { departmentId: dept.id, quarterId: activeQuarter.id },
-                orderBy: { rank: "asc" },
-                select: { userId: true, rank: true, user: { select: { name: true, email: true } } }
+                select: { userId: true, user: { select: { id: true, name: true, empCode: true, designation: true } } }
             });
 
             const evaluated = await prisma.clusterManagerEvaluation.findMany({
@@ -26,16 +37,24 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
 
             const evaluatedSet = new Set(evaluated.map(e => e.employeeId));
 
+            const shuffledEmployees = shuffleArray(shortlists.map(s => ({
+                id: s.user.id,
+                userId: s.userId,
+                name: s.user.name,
+                empCode: s.user.empCode,
+                designation: s.user.designation || '',
+                isEvaluated: evaluatedSet.has(s.userId),
+                alreadyEvaluated: evaluatedSet.has(s.userId),
+                user: s.user
+            })));
+
             return {
                 id: dept.id,
                 name: dept.name,
                 totalToEvaluate: shortlists.length,
                 evaluated: evaluatedSet.size,
                 completed: shortlists.length > 0 && evaluatedSet.size >= shortlists.length,
-                shortlist: shortlists.map(s => ({
-                    ...s,
-                    alreadyEvaluated: evaluatedSet.has(s.userId)
-                }))
+                shortlist: shuffledEmployees
             };
         }));
 

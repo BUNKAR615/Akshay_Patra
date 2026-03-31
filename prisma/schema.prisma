@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 /// Branch — represents a physical location / branch of Akshaya Patra
@@ -29,7 +30,7 @@ model Department {
   branchManagerId String?
   supervisorId    String?
   bestEmployees   BestEmployee[]
-  departmentRoles DepartmentRole[]
+  departmentRoles DepartmentRoleMapping[]
   branch          Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
   shortlistStage1 ShortlistStage1[]
   shortlistStage2 ShortlistStage2[]
@@ -53,13 +54,14 @@ model User {
   createdAt             DateTime                   @default(now())
   updatedAt             DateTime                   @updatedAt
   designation           String?
+  mobile                String?
   auditLogs             AuditLog[]
   bestEmployees         BestEmployee[]
   bmReceived            BranchManagerEvaluation[]  @relation("EmployeeBMEval")
   bmEvaluations         BranchManagerEvaluation[]  @relation("BMGiven")
   cmEvaluations         ClusterManagerEvaluation[] @relation("CMGiven")
   cmReceived            ClusterManagerEvaluation[] @relation("EmployeeCMEval")
-  departmentRoles       DepartmentRole[]
+  departmentRoles       DepartmentRoleMapping[]
   notifications         Notification[]
   selfAssessments       SelfAssessment[]
   shortlistStage1       ShortlistStage1[]
@@ -67,6 +69,7 @@ model User {
   shortlistStage3       ShortlistStage3[]
   supervisorReceived    SupervisorEvaluation[]     @relation("EmployeeSupEval")
   supervisorEvaluations SupervisorEvaluation[]     @relation("SupervisorGiven")
+  assignedQuestions     EmployeeQuarterQuestions[]
   department            Department?                @relation(fields: [departmentId], references: [id])
 
   @@index([departmentId])
@@ -89,6 +92,7 @@ model Quarter {
   bmEvaluations         BranchManagerEvaluation[]
   cmEvaluations         ClusterManagerEvaluation[]
   quarterQuestions      QuarterQuestion[]
+  employeeQuestions     EmployeeQuarterQuestions[]
   selfAssessments       SelfAssessment[]
   shortlistStage1       ShortlistStage1[]
   shortlistStage2       ShortlistStage2[]
@@ -109,7 +113,8 @@ model Question {
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   textHindi        String            @default("")
-  quarterQuestions QuarterQuestion[]
+  quarterQuestions        QuarterQuestion[]
+  employeeAssignments     EmployeeQuarterQuestions[]
 
   @@index([category])
   @@index([level])
@@ -139,11 +144,12 @@ model SelfAssessment {
   quarterId       String
   answers         Json
   submittedAt     DateTime @default(now())
-  maxScore        Float
-  normalizedScore Float
-  rawScore        Float
-  quarter         Quarter  @relation(fields: [quarterId], references: [id], onDelete: Cascade)
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  maxScore              Float
+  normalizedScore       Float
+  rawScore              Float
+  completionTimeSeconds Int      @default(0)
+  quarter               Quarter  @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, quarterId])
   @@index([quarterId])
@@ -360,8 +366,8 @@ model BlacklistedToken {
   @@map("blacklisted_tokens")
 }
 
-/// DepartmentRole — maps evaluators to departments
-model DepartmentRole {
+/// DepartmentRoleMapping — maps evaluators to departments
+model DepartmentRoleMapping {
   id           String     @id @default(cuid())
   userId       String
   departmentId String
@@ -373,7 +379,24 @@ model DepartmentRole {
   @@unique([userId, departmentId, role])
   @@index([departmentId])
   @@index([userId])
-  @@map("department_roles")
+  @@map("department_role_mappings")
+}
+
+/// EmployeeQuarterQuestions — per-employee randomized question assignment
+model EmployeeQuarterQuestions {
+  id         String   @id @default(cuid())
+  employeeId String
+  quarterId  String
+  questionId String
+  orderIndex Int
+  assignedAt DateTime @default(now())
+  employee   User     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  quarter    Quarter  @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, quarterId, questionId])
+  @@index([employeeId, quarterId])
+  @@map("employee_quarter_questions")
 }
 
 enum Role {

@@ -81,7 +81,7 @@ export default function BranchManagerDashboard() {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ employeeId: selectedEmployee.userId, answers }),
             });
-            setSuccess(`Success! Evaluation completed for ${selectedEmployee.user.name}. Score recorded: ${data.evaluation.combinedScore.toFixed(1)}`);
+            setSuccess(`✓ Evaluation submitted for ${selectedEmployee.name}`);
             setSelectedEmployee(null);
             window.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -97,7 +97,7 @@ export default function BranchManagerDashboard() {
                 setProgress({ evaluated: updatedDept.evaluated, total: updatedDept.totalToEvaluate });
             }
 
-            if (data.stage3Shortlist) setSuccess(`All evaluations complete for ${updatedDept?.name} department! The top 3 employees have been selected for Stage 3.`);
+            if (data.stage3Shortlist) setSuccess(`All evaluations complete for ${updatedDept?.name} department! The top employees have been selected for Stage 3.`);
         } catch (e) {
             throw e; // Rethrow so EvaluationForm catches it
         }
@@ -196,25 +196,21 @@ export default function BranchManagerDashboard() {
                     <div className="bg-[#E3F2FD] border border-[#90CAF9] rounded-xl p-6 mb-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
                             <p className="text-[13px] text-[#003087]/80 font-bold uppercase tracking-wider mb-1">Currently Evaluating in {currentDept?.name}</p>
-                            <p className="text-[#003087] font-black text-[22px] leading-tight">{selectedEmployee.user.name}</p>
-                        </div>
-                        <div className="bg-white px-4 py-2 rounded-lg border border-[#90CAF9] text-center shrink-0">
-                            <p className="text-[12px] text-[#666666] font-bold uppercase mb-0.5">Shortlist Rank</p>
-                            <p className="text-[20px] font-black text-[#003087]">#{selectedEmployee.rank}</p>
+                            <p className="text-[#003087] font-black text-[22px] leading-tight">{selectedEmployee.name}</p>
                         </div>
                     </div>
 
                     <EvaluationForm
                         questions={questions}
                         onSubmit={handleEvaluate}
-                        submitLabel={`Submit Evaluation for ${selectedEmployee.user.name.split(' ')[0]}`}
+                        submitLabel={`Submit Evaluation for ${selectedEmployee.name.split(' ')[0]}`}
                         draftKey={user?.id && selectedDeptId ? `draft_eval_${user.id}_${selectedEmployee.userId}_${selectedDeptId}` : null}
                     />
                 </div>
             ) : (
                 <div className="space-y-4">
                     <div className="flex items-center justify-between mb-4">
-                        <p className="text-[#1A1A2E] font-bold text-[18px]">Top 5 Shortlisted Employees ({currentDept?.name})</p>
+                        <p className="text-[#1A1A2E] font-bold text-[18px]">Employees to Evaluate ({currentDept?.name})</p>
                         <span className="text-[13px] text-[#666666] font-medium bg-[#F5F5F5] px-3 py-1 rounded-full border border-[#E0E0E0] hidden sm:block">Blind evaluation — previous scores hidden</span>
                     </div>
 
@@ -230,22 +226,22 @@ export default function BranchManagerDashboard() {
                                 <div key={entry.userId} className={`bg-white border-2 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-200 ${entry.alreadyEvaluated ? "border-[#A5D6A7] bg-[#F1F8E9] shadow-sm opacity-80 zoom-in-95" : "border-[#E0E0E0] shadow-sm hover:border-[#003087]/50 hover:shadow-md"}`}>
                                     <div className="flex items-center gap-5">
                                         <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-[16px] shrink-0 border-2 ${entry.alreadyEvaluated ? "bg-[#E8F5E9] text-[#2E7D32] border-[#A5D6A7]" : "bg-[#F5F5F5] text-[#333333] border-[#CCCCCC]"}`}>
-                                            #{entry.rank}
+                                            {entry.name.charAt(0)}
                                         </div>
                                         <div>
-                                            <p className="text-[18px] font-bold text-[#003087] leading-tight mb-1">{entry.user.name}</p>
-                                            <p className="text-[#666666] text-[14px] font-medium">{entry.user.email}</p>
+                                            <p className="text-[18px] font-bold text-[#003087] leading-tight mb-1">{entry.name}</p>
+                                            <p className="text-[#666666] text-[14px] font-medium">{entry.designation} | {entry.empCode}</p>
                                         </div>
                                     </div>
                                     <div className="mt-3 sm:mt-0">
                                         {entry.alreadyEvaluated ? (
                                             <span className="min-h-[44px] text-[14px] px-6 py-2.5 rounded-lg bg-white text-[#2E7D32] border border-[#A5D6A7] font-bold shadow-sm flex items-center gap-2 justify-center w-full sm:w-auto">
                                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                                                Evaluated
+                                                ✓ Done
                                             </span>
                                         ) : (
                                             <button onClick={() => setSelectedEmployee(entry)} className="min-h-[44px] min-w-[120px] text-[15px] px-6 py-3 bg-[#003087] text-white rounded-lg hover:bg-[#00843D] transition-colors cursor-pointer font-bold shadow flex items-center gap-2 justify-center w-full sm:w-auto">
-                                                Start Evaluation
+                                                Evaluate
                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                                             </button>
                                         )}

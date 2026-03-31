@@ -1,28 +1,31 @@
 # dependencies
-/node_modules
+node_modules/
 
 # next.js
-/.next/
-/out/
+.next/
+out/
 
-# production
-/build
+# environment
+.env
+.env.local
+.env.production
+.env.*.local
+
+# prisma
+prisma/dev.db
 
 # misc
 .DS_Store
 *.pem
-
-# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# env files
-.env*.local
-.env
-
 # vercel
 .vercel
 
-# prisma
-prisma/migrations/
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+.vercel

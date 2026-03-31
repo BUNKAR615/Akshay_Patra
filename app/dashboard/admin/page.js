@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import DashboardShell from "../../../components/DashboardShell";
 import ConfirmDialog from "../../../components/ConfirmDialog";
 import { PageSpinner, SkeletonCard, SkeletonStats } from "../../../components/Skeleton";
+import UserProfileCard from "../../../components/UserProfileCard";
 import Papa from "papaparse";
 
 async function api(url, opts) {
@@ -187,9 +188,28 @@ export default function AdminDashboard() {
         setConfirm({ open: false, type: null });
         setQuarterLoading(true); setQuarterMsg({ type: "", text: "" });
         try {
-            const body = isAuto
-                ? {} // let server auto-generate name, dates, questionCount
-                : { name: quarterName, startDate, endDate, questionCount };
+            let body;
+            if (isAuto) {
+                const now = new Date();
+                const month = now.getMonth();
+                const year = now.getFullYear();
+                const qNum = month < 3 ? 4 : month < 6 ? 1 : month < 9 ? 2 : 3;
+                const fyYear = qNum >= 1 && qNum <= 3 ? year : year - 1;
+                body = {
+                    quarterName: `Q${qNum}-${fyYear}`,
+                    dateRange: {
+                        startDate: now.toISOString().split('T')[0],
+                        endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+                    },
+                    questionCount: 15
+                };
+            } else {
+                body = { 
+                    quarterName, 
+                    dateRange: { startDate, endDate }, 
+                    questionCount: Number(questionCount) || 15 
+                };
+            }
             const d = await api("/api/admin/quarters/start", {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
@@ -316,6 +336,9 @@ export default function AdminDashboard() {
 
     return (
         <DashboardShell user={user} title="Admin Panel">
+            {/* Profile Card */}
+            <UserProfileCard user={user} roles={user?.departmentRoles?.map(dr => dr.role)} />
+
             {/* Tabs */}
             <div className="flex gap-1 bg-[#F5F5F5] rounded-xl p-1 mb-6 border border-[#E0E0E0] w-fit flex-wrap">
                 {TABS.map((t) => (
@@ -822,7 +845,7 @@ export default function AdminDashboard() {
                                             <td className="px-5 py-3 text-sm font-bold text-[#003087]">{e.name}</td>
                                             <td className="px-5 py-3 text-sm text-[#333333]">{e.department}</td>
                                             <td className="px-5 py-3 text-sm text-[#666666]">{e.designation}</td>
-                                            <td className="px-5 py-3"><span className={`text-[11px] px-2.5 py-1 rounded-full border font-bold uppercase tracking-wider ${e.role === "EMPLOYEE" ? "bg-blue-50 text-[#003087] border-blue-200" : e.role === "SUPERVISOR" ? "bg-purple-50 text-purple-700 border-purple-200" : e.role === "BRANCH_MANAGER" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : e.role === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F57C00] border-orange-200" : "bg-red-50 text-red-700 border-red-200"}`}>{e.role.replace("_", " ")}</span></td>
+                                            <td className="px-5 py-3"><span className={`text-[11px] px-2.5 py-1 rounded-full border font-bold uppercase tracking-wider ${e.role === "EMPLOYEE" ? "bg-gray-50 text-gray-700 border-gray-200" : e.role === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : e.role === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : e.role === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-[#003087] text-white border-[#003087]"}`}>{e.role.replace("_", " ")}</span></td>
                                         </tr>
                                     ))}
                                 </tbody>

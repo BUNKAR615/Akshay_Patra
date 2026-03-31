@@ -12,14 +12,14 @@ const ROLE_REDIRECTS = {
 };
 
 export default function LoginPage() {
-    const [username, setUsername] = useState("");
+    const [empCode, setEmpCode] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        // Allow the middleware to pass down an error message for expired tokens
+        // Read error from URL params (e.g. session expired redirect)
         const urlParams = new URLSearchParams(window.location.search);
         const urlError = urlParams.get("error");
         if (urlError) setError(urlError);
@@ -34,7 +34,7 @@ export default function LoginPage() {
             const res = await fetch("/api/auth/login", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ username, password }),
+                body: JSON.stringify({ empCode, password }),
             });
 
             const json = await res.json();
@@ -45,6 +45,15 @@ export default function LoginPage() {
                 return;
             }
 
+            // Multi-role: redirect to role selection
+            if (json.data.requiresRoleSelection) {
+                sessionStorage.setItem("availableRoles", JSON.stringify(json.data.availableRoles));
+                sessionStorage.setItem("userName", json.data.user.name || "");
+                window.location.href = "/select-role";
+                return;
+            }
+
+            // Single role: redirect to dashboard
             const redirectPath = ROLE_REDIRECTS[json.data.user.role] || "/dashboard/employee";
             window.location.href = redirectPath;
         } catch (err) {
@@ -130,8 +139,11 @@ export default function LoginPage() {
                                     </svg>
                                 </span>
                                 <input
-                                    type="text" value={username} onChange={(e) => { setUsername(e.target.value); if (error) setError(""); }}
+                                    id="empCode"
+                                    type="text" value={empCode} onChange={(e) => { setEmpCode(e.target.value); if (error) setError(""); }}
                                     required placeholder="1800349"
+                                    inputMode="numeric"
+                                    autoComplete="username"
                                     className="w-full h-11 pl-10 pr-4 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] placeholder-[#999999] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] text-sm"
                                 />
                             </div>
@@ -147,8 +159,10 @@ export default function LoginPage() {
                                     </svg>
                                 </span>
                                 <input
+                                    id="password"
                                     type={showPassword ? "text" : "password"} value={password} onChange={(e) => { setPassword(e.target.value); if (error) setError(""); }}
                                     required placeholder="••••••••"
+                                    autoComplete="current-password"
                                     className="w-full h-11 pl-10 pr-12 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] placeholder-[#999999] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] text-sm"
                                 />
                                 <button

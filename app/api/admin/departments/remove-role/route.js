@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 import prisma from "../../../../../lib/prisma";
 import { withRole } from "../../../../../lib/withRole";
 import { ok, fail, serverError, validateBody } from "../../../../../lib/api-response";
@@ -18,14 +21,14 @@ export const DELETE = withRole(["ADMIN"], async (request, { user }) => {
         const { data, error } = await validateBody(request, removeRoleSchema);
         if (error) return error;
 
-        const existing = await prisma.departmentRole.findUnique({
+        const existing = await prisma.departmentRoleMapping.findUnique({
             where: { userId_departmentId_role: { userId: data.userId, departmentId: data.departmentId, role: data.role } },
             include: { user: { select: { name: true } }, department: { select: { name: true } } },
         });
         if (!existing) return fail("Role assignment not found");
 
         await prisma.$transaction(async (tx) => {
-            await tx.departmentRole.delete({ where: { id: existing.id } });
+            await tx.DepartmentRoleMapping.delete({ where: { id: existing.id } });
 
             // Clear department FK shortcuts
             if (data.role === "SUPERVISOR") {

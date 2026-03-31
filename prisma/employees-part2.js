@@ -1,202 +1,183 @@
-// Employee data Part 2 — compact pipe-delimited
-// Format: empCode|name|department|designation|role|password
-const R = { E: 'EMPLOYEE', S: 'SUPERVISOR', B: 'BRANCH_MANAGER', C: 'CLUSTER_MANAGER', A: 'ADMIN' };
-const raw = `1802378|MEHUL KUMAR SONI|Production|Helper|E|Mehul_78
-1801232|MOHAR SINGH GURJAR|Production|Helper|E|Mohar_32
-1802361|MOHIT VERMA|Production|Helper|E|Mohit_61
-1802284|MONU VERMA|Production|Helper|E|Monu_84
-1801180|Mukesh|Production|Helper|E|Mukesh_80
-1801919|MUKESH JANGID|Production|Helper|E|Mukesh_19
-1802114|MUKESH KUMAR MALI|Distribution|Driver|E|Mukesh_14
-1801284|MUKESH KUMAR MEENA|Distribution|Driver|E|Mukesh_84
-1801841|MUKESH KUMAR YADAV|Production|Helper|E|Mukesh_41
-1800347|MUKESH SHARMA|Procurement|Officer|E|Mukesh_47
-1801425|Mukesh Sharma|Security|Security|E|Mukesh_25
-1801198|Mukesh Verma|Production|Helper|E|Mukesh_98
-1802253|MUKUT BIHARI SHARMA|Production|Helper|E|Mukut_53
-1802093|NAGENDRA JATAV|Security|Security|E|Nagendra_93
-1800059|NAND KISHOR JAT|Administration|Office Boy|E|Nand_59
-1800144|NARBADA DEVI|Production|Helper|E|Narbada_44
-1802075|NARENDRA KUMAR|Production|Helper|E|Narendra_75
-1800040|NARESH BANSAL|Procurement|Officer|E|Naresh_40
-1800168|NATHI DEVI|Production|Helper|E|Nathi_68
-1802040|NATHU|Production|Helper|E|Nathu_40
-1802288|NEPAL SINGH SONDIYA|Production|Helper - Production|E|Nepal_88
-1802387|NIKITA MEENA|Production|Helper|E|Nikita_87
-1802145|NITU YOGI|Production|Helper|E|Nitu_45
-1800031|OM PRAKASH SHARMA|Distribution|Supervisor|S|Om_31
-1801862|OMPRAKASH|Production|Helper|E|Omprakash_62
-1801236|OMPRAKSH GURJAR|Production|Helper|E|Ompraksh_36
-1801716|PANKAJ BHARDWAJ|Human Resources|Senior Executive|E|Pankaj_16
-1801079|Pappu Lal|Production|Helper|E|Pappu_79
-1800557|PARMESHWAR MEENA|Production|Helper|E|Parmeshwar_57
-1801187|Pinki Jain|Production|Helper|E|Pinki_87
-1802372|PINTU MEENA|Distribution|Driver|E|Pintu_72
-1801122|Pooran Mal Meena|Security|Security|E|Pooran_22
-1801237|PRABHU NARAYAN MEENA|Production|Helper|E|Prabhu_37
-1800060|PRADHAN GURJAR|Production|Helper|E|Pradhan_60
-1801238|PRAKASH CHAND MEENA|Production|Helper|E|Prakash_38
-1800010|PRAKASH CHAND VIJAY|Finance|Deputy General Manager|E|Prakash_10
-1802366|Pramod Kumar Sharma|Finance|Assistant Manager|E|Pramod_66
-1800544|PRAVEEN SHARMA|Distribution|Supervisor|S|Praveen_44
-1800979|PREM DEVI|Production|Helper|E|Prem_79
-1800134|PREM DEVI REGAR|Production|Helper|E|Prem_34
-1801748|PREMLATA|Production|Helper|E|Premlata_48
-1802188|PUKHRAJ JWALA|Production|Helper|E|Pukhraj_88
-1801961|PURANMAL|Production|Helper|E|Puranmal_61
-1802328|PUSHPENDRA MEENA|Production|Helper|E|Pushpendra_28
-1801791|PUSHPENDRA YADAV|Distribution|Supervisor|S|Pushpendra_91
-1800135|RADHA DEVI BALAI|Production|Helper|E|Radha_35
-1800160|RADHA SHARMA|Production|Helper|E|Radha_60
-1801240|RADHESHYAM|Production|Helper|E|Radheshyam_40
-1801362|Rahul Singh CHAUHAN|Distribution|Supervisor - Distribution|S|Rahul_62
-1800110|RAJANTI DEVI MORYA|Production|Helper|E|Rajanti_10
-1801241|RAJENDRA JAJORIYA|Production|Helper|E|Rajendra_41
-1801840|RAJENDRA KUMAR MEENA|Production|Helper|E|Rajendra_40
-1801242|RAJENDRA LAKHERA|Production|Helper|E|Rajendra_42
-1802324|RAJENDRA PRASAD MEENA|Production|Helper|E|Rajendra_24
-1800003|Rajesh Kaushik|Human Resources|AGM - Human Resources|E|Rajesh_03
-1801305|RAJESH KUMAR MEENA|Distribution|Executive|E|Rajesh_05
-1800012|Rajesh Kumar Sharma|Procurement|Assistant General Manager|E|Rajesh_12
-1802384|RAJU DAS VAISHNAV|Production|Helper|E|Raju_84
-1801243|RAJU LAL|Production|Helper|E|Raju_43
-1801316|Raju Meena|Production|Supervisor|S|Raju_16
-1801767|RAJU TANWAR|Production|Helper|E|Raju_67
-1802351|RAJU VERMA|Distribution|Driver|E|Raju_51
-1802331|RAKESH KUMAR BUNKAR|Production|Helper|E|Rakesh_31
-1800252|RAKESH KUMAR MEENA|Distribution|Supervisor|S|Rakesh_52
-1801288|RAKESH KUMAR MEENA|Distribution|Driver|E|Rakesh_88
-1800095|RAKESH VIJAY|Procurement|Officer|E|Rakesh_95
-1801246|RAM DAYAL SHARMA|Production|Helper|E|Ram_46
-1801248|RAMAVATAR MEENA|Production|Helper|E|Ramavatar_48
-1801754|RAMAVTAR|Distribution|Driver|E|Ramavtar_54
-1801078|Rambati Devi|Production|Helper|E|Rambati_78
-1802183|RAMESH CHAND|Distribution|Driver|E|Ramesh_83
-1800274|RAMESH CHAND SHARMA|Distribution|Supervisor|S|Ramesh_74
-1801391|Ramesh Kumar Mali|Production|Helper|E|Ramesh_91
-1801912|RAMESHCHAND|Production|Helper|E|Rameshchand_12
-1802230|RAMESHWAR DAYAL|Human Resources|Executive|E|Rameshwar_30
-1802353|RAMESHWAR SAINI|Stores|Executive|E|Rameshwar_53
-1801463|RAMNIWAS CHOUDHARY|Quality|Officer - Quality|E|Ramniwas_63
-1802049|RAMOTAR RANA|Production|Helper|E|Ramotar_49
-1802059|RAMPRASAD MEENA|Production|Helper|E|Ramprasad_59
-1801607|RAMRAJ MEENA|Production|COOK|E|Ramraj_07
-1801591|RANJIT YOGI|Distribution|Driver|E|Ranjit_91
-1800050|RATAN LAL DARJI|Production|Helper|E|Ratan_50
-1801883|RATAN LAL MEENA|Production|Supervisor|S|Ratan_83
-1801642|RATAN SINGH|Production|Helper|E|Ratan_42
-1800120|RATNA DEVI|Production|Helper|E|Ratna_20
-1802115|RAVI THAKUR|Finance|Executive|E|Ravi_15
-1802371|RAVINDRA KUMAR|Production|Helper|E|Ravindra_71
-1802289|RAVINDRA KUMAR MEENA|Production|Helper - Production|E|Ravindra_89
-1801664|RAVINDRA SHARMA|Distribution|Supervisor|S|Ravindra_64
-1802264|REENA DEVI|Production|Helper|E|Reena_64
-1800153|REETA DEVI|Production|Helper|E|Reeta_53
-1802147|REKHA RAWAT|Production|Helper|E|Rekha_47
-1801735|REWAT SINGH|Production|Operator|E|Rewat_35
-1801952|RINKU CHOPRA|Production|Helper|E|Rinku_52
-1802244|RINKU MEENA|Production|Helper|E|Rinku_44
-1802024|RINKU MORYA|Distribution|Driver|E|Rinku_24
-1800349|RISHPAL KUMAWAT|Information Technology|Assistant Manager|A|Rishpal_49
-1800082|RODU RAM MEENA|Production|Helper|E|Rodu_82
-1802363|ROHAN KUMAR CHOPRA|Production|Helper|E|Rohan_63
-1802009|ROHITASH KUMAR REDDY|Production|Helper-Production|E|Rohitash_09
-1801252|ROOPNARAYAN MOURYA|Production|Helper|E|Roopnarayan_52
-1801291|ROSHAN LAL|Production|Helper|E|Roshan_91
-1801481|Roshan Sharma|Maintenance|Fitter|E|Roshan_81
-1802152|SACHIN RAISWAL|Production|Helper|E|Sachin_52
-1802386|SAGAR MAL GOME|Distribution|Driver|E|Sagar_86
-1802355|SAHIL TANVAR|Production|Helper|E|Sahil_55
-1802073|SAMAY SINGH|Production|Helper|E|Samay_73
-1802304|SANDEEP SAINI|Quality|Executive|E|Sandeep_04
-1801253|SANJAY|Production|Helper|E|Sanjay_53
-1802332|SANJAY KUMAR SAINI|Process Excellence and CI|Officer|E|Sanjay_32
-1801378|Sanjay Sharma|Distribution|Supervisor - Distribution|S|Sanjay_78
-1802343|SANJAY SHARMA|Distribution|Driver|E|Sanjay_43
-1800011|SANT KUMAR SHARMA|Operations|Manager|B|Sant_11
-1801347|Santosh Devi|Stores|Helper|E|Santosh_47
-1801544|SANTOSH DEVI|Production|Helper|E|Santosh_44
-1802056|SANTOSH KUMAR|Distribution|Driver|E|Santosh_56
-1802141|SANTRA|Production|Helper|E|Santra_41
-1800137|SANTRA DEVI MAHAWAR|Production|Helper|E|Santra_37
-1800112|SANTRA DEVI REIGER|Production|Helper|E|Santra_12
-1801747|SANTRA PRAJAPAT|Production|Helper|E|Santra_47
-1802143|SARVAGYA KUMAR SHARMA|Distribution|Executive|E|Sarvagya_43
-1802240|SATISH TIWARI|Production|Operator|E|Satish_40
-1801254|SATYA NARAYAN|Production|Helper|E|Satya_54
-1802233|SAVITA BALAI|Production|Helper|E|Savita_33
-1802099|SAVITA DEVI|Production|Helper|E|Savita_99
-1801293|SAYAR LAL SHARMA|Distribution|Driver|E|Sayar_93
-1802090|SEEMA DEVI|Production|Helper|E|Seema_90
-1802377|SEEMA DEVI|Production|Helper|E|Seema_77
-1801878|SEEMA KANWAR|Production|Helper|E|Seema_78
-1800496|SEETA|Production|Helper|E|Seeta_96
-1800113|SHAKUNTLA DEVI SHARMA|Production|Helper|E|Shakuntla_13
-1802119|SHANKAR LAL MEENA|Production|Helper|E|Shankar_19
-1801873|SHANKAR SINGH|Production|Operator|E|Shankar_73
-1801888|SHANKARA NAND|Security|Security|E|Shankara_88
-1800115|SHANTI DEVI MORYA|Production|Helper|E|Shanti_15
-1801846|SHASHI DEVI SHARMA|Production|Helper|E|Shashi_46
-1802339|SHEKHAR BAIRWA|Production|Helper|E|Shekhar_39
-1802269|SHIMLA SHARMA|Production|Helper|E|Shimla_69
-1802375|SHIVKESH MEENA|Production|Helper|E|Shivkesh_75
-1801053|Shivraj Gurjar|Production|COOK|E|Shivraj_53
-1801671|SHRI NARAYAN BAIRWA|Security|Security|E|Shri_71
-1802021|SHYAMSUNDAR BHAT|Maintenance|Operator|E|Shyamsundar_21
-1802057|SHYOJI LAL MEENA|Production|Helper|E|Shyoji_57
-1802176|SOHAN LAL|Distribution|Driver|E|Sohan_76
-1802118|SONIYA DEVI|Production|Helper|E|Soniya_18
-1801780|SONU|Production|Helper|E|Sonu_80
-1802360|SONU|Production|Helper|E|Sonu_60
-1801892|SONU BUNKER|Production|Helper|E|Sonu_92
-1802025|SONU DHANAKA|Production|Helper|E|Sonu_25
-1802362|SONU JATAV|Security|Security|E|Sonu_62
-1802338|SONU KUMAR MEENA|Stores|Helper|E|Sonu_38
-1800006|SUBHASH CHAND GAUR|Stores|Deputy Manager|E|Subhash_06
-1800978|SUKHIYA DEVI|Production|Helper|E|Sukhiya_78
-1801534|SUKHRAM|Production|Helper|E|Sukhram_34
-1801170|Sumit Sharma|Finance|Executive|E|Sumit_70
-1800154|SUMITRA DEVI|Production|Helper|E|Sumitra_54
-1800181|SUNIL AGARWAL|Maintenance|Electrician|E|Sunil_81
-1801656|SUNIL KUMAR MOURYA|Production|Helper|E|Sunil_56
-1801947|SUNIL MEENA|Production|Helper|E|Sunil_47
-1802365|SUNIL MEGHWAL|Production|Helper|E|Sunil_65
-1801924|SUNITA DEVI|Production|Helper|E|Sunita_24
-1800117|SUNITA DEVI MORYA|Production|Helper|E|Sunita_17
-1802069|SUNNY MAURYA|Production|Helper|E|Sunny_69
-1801366|Suraj Mal Gurjar|Distribution|Driver|E|Suraj_66
-1801728|SURENDER SINGH|Production|Helper|E|Surender_28
-1802352|SURESH VERMA|Distribution|Driver|E|Suresh_52
-1801768|SURGYAN|Production|Helper|E|Surgyan_68
-1800361|SUSHEEL KUMAR MAHAWAR|Distribution|Officer|E|Susheel_61
-1801746|SUSHILA DEVI|Production|Helper|E|Sushila_46
-1801025|SUSHILA PRAJAPAT|Production|Helper|E|Sushila_25
-1800046|SYOJI RAM JAT|Production|Supervisor|S|Syoji_46
-1802383|TARACHAND BHEEL|Production|Helper|E|Tarachand_83
-1802250|TEJA RAM GURJAR|Distribution|Driver|E|Teja_50
-1801259|TUFAN MEENA|Production|Helper|E|Tufan_59
-1800143|UGANTI DEVI|Production|Helper|E|Uganti_43
-1802254|UMESH|Production|Helper|E|Umesh_54
-1801298|UMMED SINGH|Distribution|Driver|E|Ummed_98
-1801598|VEDPRAKASH MEENA|Distribution|Supervisor|S|Vedprakash_98
-1802287|VIJAY PAL MEENA|Production|Helper - Production|E|Vijay_87
-1801759|VIJAY SHANKAR MEENA|Distribution|Driver|E|Vijay_59
-1801427|Vijay Vikram Singh|Production|Operator|E|Vijay_27
-1802345|VIKAS KUMAR MEENA|Production|Helper|E|Vikas_45
-1801938|VIKAS MEENA|Production|Helper|E|Vikas_38
-1802347|VIKASH SINGH|Maintenance|Operator|E|Vikash_47
-1800079|VIMAL PRAKASH SHARMA|Finance|Senior Executive|E|Vimal_79
-1801545|VIMALA DEVI|Production|Helper|E|Vimala_45
-1801853|VINOD KUMAR MEENA|Production|Helper|E|Vinod_53
-1801260|VINOD RAIGAR|Production|Helper|E|Vinod_60
-1800474|VIRENDRA KUMAR|Production|Helper|E|Virendra_74
-1802283|VISHAL SHARMA|Distribution|Assistant Supervisor|S|Vishal_83
-1802359|VISHANU YOGI|Distribution|Driver|E|Vishanu_59
-1801299|YADRAM MEENA|Distribution|Driver|E|Yadram_99
-1802281|YADRAM MEENA|Production|Helper|E|Yadram_81
-1802369|YASHPAL JATAV|Production|Helper|E|Yashpal_69
-1801442|Yogesh Dadhich|Finance|Senior Executive - Accounts|E|Yogesh_42`;
-module.exports = raw.trim().split('\n').map(l => {
-  const [empCode, name, department, designation, role, password] = l.split('|');
-  return { empCode, name, department, designation, role: R[role], password };
-});
+// Employees Part 2 (2 of 2) — Jaipur Branch — 172 employees
+module.exports = [
+  { empCode: '1800144', name: 'NARBADA DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Narbada_44' },
+  { empCode: '1802075', name: 'NARENDRA KUMAR', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Narendra_75' },
+  { empCode: '1800040', name: 'NARESH BANSAL', department: 'Procurement', designation: 'Officer', role: 'EMPLOYEE', password: 'Naresh_40' },
+  { empCode: '1800168', name: 'NATHI DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Nathi_68' },
+  { empCode: '1802040', name: 'NATHU', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Nathu_40' },
+  { empCode: '1802288', name: 'NEPAL SINGH SONDIYA', department: 'Production', designation: 'Helper - Production', role: 'EMPLOYEE', password: 'Nepal_88' },
+  { empCode: '1802387', name: 'NIKITA MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Nikita_87' },
+  { empCode: '1802145', name: 'NITU YOGI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Nitu_45' },
+  { empCode: '1800031', name: 'OM PRAKASH SHARMA', department: 'Distribution', designation: 'Supervisor', role: 'SUPERVISOR', password: 'Om_31' },
+  { empCode: '1801862', name: 'OMPRAKASH', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Omprakash_62' },
+  { empCode: '1801236', name: 'OMPRAKSH GURJAR', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Ompraksh_36' },
+  { empCode: '1801716', name: 'PANKAJ BHARDWAJ', department: 'Human Resources', designation: 'Senior Executive', role: 'EMPLOYEE', password: 'Pankaj_16' },
+  { empCode: '1801079', name: 'Pappu Lal', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Pappu_79' },
+  { empCode: '1800557', name: 'PARMESHWAR MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Parmeshwar_57' },
+  { empCode: '1801187', name: 'Pinki Jain', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Pinki_87' },
+  { empCode: '1802372', name: 'PINTU MEENA', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Pintu_72' },
+  { empCode: '1801122', name: 'Pooran Mal Meena', department: 'Security', designation: 'Security', role: 'EMPLOYEE', password: 'Pooran_22' },
+  { empCode: '1801237', name: 'PRABHU NARAYAN MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Prabhu_37' },
+  { empCode: '1800060', name: 'PRADHAN GURJAR', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Pradhan_60' },
+  { empCode: '1801238', name: 'PRAKASH CHAND MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Prakash_38' },
+  { empCode: '1800010', name: 'PRAKASH CHAND VIJAY', department: 'Finance', designation: 'Deputy General Manager', role: 'EMPLOYEE', password: 'Prakash_10' },
+  { empCode: '1802366', name: 'Pramod Kumar Sharma', department: 'Finance', designation: 'Assistant Manager', role: 'EMPLOYEE', password: 'Pramod_66' },
+  { empCode: '1800544', name: 'PRAVEEN SHARMA', department: 'Distribution', designation: 'Supervisor', role: 'SUPERVISOR', password: 'Praveen_44' },
+  { empCode: '1800979', name: 'PREM DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Prem_79' },
+  { empCode: '1800134', name: 'PREM DEVI REGAR', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Prem_34' },
+  { empCode: '1801748', name: 'PREMLATA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Premlata_48' },
+  { empCode: '1802188', name: 'PUKHRAJ JWALA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Pukhraj_88' },
+  { empCode: '1801961', name: 'PURANMAL', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Puranmal_61' },
+  { empCode: '1802328', name: 'PUSHPENDRA MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Pushpendra_28' },
+  { empCode: '1801791', name: 'PUSHPENDRA YADAV', department: 'Distribution', designation: 'Supervisor', role: 'SUPERVISOR', password: 'Pushpendra_91' },
+  { empCode: '1800135', name: 'RADHA DEVI BALAI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Radha_35' },
+  { empCode: '1800160', name: 'RADHA SHARMA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Radha_60' },
+  { empCode: '1801240', name: 'RADHESHYAM', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Radheshyam_40' },
+  { empCode: '1801362', name: 'Rahul Singh CHAUHAN', department: 'Distribution', designation: 'Supervisor - Distribution', role: 'SUPERVISOR', password: 'Rahul_62' },
+  { empCode: '1800110', name: 'RAJANTI DEVI MORYA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Rajanti_10' },
+  { empCode: '1801241', name: 'RAJENDRA JAJORIYA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Rajendra_41' },
+  { empCode: '1801840', name: 'RAJENDRA KUMAR MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Rajendra_40' },
+  { empCode: '1801242', name: 'RAJENDRA LAKHERA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Rajendra_42' },
+  { empCode: '1802324', name: 'RAJENDRA PRASAD MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Rajendra_24' },
+  { empCode: '1800003', name: 'Rajesh Kaushik', department: 'Human Resources', designation: 'AGM - Human Resources', role: 'EMPLOYEE', password: 'Rajesh_03' },
+  { empCode: '1801305', name: 'RAJESH KUMAR MEENA', department: 'Distribution', designation: 'Executive', role: 'EMPLOYEE', password: 'Rajesh_05' },
+  { empCode: '1800012', name: 'Rajesh Kumar Sharma', department: 'Procurement', designation: 'Assistant General Manager', role: 'EMPLOYEE', password: 'Rajesh_12' },
+  { empCode: '1802384', name: 'RAJU DAS VAISHNAV', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Raju_84' },
+  { empCode: '1801243', name: 'RAJU LAL', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Raju_43' },
+  { empCode: '1801316', name: 'Raju Meena', department: 'Production', designation: 'Supervisor', role: 'SUPERVISOR', password: 'Raju_16' },
+  { empCode: '1801767', name: 'RAJU TANWAR', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Raju_67' },
+  { empCode: '1802351', name: 'RAJU VERMA', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Raju_51' },
+  { empCode: '1802331', name: 'RAKESH KUMAR BUNKAR', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Rakesh_31' },
+  { empCode: '1800252', name: 'RAKESH KUMAR MEENA', department: 'Distribution', designation: 'Supervisor', role: 'SUPERVISOR', password: 'Rakesh_52' },
+  { empCode: '1801288', name: 'RAKESH KUMAR MEENA', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Rakesh_88' },
+  { empCode: '1800095', name: 'RAKESH VIJAY', department: 'Procurement', designation: 'Officer', role: 'EMPLOYEE', password: 'Rakesh_95' },
+  { empCode: '1801246', name: 'RAM DAYAL SHARMA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Ram_46' },
+  { empCode: '1801248', name: 'RAMAVATAR MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Ramavatar_48' },
+  { empCode: '1801754', name: 'RAMAVTAR', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Ramavtar_54' },
+  { empCode: '1801078', name: 'Rambati Devi', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Rambati_78' },
+  { empCode: '1802183', name: 'RAMESH CHAND', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Ramesh_83' },
+  { empCode: '1800274', name: 'RAMESH CHAND SHARMA', department: 'Distribution', designation: 'Supervisor', role: 'SUPERVISOR', password: 'Ramesh_74' },
+  { empCode: '1801391', name: 'Ramesh Kumar Mali', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Ramesh_91' },
+  { empCode: '1801912', name: 'RAMESHCHAND', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Rameshchand_12' },
+  { empCode: '1802230', name: 'RAMESHWAR DAYAL', department: 'Human Resources', designation: 'Executive', role: 'EMPLOYEE', password: 'Rameshwar_30' },
+  { empCode: '1802353', name: 'RAMESHWAR SAINI', department: 'Stores', designation: 'Executive', role: 'EMPLOYEE', password: 'Rameshwar_53' },
+  { empCode: '1801463', name: 'RAMNIWAS CHOUDHARY', department: 'Quality', designation: 'Officer - Quality', role: 'EMPLOYEE', password: 'Ramniwas_63' },
+  { empCode: '1802049', name: 'RAMOTAR RANA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Ramotar_49' },
+  { empCode: '1802059', name: 'RAMPRASAD MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Ramprasad_59' },
+  { empCode: '1801607', name: 'RAMRAJ MEENA', department: 'Production', designation: 'COOK', role: 'EMPLOYEE', password: 'Ramraj_07' },
+  { empCode: '1801591', name: 'RANJIT YOGI', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Ranjit_91' },
+  { empCode: '1800050', name: 'RATAN LAL DARJI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Ratan_50' },
+  { empCode: '1801883', name: 'RATAN LAL MEENA', department: 'Production', designation: 'Supervisor', role: 'SUPERVISOR', password: 'Ratan_83' },
+  { empCode: '1801642', name: 'RATAN SINGH', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Ratan_42' },
+  { empCode: '1800120', name: 'RATNA DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Ratna_20' },
+  { empCode: '1802115', name: 'RAVI THAKUR', department: 'Finance', designation: 'Executive', role: 'EMPLOYEE', password: 'Ravi_15' },
+  { empCode: '1802371', name: 'RAVINDRA KUMAR', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Ravindra_71' },
+  { empCode: '1802289', name: 'RAVINDRA KUMAR MEENA', department: 'Production', designation: 'Helper - Production', role: 'EMPLOYEE', password: 'Ravindra_89' },
+  { empCode: '1801664', name: 'RAVINDRA SHARMA', department: 'Distribution', designation: 'Supervisor', role: 'SUPERVISOR', password: 'Ravindra_64' },
+  { empCode: '1802264', name: 'REENA DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Reena_64' },
+  { empCode: '1800153', name: 'REETA DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Reeta_53' },
+  { empCode: '1802147', name: 'REKHA RAWAT', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Rekha_47' },
+  { empCode: '1801735', name: 'REWAT SINGH', department: 'Production', designation: 'Operator', role: 'EMPLOYEE', password: 'Rewat_35' },
+  { empCode: '1801952', name: 'RINKU CHOPRA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Rinku_52' },
+  { empCode: '1802244', name: 'RINKU MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Rinku_44' },
+  { empCode: '1802024', name: 'RINKU MORYA', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Rinku_24' },
+  { empCode: '1800349', name: 'RISHPAL KUMAWAT', department: 'Information Technology', designation: 'Assistant Manager', role: 'ADMIN', password: 'Rishpal_49' },
+  { empCode: '1800082', name: 'RODU RAM MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Rodu_82' },
+  { empCode: '1802363', name: 'ROHAN KUMAR CHOPRA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Rohan_63' },
+  { empCode: '1802009', name: 'ROHITASH KUMAR REDDY', department: 'Production', designation: 'Helper-Production', role: 'EMPLOYEE', password: 'Rohitash_09' },
+  { empCode: '1801252', name: 'ROOPNARAYAN MOURYA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Roopnarayan_52' },
+  { empCode: '1801291', name: 'ROSHAN LAL', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Roshan_91' },
+  { empCode: '1801481', name: 'Roshan Sharma', department: 'Maintenance', designation: 'Fitter', role: 'EMPLOYEE', password: 'Roshan_81' },
+  { empCode: '1802152', name: 'SACHIN RAISWAL', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sachin_52' },
+  { empCode: '1802386', name: 'SAGAR MAL GOME', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Sagar_86' },
+  { empCode: '1802355', name: 'SAHIL TANVAR', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sahil_55' },
+  { empCode: '1802073', name: 'SAMAY SINGH', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Samay_73' },
+  { empCode: '1802304', name: 'SANDEEP SAINI', department: 'Quality', designation: 'Executive', role: 'EMPLOYEE', password: 'Sandeep_04' },
+  { empCode: '1801253', name: 'SANJAY', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sanjay_53' },
+  { empCode: '1802332', name: 'SANJAY KUMAR SAINI', department: 'Process Excellence and CI', designation: 'Officer', role: 'EMPLOYEE', password: 'Sanjay_32' },
+  { empCode: '1801378', name: 'Sanjay Sharma', department: 'Distribution', designation: 'Supervisor - Distribution', role: 'SUPERVISOR', password: 'Sanjay_78' },
+  { empCode: '1802343', name: 'SANJAY SHARMA', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Sanjay_43' },
+  { empCode: '1800011', name: 'SANT KUMAR SHARMA', department: 'Operations', designation: 'Manager', role: 'BRANCH_MANAGER', password: 'Sant_11' },
+  { empCode: '1801347', name: 'Santosh Devi', department: 'Stores', designation: 'Helper', role: 'EMPLOYEE', password: 'Santosh_47' },
+  { empCode: '1801544', name: 'SANTOSH DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Santosh_44' },
+  { empCode: '1802056', name: 'SANTOSH KUMAR', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Santosh_56' },
+  { empCode: '1802141', name: 'SANTRA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Santra_41' },
+  { empCode: '1800137', name: 'SANTRA DEVI MAHAWAR', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Santra_37' },
+  { empCode: '1800112', name: 'SANTRA DEVI REIGER', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Santra_12' },
+  { empCode: '1801747', name: 'SANTRA PRAJAPAT', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Santra_47' },
+  { empCode: '1802143', name: 'SARVAGYA KUMAR SHARMA', department: 'Distribution', designation: 'Executive', role: 'EMPLOYEE', password: 'Sarvagya_43' },
+  { empCode: '1802240', name: 'SATISH TIWARI', department: 'Production', designation: 'Operator', role: 'EMPLOYEE', password: 'Satish_40' },
+  { empCode: '1801254', name: 'SATYA NARAYAN', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Satya_54' },
+  { empCode: '1802233', name: 'SAVITA BALAI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Savita_33' },
+  { empCode: '1802099', name: 'SAVITA DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Savita_99' },
+  { empCode: '1801293', name: 'SAYAR LAL SHARMA', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Sayar_93' },
+  { empCode: '1802090', name: 'SEEMA DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Seema_90' },
+  { empCode: '1802377', name: 'SEEMA DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Seema_77' },
+  { empCode: '1801878', name: 'SEEMA KANWAR', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Seema_78' },
+  { empCode: '1800496', name: 'SEETA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Seeta_96' },
+  { empCode: '1800113', name: 'SHAKUNTLA DEVI SHARMA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Shakuntla_13' },
+  { empCode: '1802119', name: 'SHANKAR LAL MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Shankar_19' },
+  { empCode: '1801873', name: 'SHANKAR SINGH', department: 'Production', designation: 'Operator', role: 'EMPLOYEE', password: 'Shankar_73' },
+  { empCode: '1801888', name: 'SHANKARA NAND', department: 'Security', designation: 'Security', role: 'EMPLOYEE', password: 'Shankara_88' },
+  { empCode: '1800115', name: 'SHANTI DEVI MORYA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Shanti_15' },
+  { empCode: '1801846', name: 'SHASHI DEVI SHARMA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Shashi_46' },
+  { empCode: '1802339', name: 'SHEKHAR BAIRWA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Shekhar_39' },
+  { empCode: '1802269', name: 'SHIMLA SHARMA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Shimla_69' },
+  { empCode: '1802375', name: 'SHIVKESH MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Shivkesh_75' },
+  { empCode: '1801053', name: 'Shivraj Gurjar', department: 'Production', designation: 'COOK', role: 'EMPLOYEE', password: 'Shivraj_53' },
+  { empCode: '1801671', name: 'SHRI NARAYAN BAIRWA', department: 'Security', designation: 'Security', role: 'EMPLOYEE', password: 'Shri_71' },
+  { empCode: '1802021', name: 'SHYAMSUNDAR BHAT', department: 'Maintenance', designation: 'Operator', role: 'EMPLOYEE', password: 'Shyamsundar_21' },
+  { empCode: '1802057', name: 'SHYOJI LAL MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Shyoji_57' },
+  { empCode: '1802176', name: 'SOHAN LAL', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Sohan_76' },
+  { empCode: '1802118', name: 'SONIYA DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Soniya_18' },
+  { empCode: '1801780', name: 'SONU', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sonu_80' },
+  { empCode: '1802360', name: 'SONU', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sonu_60' },
+  { empCode: '1801892', name: 'SONU BUNKER', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sonu_92' },
+  { empCode: '1802025', name: 'SONU DHANAKA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sonu_25' },
+  { empCode: '1802362', name: 'SONU JATAV', department: 'Security', designation: 'Security', role: 'EMPLOYEE', password: 'Sonu_62' },
+  { empCode: '1802338', name: 'SONU KUMAR MEENA', department: 'Stores', designation: 'Helper', role: 'EMPLOYEE', password: 'Sonu_38' },
+  { empCode: '1800006', name: 'SUBHASH CHAND GAUR', department: 'Stores', designation: 'Deputy Manager', role: 'EMPLOYEE', password: 'Subhash_06' },
+  { empCode: '1800978', name: 'SUKHIYA DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sukhiya_78' },
+  { empCode: '1801534', name: 'SUKHRAM', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sukhram_34' },
+  { empCode: '1801170', name: 'Sumit Sharma', department: 'Finance', designation: 'Executive', role: 'EMPLOYEE', password: 'Sumit_70' },
+  { empCode: '1800154', name: 'SUMITRA DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sumitra_54' },
+  { empCode: '1800181', name: 'SUNIL AGARWAL', department: 'Maintenance', designation: 'Electrician', role: 'EMPLOYEE', password: 'Sunil_81' },
+  { empCode: '1801656', name: 'SUNIL KUMAR MOURYA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sunil_56' },
+  { empCode: '1801947', name: 'SUNIL MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sunil_47' },
+  { empCode: '1802365', name: 'SUNIL MEGHWAL', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sunil_65' },
+  { empCode: '1801924', name: 'SUNITA DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sunita_24' },
+  { empCode: '1800117', name: 'SUNITA DEVI MORYA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sunita_17' },
+  { empCode: '1802069', name: 'SUNNY MAURYA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sunny_69' },
+  { empCode: '1801366', name: 'Suraj Mal Gurjar', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Suraj_66' },
+  { empCode: '1801728', name: 'SURENDER SINGH', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Surender_28' },
+  { empCode: '1802352', name: 'SURESH VERMA', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Suresh_52' },
+  { empCode: '1801768', name: 'SURGYAN', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Surgyan_68' },
+  { empCode: '1800361', name: 'SUSHEEL KUMAR MAHAWAR', department: 'Distribution', designation: 'Officer', role: 'EMPLOYEE', password: 'Susheel_61' },
+  { empCode: '1801746', name: 'SUSHILA DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sushila_46' },
+  { empCode: '1801025', name: 'SUSHILA PRAJAPAT', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Sushila_25' },
+  { empCode: '1800046', name: 'SYOJI RAM JAT', department: 'Production', designation: 'Supervisor', role: 'SUPERVISOR', password: 'Syoji_46' },
+  { empCode: '1802383', name: 'TARACHAND BHEEL', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Tarachand_83' },
+  { empCode: '1802250', name: 'TEJA RAM GURJAR', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Teja_50' },
+  { empCode: '1801259', name: 'TUFAN MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Tufan_59' },
+  { empCode: '1800143', name: 'UGANTI DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Uganti_43' },
+  { empCode: '1802254', name: 'UMESH', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Umesh_54' },
+  { empCode: '1801298', name: 'UMMED SINGH', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Ummed_98' },
+  { empCode: '1801598', name: 'VEDPRAKASH MEENA', department: 'Distribution', designation: 'Supervisor', role: 'SUPERVISOR', password: 'Vedprakash_98' },
+  { empCode: '1802287', name: 'VIJAY PAL MEENA', department: 'Production', designation: 'Helper - Production', role: 'EMPLOYEE', password: 'Vijay_87' },
+  { empCode: '1801759', name: 'VIJAY SHANKAR MEENA', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Vijay_59' },
+  { empCode: '1801427', name: 'Vijay Vikram Singh', department: 'Production', designation: 'Operator', role: 'EMPLOYEE', password: 'Vijay_27' },
+  { empCode: '1802345', name: 'VIKAS KUMAR MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Vikas_45' },
+  { empCode: '1801938', name: 'VIKAS MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Vikas_38' },
+  { empCode: '1802347', name: 'VIKASH SINGH', department: 'Maintenance', designation: 'Operator', role: 'EMPLOYEE', password: 'Vikash_47' },
+  { empCode: '1800079', name: 'VIMAL PRAKASH SHARMA', department: 'Finance', designation: 'Senior Executive', role: 'EMPLOYEE', password: 'Vimal_79' },
+  { empCode: '1801545', name: 'VIMALA DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Vimala_45' },
+  { empCode: '1801853', name: 'VINOD KUMAR MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Vinod_53' },
+  { empCode: '1801260', name: 'VINOD RAIGAR', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Vinod_60' },
+  { empCode: '1800474', name: 'VIRENDRA KUMAR', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Virendra_74' },
+  { empCode: '1802283', name: 'VISHAL SHARMA', department: 'Distribution', designation: 'Assistant Supervisor', role: 'SUPERVISOR', password: 'Vishal_83' },
+  { empCode: '1802359', name: 'VISHANU YOGI', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Vishanu_59' },
+  { empCode: '1801299', name: 'YADRAM MEENA', department: 'Distribution', designation: 'Driver', role: 'EMPLOYEE', password: 'Yadram_99' },
+  { empCode: '1802281', name: 'YADRAM MEENA', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Yadram_81' },
+  { empCode: '1802369', name: 'YASHPAL JATAV', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Yashpal_69' },
+  { empCode: '1801442', name: 'Yogesh Dadhich', department: 'Finance', designation: 'Senior Executive - Accounts', role: 'EMPLOYEE', password: 'Yogesh_42' },
+];

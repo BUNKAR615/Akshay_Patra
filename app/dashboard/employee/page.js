@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import DashboardShell from "../../../components/DashboardShell";
-import EvaluationForm from "../../../components/EvaluationForm";
+import TimedEvaluationForm from "../../../components/TimedEvaluationForm";
 import UserProfileCard from "../../../components/UserProfileCard";
 import { PageSpinner, SkeletonCard } from "../../../components/Skeleton";
 
@@ -117,14 +117,14 @@ export default function EmployeeDashboard() {
         }
     }, [tab, historyLoaded]);
 
-    const handleConfirmedSubmit = async (answers) => {
+    const handleConfirmedSubmit = async ({ answers, completionTimeSeconds }) => {
         setError(null);
         setSuccessMsg("");
         try {
             await api("/api/assessment/submit", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ answers }),
+                body: JSON.stringify({ answers, completionTimeSeconds }),
             });
             // Re-fetch from current-status for full data (submitted answers, stages, etc.)
             try {
@@ -220,11 +220,10 @@ export default function EmployeeDashboard() {
                                 <h3 className="text-[18px] font-bold text-[#003087] mb-2">Self Assessment</h3>
                                 <p className="text-[#333333] text-[15px] leading-relaxed">Please rate your performance honestly on each question below from -2 (Strongly Disagree) to +2 (Strongly Agree).</p>
                             </div>
-                            <EvaluationForm
+                            <TimedEvaluationForm
                                 questions={questions}
                                 onSubmit={handleConfirmedSubmit}
                                 submitLabel="Submit Self Assessment"
-                                draftKey={`draft_assessment_${user?.id}_${status.quarter?.id}`}
                                 confirmMessage="Once submitted, you cannot change your answers. Are you sure you want to proceed?"
                             />
                         </>
@@ -233,26 +232,30 @@ export default function EmployeeDashboard() {
                     {/* ── SUBMITTED: Show results ── */}
                     {status?.submitted && (
                         <>
-                            {/* Success banner + score */}
-                            <div className="bg-white border-2 border-[#A5D6A7] rounded-xl p-6 md:p-8 shadow-sm relative overflow-hidden">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-[#E8F5E9] rounded-bl-full -z-10 opacity-50"></div>
-                                <div className="flex flex-col md:flex-row items-center gap-6">
-                                    <div className="w-16 h-16 rounded-full bg-[#E8F5E9] flex items-center justify-center shrink-0 border border-[#A5D6A7]">
-                                        <svg className="w-8 h-8 text-[#00843D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                                        </svg>
+                            {/* Success banner */}
+                            <div className="bg-[#F8FBFA] border-2 border-[#00843D] rounded-xl p-6 shadow-sm relative overflow-hidden">
+                                <div className="flex flex-col gap-2">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className="w-8 h-8 rounded-full bg-[#00843D] flex items-center justify-center shrink-0 shadow-sm">
+                                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        </div>
+                                        <h3 className="text-[20px] font-black text-[#003087]">Assessment Submitted</h3>
                                     </div>
-                                    <div className="text-center md:text-left flex-1">
-                                        <h3 className="text-[22px] font-bold text-[#003087] mb-1">Assessment Submitted</h3>
-                                        <p className="text-[#333333] text-[15px]">
-                                            Submitted on {new Date(status.selfAssessment.submittedAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                    
+                                    <div className="space-y-1 ml-11">
+                                        <p className="text-[#333333] text-[15px] font-medium">
+                                            Submitted on: {new Date(status.selfAssessment.submittedAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                        </p>
+                                        <p className="text-[#333333] text-[15px] font-medium">
+                                            Questions Answered: {status.selfAssessment.answers?.length || status.quarter.questionCount} of {status.quarter.questionCount}
                                         </p>
                                     </div>
-                                    <div className="text-center md:text-right bg-[#FAFAFA] border border-[#E0E0E0] rounded-xl p-4 min-w-[140px]">
-                                        <p className="text-[12px] text-[#666666] font-bold uppercase tracking-wider mb-1">Total Score</p>
-                                        <p className="text-[32px] font-black text-[#00843D] leading-none">
-                                            {status.selfAssessment.totalScore.toFixed(1)}
-                                        </p>
+
+                                    <div className="mt-4 ml-11 pt-4 border-t border-[#A5D6A7]/30">
+                                        <p className="text-[#333333] text-[15px] font-medium mb-1">Your responses have been recorded.</p>
+                                        <p className="text-[#333333] text-[15px] font-medium">You will be notified if you are shortlisted for the next stage.</p>
                                     </div>
                                 </div>
                             </div>
@@ -277,9 +280,6 @@ export default function EmployeeDashboard() {
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-4 shrink-0 sm:ml-auto pl-14 sm:pl-0">
-                                                    {s.score !== null && (
-                                                        <span className="text-[18px] font-black text-[#003087]">{s.score.toFixed(1)}</span>
-                                                    )}
                                                     <StagePill status={s.status} />
                                                 </div>
                                             </div>
@@ -301,9 +301,9 @@ export default function EmployeeDashboard() {
                                                     <p className="text-[15px] text-[#1A1A2E] leading-relaxed font-medium">{a.questionText}</p>
                                                     <span className="text-[12px] px-2.5 py-1 rounded-full bg-[#E3F2FD] border border-[#90CAF9] text-[#003087] mt-3 inline-block font-bold">{a.category}</span>
                                                 </div>
-                                                <div className="bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg px-4 py-2 shrink-0 text-center shadow-sm w-full sm:w-auto">
-                                                    <p className="text-[20px] font-black text-[#003087] leading-none">{a.score > 0 ? `+${a.score}` : a.score}</p>
-                                                    <p className="text-[11px] text-[#666666] font-bold uppercase mt-1">Score</p>
+                                                <div className="bg-[#E8F5E9] border border-[#A5D6A7] rounded-lg px-4 py-2 shrink-0 text-center shadow-sm w-full sm:w-auto">
+                                                    <p className="text-[15px] font-bold text-[#1B5E20] leading-none flex items-center justify-center gap-1.5"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg> {a.answerLabel}</p>
+                                                    <p className="text-[11px] text-[#00843D] font-bold uppercase mt-1">Selected</p>
                                                 </div>
                                             </div>
                                         ))}
@@ -321,8 +321,7 @@ export default function EmployeeDashboard() {
                                             <p className="text-[24px] font-black text-[#003087] leading-tight">Congratulations!</p>
                                             <p className="text-[20px] font-bold text-[#333333] mb-4">You are the Best Employee of the Quarter!</p>
                                             <div className="inline-block bg-white px-6 py-3 rounded-xl border border-[#FFE082] shadow-sm">
-                                                <p className="text-[14px] text-[#666666] font-bold uppercase">Final Score</p>
-                                                <p className="text-[#00843D] font-black text-[32px]">{status.winner.finalScore.toFixed(1)}</p>
+                                                <p className="text-[#00843D] font-black text-[18px]">You won the quarter!</p>
                                             </div>
                                         </div>
                                     ) : (
@@ -330,7 +329,7 @@ export default function EmployeeDashboard() {
                                             <span className="text-5xl">🏆</span>
                                             <div className="flex-1">
                                                 <p className="text-[#003087] font-black text-[22px] mb-1">{status.winner.name}</p>
-                                                <p className="text-[#666666] text-[15px] font-medium">{status.winner.department} &middot; Final Score: <span className="text-[#00843D] font-bold text-[18px]">{status.winner.finalScore.toFixed(1)}</span></p>
+                                                <p className="text-[#666666] text-[15px] font-medium">{status.winner.department}</p>
                                             </div>
                                             <div className="bg-[#F5F5F5] px-6 py-4 border border-[#E0E0E0] rounded-xl w-full md:w-auto">
                                                 <p className="text-[#666666] text-[13px] font-bold uppercase mb-1">Your Highest Stage</p>
@@ -394,27 +393,11 @@ export default function EmployeeDashboard() {
 
                             {/* Scores & Progress */}
                             <div className="p-6">
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                                    <div className="bg-[#F5F5F5] border border-[#E0E0E0] shadow-sm rounded-xl p-4 text-center">
-                                        <p className="text-[11px] text-[#666666] font-bold uppercase tracking-wider mb-1">Self Score</p>
-                                        <p className="text-[24px] font-black text-[#003087]">{h.selfScore.toFixed(1)}</p>
+                                <div className="mb-6">
+                                    <div className="bg-[#F5F5F5] border border-[#E0E0E0] shadow-sm rounded-xl p-4 text-center w-max px-8">
+                                        <p className="text-[11px] text-[#666666] font-bold uppercase tracking-wider mb-1">Highest Stage Reached</p>
+                                        <p className="text-[20px] font-black text-[#003087]">Stage {h.highestStage}</p>
                                     </div>
-                                    <div className="bg-[#F5F5F5] border border-[#E0E0E0] shadow-sm rounded-xl p-4 text-center">
-                                        <p className="text-[11px] text-[#666666] font-bold uppercase tracking-wider mb-1">Highest Stage</p>
-                                        <p className="text-[24px] font-black text-[#003087]">{h.highestStage}</p>
-                                    </div>
-                                    {h.supervisorScore !== null && (
-                                        <div className="bg-[#F5F5F5] border border-[#E0E0E0] shadow-sm rounded-xl p-4 text-center">
-                                            <p className="text-[11px] text-[#666666] font-bold uppercase tracking-wider mb-1">Supervisor</p>
-                                            <p className="text-[24px] font-black text-[#003087]">{h.supervisorScore.toFixed(1)}</p>
-                                        </div>
-                                    )}
-                                    {h.cmFinalScore !== null && (
-                                        <div className="bg-[#E8F5E9] border border-[#A5D6A7] shadow-sm rounded-xl p-4 text-center">
-                                            <p className="text-[11px] text-[#1B5E20] font-bold uppercase tracking-wider mb-1">Final Score</p>
-                                            <p className="text-[24px] font-black text-[#00843D]">{h.cmFinalScore.toFixed(1)}</p>
-                                        </div>
-                                    )}
                                 </div>
 
                                 {/* Stage progress dots */}

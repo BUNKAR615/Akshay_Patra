@@ -84,7 +84,7 @@ export default function ClusterManagerDashboard() {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ employeeId: selectedEmployee.userId, answers }),
             });
-            setSuccess(`Success! Evaluation completed for ${selectedEmployee.user.name}. Final Score: ${data.evaluation.finalScore.toFixed(1)}`);
+            setSuccess(`✓ Evaluation submitted for ${selectedEmployee.name}`);
             setSelectedEmployee(null);
             window.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -101,8 +101,8 @@ export default function ClusterManagerDashboard() {
             }
 
             if (data.bestEmployee) {
-                setBestEmployee(data.bestEmployee.winner);
-                setSuccess(`All evaluations complete for ${updatedDept?.name} department! The Best Employee of the Quarter has been finalized.`);
+                // We no longer show best employee details during evaluation process to preserve blind evaluation.
+                setSuccess(`All evaluations complete for ${updatedDept?.name} department! The evaluations have been finalized.`);
             }
         } catch (e) {
             throw e; // Rethrow so EvaluationForm catches it
@@ -131,6 +131,14 @@ export default function ClusterManagerDashboard() {
                     extraInfo={{ label: "Scope", value: "All Departments", color: "text-[#F57C00]" }}
                 />
             )}
+            
+            <div className="bg-[#FFF8E1] border-l-4 border-[#F57C00] p-4 mb-6 rounded-r-lg shadow-sm">
+                <p className="text-[#F57C00] font-bold text-sm">
+                    You are evaluating the final shortlisted employees. Evaluate each person based on your observation.
+                    Previous round scores are not visible to ensure a fair and unbiased selection.
+                </p>
+            </div>
+
             {/* Department selector */}
             <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-xl p-5 mb-6 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
@@ -169,42 +177,6 @@ export default function ClusterManagerDashboard() {
                 </div>
             </div>
 
-            {bestEmployee && (
-                <div className="bg-white border-4 border-[#F57C00] rounded-2xl p-8 md:p-10 mb-8 text-center shadow-xl relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-48 h-48 bg-[#FFF8E1] rounded-bl-full -z-10 opacity-70"></div>
-                    <div className="absolute bottom-0 left-0 w-32 h-32 bg-[#FFF8E1] rounded-tr-full -z-10 opacity-70"></div>
-
-                    <span className="text-6xl mb-4 block drop-shadow-md">🏆</span>
-                    <h2 className="text-[28px] md:text-[32px] font-black text-[#003087] mb-2">{currentDept?.name} Best Employee!</h2>
-                    <p className="text-[24px] font-bold text-[#F57C00] mb-6">{bestEmployee.user?.name}</p>
-
-                    <div className="inline-block bg-[#FFF8E1] px-8 py-3 rounded-2xl border-2 border-[#FFE082] shadow-sm mb-8">
-                        <p className="text-[14px] text-[#666666] font-bold uppercase tracking-wider mb-1">Final Combined Score</p>
-                        <p className="text-[36px] font-black text-[#00843D] leading-none">{bestEmployee.finalScore?.toFixed(1)}<span className="text-[18px] text-[#666666] font-bold">/100</span></p>
-                    </div>
-
-                    <h3 className="text-[15px] font-bold text-[#333333] mb-4 uppercase tracking-wider">Score Breakdown</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
-                        <div className="bg-[#F5F5F5] rounded-xl p-4 shadow-sm border border-[#E0E0E0]">
-                            <p className="text-[#666666] text-[12px] font-bold uppercase tracking-wider mb-1">Self Assessment</p>
-                            <p className="text-[#003087] font-black text-[22px]">{bestEmployee.selfScore?.toFixed(1)}</p>
-                        </div>
-                        <div className="bg-[#F5F5F5] rounded-xl p-4 shadow-sm border border-[#E0E0E0]">
-                            <p className="text-[#666666] text-[12px] font-bold uppercase tracking-wider mb-1">Supervisor</p>
-                            <p className="text-[#003087] font-black text-[22px]">{bestEmployee.supervisorScore?.toFixed(1)}</p>
-                        </div>
-                        <div className="bg-[#F5F5F5] rounded-xl p-4 shadow-sm border border-[#E0E0E0]">
-                            <p className="text-[#666666] text-[12px] font-bold uppercase tracking-wider mb-1">Branch Mgr</p>
-                            <p className="text-[#003087] font-black text-[22px]">{bestEmployee.bmScore?.toFixed(1)}</p>
-                        </div>
-                        <div className="bg-[#E8F5E9] border border-[#A5D6A7] rounded-xl p-4 shadow-sm">
-                            <p className="text-[#1B5E20] text-[12px] font-bold uppercase tracking-wider mb-1">Cluster Mgr</p>
-                            <p className="text-[#00843D] font-black text-[22px]">{bestEmployee.cmScore?.toFixed(1)}</p>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             <div className="bg-white border border-[#E0E0E0] rounded-xl p-6 mb-8 shadow-sm">
                 <div className="flex justify-between items-end mb-3">
                     <div>
@@ -238,25 +210,21 @@ export default function ClusterManagerDashboard() {
                     <div className="bg-[#E3F2FD] border border-[#90CAF9] rounded-xl p-6 mb-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
                             <p className="text-[13px] text-[#003087]/80 font-bold uppercase tracking-wider mb-1">Final Evaluation For ({currentDept?.name})</p>
-                            <p className="text-[#003087] font-black text-[22px] leading-tight">{selectedEmployee.user.name}</p>
-                        </div>
-                        <div className="bg-white px-4 py-2 rounded-lg border border-[#90CAF9] text-center shrink-0">
-                            <p className="text-[12px] text-[#666666] font-bold uppercase mb-0.5">Shortlist Rank</p>
-                            <p className="text-[20px] font-black text-[#003087]">#{selectedEmployee.rank}</p>
+                            <p className="text-[#003087] font-black text-[22px] leading-tight">{selectedEmployee.name}</p>
                         </div>
                     </div>
 
                     <EvaluationForm
                         questions={questions}
                         onSubmit={handleEvaluate}
-                        submitLabel={`Submit Final Evaluation for ${selectedEmployee.user.name.split(' ')[0]}`}
+                        submitLabel={`Submit Final Evaluation for ${selectedEmployee.name.split(' ')[0]}`}
                         draftKey={user?.id && selectedDeptId ? `draft_eval_${user.id}_${selectedEmployee.userId}_${selectedDeptId}` : null}
                     />
                 </div>
             ) : (
                 <div className="space-y-4">
                     <div className="flex items-center justify-between mb-4">
-                        <p className="text-[#1A1A2E] font-bold text-[18px]">Top 3 Shortlisted Employees ({currentDept?.name})</p>
+                        <p className="text-[#1A1A2E] font-bold text-[18px]">Employees to Evaluate ({currentDept?.name})</p>
                         <span className="text-[13px] text-[#666666] font-medium bg-[#F5F5F5] px-3 py-1 rounded-full border border-[#E0E0E0] hidden sm:block">Blind evaluation — previous scores hidden</span>
                     </div>
 
@@ -272,22 +240,22 @@ export default function ClusterManagerDashboard() {
                                 <div key={entry.userId} className={`bg-white border-2 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-200 ${entry.alreadyEvaluated ? "border-[#A5D6A7] bg-[#F1F8E9] shadow-sm opacity-80 zoom-in-95" : "border-[#E0E0E0] shadow-sm hover:border-[#003087]/50 hover:shadow-md"}`}>
                                     <div className="flex items-center gap-5">
                                         <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-[16px] shrink-0 border-2 ${entry.alreadyEvaluated ? "bg-[#E8F5E9] text-[#2E7D32] border-[#A5D6A7]" : "bg-[#FFF8E1] text-[#F57C00] border-[#FFE082]"}`}>
-                                            #{entry.rank}
+                                            {entry.name.charAt(0)}
                                         </div>
                                         <div>
-                                            <p className="text-[18px] font-bold text-[#003087] leading-tight mb-1">{entry.user.name}</p>
-                                            <p className="text-[#666666] text-[14px] font-medium">{entry.user.email}</p>
+                                            <p className="text-[18px] font-bold text-[#003087] leading-tight mb-1">{entry.name}</p>
+                                            <p className="text-[#666666] text-[14px] font-medium">{entry.designation} | {entry.empCode}</p>
                                         </div>
                                     </div>
                                     <div className="mt-3 sm:mt-0">
                                         {entry.alreadyEvaluated ? (
                                             <span className="min-h-[44px] text-[14px] px-6 py-2.5 rounded-lg bg-white text-[#2E7D32] border border-[#A5D6A7] font-bold shadow-sm flex items-center gap-2 justify-center w-full sm:w-auto">
                                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                                                Evaluated
+                                                ✓ Done
                                             </span>
                                         ) : (
                                             <button onClick={() => setSelectedEmployee(entry)} className="min-h-[44px] min-w-[120px] text-[15px] px-6 py-3 bg-[#003087] text-white rounded-lg hover:bg-[#00843D] transition-colors cursor-pointer font-bold shadow flex items-center gap-2 justify-center w-full sm:w-auto">
-                                                Start Evaluation
+                                                Evaluate
                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                                             </button>
                                         )}

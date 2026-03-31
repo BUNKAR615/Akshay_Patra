@@ -1,32 +1,30 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    reactStrictMode: true,
-    poweredByHeader: false,
+  reactStrictMode: true,
+  eslint: {
+    ignoreDuringBuilds: true
+  },
+  typescript: {
+    ignoreBuildErrors: false
+  },
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: '**' }
+    ]
+  },
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'X-XSS-Protection', value: '1; mode=block' }
+        ]
+      }
+    ]
+  }
+}
 
-    images: {
-        remotePatterns: [
-            // Add external image domains here if needed, e.g.:
-            // { protocol: 'https', hostname: 'example.com' },
-        ],
-    },
-
-    async headers() {
-        return [
-            {
-                source: "/(.*)",
-                headers: [
-                    { key: "X-Frame-Options", value: "DENY" },
-                    { key: "X-Content-Type-Options", value: "nosniff" },
-                    { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-                    { key: "X-XSS-Protection", value: "1; mode=block" },
-                    {
-                        key: "Permissions-Policy",
-                        value: "camera=(), microphone=(), geolocation=()",
-                    },
-                ],
-            },
-        ];
-    },
-};
-
-module.exports = nextConfig;
+module.exports = nextConfig

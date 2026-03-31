@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 
@@ -57,8 +60,6 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
         },
         select: {
           id: true,
-          rawScore: true,
-          normalizedScore: true,
           submittedAt: true,
         },
       })
@@ -90,7 +91,7 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
     }
 
     try {
-      const s4 = await prisma.shortlistStage4.findFirst({
+      const s4 = await prisma.bestEmployee.findFirst({
         where: { userId: userId, quarterId: activeQuarter.id },
       });
       isShortlistedStage4 = !!s4;
@@ -106,8 +107,6 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
         assessment: {
           submitted: !!assessment,
           submittedAt: assessment?.submittedAt ?? null,
-          rawScore: assessment?.rawScore ?? null,
-          normalizedScore: assessment?.normalizedScore ?? null,
         },
         stageStatus: {
           currentStage: isShortlistedStage4

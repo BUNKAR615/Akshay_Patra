@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { ok, notFound, serverError } from "../../../../lib/api-response";
@@ -29,6 +32,14 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
         });
 
         let answersWithQuestions = [];
+        const OPTIONS_MAP = {
+            "-2": "Strongly Disagree",
+            "-1": "Disagree",
+            "0": "Neutral",
+            "1": "Agree",
+            "2": "Strongly Agree"
+        };
+
         if (selfAssessment && selfAssessment.answers) {
             const answers = selfAssessment.answers;
             const questionIds = answers.map((a) => a.questionId);
@@ -41,7 +52,7 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
                 questionId: a.questionId,
                 questionText: qMap[a.questionId]?.text || "Question not found",
                 category: qMap[a.questionId]?.category || "UNKNOWN",
-                score: a.score,
+                answerLabel: OPTIONS_MAP[String(a.score)] || "Unknown",
             }));
         }
 
@@ -53,32 +64,32 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
 
         const supEval = await prisma.supervisorEvaluation.findFirst({
             where: { employeeId: userId, quarterId: qId },
-            select: { supervisorScore: true, combinedScore: true },
+            select: { id: true },
         });
 
         const stage2 = await prisma.shortlistStage2.findFirst({
             where: { userId, quarterId: qId },
-            select: { rank: true, combinedScore: true },
+            select: { rank: true },
         });
 
         const bmEval = await prisma.branchManagerEvaluation.findFirst({
             where: { employeeId: userId, quarterId: qId },
-            select: { bmScore: true, combinedScore: true },
+            select: { id: true },
         });
 
         const stage3 = await prisma.shortlistStage3.findFirst({
             where: { userId, quarterId: qId },
-            select: { rank: true, combinedScore: true },
+            select: { rank: true },
         });
 
         const cmEval = await prisma.clusterManagerEvaluation.findFirst({
             where: { employeeId: userId, quarterId: qId },
-            select: { cmScore: true, finalScore: true },
+            select: { id: true },
         });
 
         const bestEmployee = await prisma.bestEmployee.findFirst({
             where: { userId, quarterId: qId },
-            select: { finalScore: true },
+            select: { id: true },
         });
 
         // Determine current stage
@@ -87,28 +98,28 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
 
         if (selfAssessment) {
             currentStage = 1;
-            stages.push({ stage: 1, name: "Self Assessment", status: "completed", score: selfAssessment.totalScore });
+            stages.push({ stage: 1, name: "Self Assessment", status: "completed" });
         }
 
         if (supEval) {
-            stages.push({ stage: 2, name: "Supervisor Evaluation", status: stage2 ? "shortlisted" : "evaluated", score: supEval.combinedScore, detail: `Supervisor score: ${supEval.supervisorScore.toFixed(1)}, Combined: ${supEval.combinedScore.toFixed(1)}` });
+            stages.push({ stage: 2, name: "Supervisor Evaluation", status: stage2 ? "shortlisted" : "evaluated" });
             if (stage2) currentStage = 2;
         } else if (stage1) {
-            stages.push({ stage: 2, name: "Supervisor Evaluation", status: "pending", score: null });
+            stages.push({ stage: 2, name: "Supervisor Evaluation", status: "pending" });
         }
 
         if (bmEval) {
-            stages.push({ stage: 3, name: "Branch Manager Evaluation", status: stage3 ? "shortlisted" : "evaluated", score: bmEval.combinedScore, detail: `BM score: ${bmEval.bmScore.toFixed(1)}, Combined: ${bmEval.combinedScore.toFixed(1)}` });
+            stages.push({ stage: 3, name: "Branch Manager Evaluation", status: stage3 ? "shortlisted" : "evaluated" });
             if (stage3) currentStage = 3;
         } else if (stage2) {
-            stages.push({ stage: 3, name: "Branch Manager Evaluation", status: "pending", score: null });
+            stages.push({ stage: 3, name: "Branch Manager Evaluation", status: "pending" });
         }
 
         if (cmEval) {
-            stages.push({ stage: 4, name: "Cluster Manager Evaluation", status: bestEmployee ? "winner" : "evaluated", score: cmEval.finalScore, detail: `CM score: ${cmEval.cmScore.toFixed(1)}, Final: ${cmEval.finalScore.toFixed(1)}` });
+            stages.push({ stage: 4, name: "Cluster Manager Evaluation", status: bestEmployee ? "winner" : "evaluated" });
             if (bestEmployee) currentStage = 4;
         } else if (stage3) {
-            stages.push({ stage: 4, name: "Cluster Manager Evaluation", status: "pending", score: null });
+            stages.push({ stage: 4, name: "Cluster Manager Evaluation", status: "pending" });
         }
 
         // ── Get the quarter winner (visible only after quarter is CLOSED) ──
@@ -125,7 +136,6 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
                 winner = {
                     name: be.user.name,
                     department: be.department.name,
-                    finalScore: be.finalScore,
                     isCurrentUser: be.userId === userId,
                 };
             }
@@ -136,7 +146,6 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
             submitted: !!selfAssessment,
             selfAssessment: selfAssessment
                 ? {
-                    totalScore: selfAssessment.totalScore,
                     submittedAt: selfAssessment.submittedAt,
                     answers: answersWithQuestions,
                 }
@@ -144,7 +153,6 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
             currentStage,
             isBestEmployee: !!bestEmployee,
             stages,
-            stage1Rank: stage1?.rank || null,
             winner,
         });
     } catch (err) {

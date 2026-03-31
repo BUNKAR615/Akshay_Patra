@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { created, fail, notFound, conflict, serverError, validateBody } from "../../../../lib/api-response";
@@ -20,6 +23,11 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
 
         const employee = await prisma.user.findUnique({ where: { id: data.employeeId }, select: { id: true, departmentId: true } });
         if (!employee) return notFound("Employee not found");
+
+        const hasAccess = await prisma.departmentRoleMapping.findFirst({
+            where: { userId: user.userId, departmentId: employee.departmentId, role: "CLUSTER_MANAGER" }
+        });
+        if (!hasAccess) return fail("You are not assigned to evaluate this department.");
 
         // Guard: employee in Stage 3 shortlist
         const shortlistEntry = await prisma.shortlistStage3.findFirst({
@@ -78,8 +86,25 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
             if (evaluatedCount >= shortlistCount) {
                 const allEvals = await tx.clusterManagerEvaluation.findMany({
                     where: { clusterId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId } },
-                    orderBy: { finalScore: "desc" },
-                    take: 1
+                    include: {
+                        employee: {
+                            select: {
+                                selfAssessments: {
+                                    where: { quarterId: activeQuarter.id },
+                                    select: { completionTimeSeconds: true }
+                                }
+                            }
+                        }
+                    }
+                });
+
+                allEvals.sort((a, b) => {
+                    if (b.finalScore !== a.finalScore) {
+                        return b.finalScore - a.finalScore;
+                    }
+                    const timeA = a.employee?.selfAssessments?.[0]?.completionTimeSeconds || 0;
+                    const timeB = b.employee?.selfAssessments?.[0]?.completionTimeSeconds || 0;
+                    return timeA - timeB;
                 });
 
                 if (allEvals.length > 0) {
@@ -121,12 +146,16 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
 
         const response = {
             message: "Evaluation submitted successfully",
-            evaluation: { id: result.evaluation.id, employeeId: data.employeeId, cmScore: cmNormalized, finalScore, submittedAt: result.evaluation.submittedAt },
+            evaluation: { id: result.evaluation.id, employeeId: data.employeeId, submittedAt: result.evaluation.submittedAt, evaluated: true },
             progress: { evaluated: result.evaluatedCount, total: result.shortlistCount, remaining: result.shortlistCount - result.evaluatedCount },
         };
 
         if (result.bestEmployeeSelected) {
-            response.bestEmployee = { message: "🏆 Best Employee of the Quarter has been determined for the department!", winner: result.bestEmployeeData };
+            // BLIND SCORING: Only expose winner identity, no scores
+            response.bestEmployee = { 
+                message: "🏆 Best Employee of the Quarter has been determined for the department!", 
+                winner: { userId: result.bestEmployeeData.userId, name: result.bestEmployeeData.user.name } 
+            };
 
             // Notify the winner
             await createNotification(
