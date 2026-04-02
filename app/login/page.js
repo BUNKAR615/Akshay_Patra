@@ -119,7 +119,7 @@ export default function LoginPage() {
 
                     {/* Mobile hero banner (visible only on small screens) */}
                     <div className="lg:hidden mb-6 rounded-xl overflow-hidden relative h-40">
-                        <Image src="/hero.png" alt="Akshaya Patra" fill sizes="100vw" className="object-cover" />
+                        <Image src="/hero.png" alt="Akshaya Patra" fill sizes="100vw" priority className="object-cover" />
                         <div className="absolute inset-0 bg-gradient-to-t from-[#003087]/80 to-transparent" />
                         <div className="absolute bottom-3 left-4">
                             <p className="text-white font-semibold text-sm">Best Employee of the Quarter</p>

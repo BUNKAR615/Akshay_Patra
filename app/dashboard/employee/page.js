@@ -87,21 +87,31 @@ export default function EmployeeDashboard() {
 
     useEffect(() => {
         (async () => {
-            // Load user profile
-            try {
-                const meData = await api("/api/auth/me");
-                setUser(meData.user);
-                setCurrentQuarterName(meData.currentQuarter);
-            } catch { }
+            // Load user profile, status, and questions in parallel
+            const [meResult, statusResult, questionsResult] = await Promise.allSettled([
+                api("/api/auth/me"),
+                fetch("/api/employee/current-status", { headers: { "Content-Type": "application/json" } }).then(async (res) => {
+                    if (!res.ok) throw new Error("Status fetch failed");
+                    const json = await res.json();
+                    if (!json.success) throw new Error(json.message);
+                    return json.data;
+                }),
+                api("/api/assessment/questions"),
+            ]);
 
-            // Load current quarter status (safe fetch)
-            await fetchStatus();
-
-            // Only fetch questions if not yet submitted
-            try {
-                const qData = await api("/api/assessment/questions");
-                setQuestions(qData.questions);
-            } catch { }
+            if (meResult.status === "fulfilled") {
+                setUser(meResult.value.user);
+                setCurrentQuarterName(meResult.value.currentQuarter);
+            }
+            if (statusResult.status === "fulfilled") {
+                setStatus(statusResult.value);
+            } else {
+                setError("Unable to load quarter information.");
+            }
+            if (questionsResult.status === "fulfilled") {
+                setQuestions(questionsResult.value.questions);
+            }
+            setLoading(false);
         })();
     }, []);
 

@@ -8,6 +8,7 @@ const nextConfig = {
     ignoreBuildErrors: false
   },
   images: {
+    formats: ['image/webp', 'image/avif'],
     remotePatterns: [
       { protocol: 'https', hostname: '**' }
     ]
@@ -21,6 +22,18 @@ const nextConfig = {
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'X-XSS-Protection', value: '1; mode=block' }
+        ]
+      },
+      {
+        source: '/(.*)\\.(png|jpg|jpeg|webp|avif|svg|ico)',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }
+        ]
+      },
+      {
+        source: '/_next/static/(.*)',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }
         ]
       }
     ]
