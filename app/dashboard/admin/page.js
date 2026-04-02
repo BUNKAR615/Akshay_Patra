@@ -392,17 +392,47 @@ export default function AdminDashboard() {
                                     <p className="text-xl sm:text-2xl font-bold text-[#00843D] mt-1">{quarterProgress.overallStats.overallPercentage}%</p>
                                 </div>
                                 <div className="bg-white border border-[#E0E0E0] rounded-xl p-3 sm:p-5 shadow-sm">
-                                    <p className="text-[#333333] tracking-wide text-[10px] sm:text-xs uppercase font-medium">Quarter Winner</p>
-                                    {quarterProgress.overallStats.quarterWinner ? (
-                                        <div>
-                                            <p className="text-sm sm:text-lg font-bold text-[#F7941D] mt-1 truncate" title={quarterProgress.overallStats.quarterWinner.name}>{quarterProgress.overallStats.quarterWinner.name}</p>
-                                            <p className="text-[10px] sm:text-xs text-[#666666] truncate">{quarterProgress.overallStats.quarterWinner.department}</p>
-                                        </div>
+                                    <p className="text-[#333333] tracking-wide text-[10px] sm:text-xs uppercase font-medium">Winners</p>
+                                    {quarterProgress.overallStats.quarterWinners && quarterProgress.overallStats.quarterWinners.length > 0 ? (
+                                        <p className="text-xl sm:text-2xl font-bold text-[#F7941D] mt-1">{quarterProgress.overallStats.quarterWinners.length} 🏆</p>
                                     ) : (
                                         <p className="text-sm sm:text-lg font-bold text-[#666666] mt-1 italic">In Progress</p>
                                     )}
                                 </div>
                             </div>
+
+                            {/* SECTION — Department Winners */}
+                            {quarterProgress.overallStats.quarterWinners && quarterProgress.overallStats.quarterWinners.length > 0 && (
+                                <div className="bg-gradient-to-r from-[#FFF8E1] to-[#FFF3E0] border border-[#FFCC80] rounded-xl p-4 sm:p-6 shadow-sm">
+                                    <h3 className="text-lg font-bold text-[#F57C00] mb-3 flex items-center gap-2">
+                                        <span className="text-xl">🏆</span> Department Winners
+                                    </h3>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        {quarterProgress.overallStats.quarterWinners.map((w, i) => (
+                                            <div key={i} className="bg-white/80 border border-[#FFE0B2] rounded-lg p-3 flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-[#F7941D]/10 rounded-full flex items-center justify-center shrink-0">
+                                                    <span className="text-[#F7941D] font-bold text-sm">{i + 1}</span>
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="font-bold text-[#1A1A2E] text-sm truncate" title={w.name}>{w.name}</p>
+                                                    <p className="text-[11px] text-[#666666] truncate">{w.department}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {/* Show departments still in progress */}
+                                    {(() => {
+                                        const winnerDepts = new Set(quarterProgress.overallStats.quarterWinners.map(w => w.department));
+                                        const pendingDepts = quarterProgress.departments.filter(d => d.totalEmployees > 0 && !winnerDepts.has(d.departmentName));
+                                        if (pendingDepts.length === 0) return null;
+                                        return (
+                                            <p className="text-xs text-[#999999] mt-3 italic">
+                                                Pending: {pendingDepts.map(d => d.departmentName).join(", ")}
+                                            </p>
+                                        );
+                                    })()}
+                                </div>
+                            )}
 
                             {/* SECTION E — Quick Actions */}
                             <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 pb-2">

@@ -142,7 +142,7 @@ export const GET = withRole(["ADMIN"], async () => {
 
             // Did someone from this department win?
             const bestEmpForDept = bestEmployeeByDept[did];
-            const deptWinner = (quarter.status === "CLOSED" && bestEmpForDept) ? { id: bestEmpForDept.user.id, name: bestEmpForDept.user.name } : null;
+            const deptWinner = bestEmpForDept ? { id: bestEmpForDept.user.id, name: bestEmpForDept.user.name } : null;
 
             resultDepartments.push({
                 departmentId: did,
@@ -196,7 +196,7 @@ export const GET = withRole(["ADMIN"], async () => {
                 totalEmployees: overallTotalEmployees,
                 totalSubmitted: overallSubmitted,
                 overallPercentage,
-                quarterWinners: (quarter.status === "CLOSED" && bestEmployeeDocs.length > 0)
+                quarterWinners: bestEmployeeDocs.length > 0
                     ? bestEmployeeDocs.map(be => ({
                         id: be.user.id,
                         name: be.user.name,
@@ -204,7 +204,7 @@ export const GET = withRole(["ADMIN"], async () => {
                     }))
                     : [],
                 // Backward compat: first winner
-                quarterWinner: (quarter.status === "CLOSED" && bestEmployeeDocs.length > 0) ? {
+                quarterWinner: bestEmployeeDocs.length > 0 ? {
                     id: bestEmployeeDocs[0].user.id,
                     name: bestEmployeeDocs[0].user.name,
                     department: departments.find(d => d.id === bestEmployeeDocs[0].departmentId)?.name || ""
