@@ -67,8 +67,14 @@ export async function POST(request) {
         });
 
         // Collect unique roles: primary role + all department roles
-        const rolesSet = new Set([user.role]);
+        // Only include EMPLOYEE role if user actually has a department (not a pure evaluator)
+        const rolesSet = new Set();
+        if (user.role === 'ADMIN' || user.departmentId) {
+            rolesSet.add(user.role);
+        }
         deptRoleMappings.forEach(dr => rolesSet.add(dr.role));
+        // If no roles found at all (shouldn't happen), fall back to base role
+        if (rolesSet.size === 0) rolesSet.add(user.role);
         const allRoles = [...rolesSet];
 
         // Collect unique departmentIds
