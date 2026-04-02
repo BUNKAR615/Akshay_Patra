@@ -122,8 +122,8 @@ export const GET = withRole(["ADMIN"], async (request) => {
             };
         });
 
-        // ── Winner ──
-        const bestEmployee = await prisma.bestEmployee.findUnique({
+        // ── Winners (one per department) ──
+        const bestEmployees = await prisma.bestEmployee.findMany({
             where: { quarterId },
             include: {
                 user: { select: { id: true, name: true, email: true } },
@@ -137,15 +137,26 @@ export const GET = withRole(["ADMIN"], async (request) => {
             totalEmployees: employees.length,
             departmentSummary,
             employees: report,
-            winner: bestEmployee ? {
-                name: bestEmployee.user.name,
-                email: bestEmployee.user.email,
-                department: bestEmployee.department.name,
-                selfScore: bestEmployee.selfScore,
-                supervisorScore: bestEmployee.supervisorScore,
-                bmScore: bestEmployee.bmScore,
-                cmScore: bestEmployee.cmScore,
-                finalScore: bestEmployee.finalScore,
+            winners: bestEmployees.map(be => ({
+                name: be.user.name,
+                email: be.user.email,
+                department: be.department.name,
+                selfScore: be.selfScore,
+                supervisorScore: be.supervisorScore,
+                bmScore: be.bmScore,
+                cmScore: be.cmScore,
+                finalScore: be.finalScore,
+            })),
+            // Backward compat
+            winner: bestEmployees.length > 0 ? {
+                name: bestEmployees[0].user.name,
+                email: bestEmployees[0].user.email,
+                department: bestEmployees[0].department.name,
+                selfScore: bestEmployees[0].selfScore,
+                supervisorScore: bestEmployees[0].supervisorScore,
+                bmScore: bestEmployees[0].bmScore,
+                cmScore: bestEmployees[0].cmScore,
+                finalScore: bestEmployees[0].finalScore,
             } : null,
             exportedAt: new Date().toISOString(),
         });

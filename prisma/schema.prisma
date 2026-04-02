@@ -88,7 +88,7 @@ model Quarter {
   questionCount         Int                        @default(15)
   createdAt             DateTime                   @default(now())
   updatedAt             DateTime                   @updatedAt
-  bestEmployees         BestEmployee?
+  bestEmployees         BestEmployee[]
   bmEvaluations         BranchManagerEvaluation[]
   cmEvaluations         ClusterManagerEvaluation[]
   quarterQuestions      QuarterQuestion[]
@@ -324,7 +324,7 @@ model ShortlistStage3 {
 model BestEmployee {
   id              String     @id @default(cuid())
   userId          String
-  quarterId       String     @unique
+  quarterId       String
   departmentId    String
   selfScore       Float
   supervisorScore Float
@@ -336,6 +336,7 @@ model BestEmployee {
   quarter         Quarter    @relation(fields: [quarterId], references: [id], onDelete: Cascade)
   user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([quarterId, departmentId])
   @@index([userId])
   @@map("best_employees")
 }

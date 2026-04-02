@@ -14,11 +14,11 @@ const CATEGORY_COLORS = {
 };
 
 const SCALE = [
-    { value: -2, label: "Strongly Disagree", short: "-2", color: "bg-[#D32F2F] text-white border-[#D32F2F]", idle: "bg-white border border-[#D32F2F] text-[#D32F2F] hover:bg-[#D32F2F]/10" },
-    { value: -1, label: "Disagree", short: "-1", color: "bg-[#F57C00] text-white border-[#F57C00]", idle: "bg-white border border-[#F57C00] text-[#F57C00] hover:bg-[#F57C00]/10" },
-    { value: 0, label: "Neutral", short: "0", color: "bg-[#616161] text-white border-[#616161]", idle: "bg-white border border-[#616161] text-[#616161] hover:bg-[#616161]/10" },
-    { value: 1, label: "Agree", short: "+1", color: "bg-[#388E3C] text-white border-[#388E3C]", idle: "bg-white border border-[#388E3C] text-[#388E3C] hover:bg-[#388E3C]/10" },
-    { value: 2, label: "Strongly Agree", short: "+2", color: "bg-[#1B5E20] text-white border-[#1B5E20]", idle: "bg-white border border-[#1B5E20] text-[#1B5E20] hover:bg-[#1B5E20]/10" },
+    { value: -2, label: "Strongly Disagree", labelHindi: "पूर्णतः असहमत", short: "-2", color: "bg-[#D32F2F] text-white border-[#D32F2F]", idle: "bg-white border border-[#D32F2F] text-[#D32F2F] hover:bg-[#D32F2F]/10" },
+    { value: -1, label: "Disagree", labelHindi: "असहमत", short: "-1", color: "bg-[#F57C00] text-white border-[#F57C00]", idle: "bg-white border border-[#F57C00] text-[#F57C00] hover:bg-[#F57C00]/10" },
+    { value: 0, label: "Neutral", labelHindi: "तटस्थ", short: "0", color: "bg-[#616161] text-white border-[#616161]", idle: "bg-white border border-[#616161] text-[#616161] hover:bg-[#616161]/10" },
+    { value: 1, label: "Agree", labelHindi: "सहमत", short: "+1", color: "bg-[#388E3C] text-white border-[#388E3C]", idle: "bg-white border border-[#388E3C] text-[#388E3C] hover:bg-[#388E3C]/10" },
+    { value: 2, label: "Strongly Agree", labelHindi: "पूर्णतः सहमत", short: "+2", color: "bg-[#1B5E20] text-white border-[#1B5E20]", idle: "bg-white border border-[#1B5E20] text-[#1B5E20] hover:bg-[#1B5E20]/10" },
 ];
 
 const LANG_MODES = ["Both", "English", "हिंदी"];
@@ -266,18 +266,17 @@ export default function TimedEvaluationForm({
                 </div>
 
                 {/* Rating Buttons */}
-                <div className="grid grid-cols-5 gap-2 md:gap-4 max-w-4xl mx-auto w-full mt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 md:gap-4 max-w-4xl mx-auto w-full mt-4">
                     {SCALE.map((s) => (
                         <button
                             key={s.value}
                             onClick={() => handleScoreSelect(s.value)}
                             disabled={submitting}
-                            className={`min-h-[80px] p-2 md:p-4 rounded-xl text-[14px] transition-all cursor-pointer box-border flex flex-col items-center justify-center shadow-sm hover:shadow hover:-translate-y-1 active:translate-y-0
+                            className={`min-h-[48px] sm:min-h-[80px] p-3 sm:p-2 md:p-4 rounded-xl text-[14px] transition-all cursor-pointer box-border flex items-center justify-center sm:flex-col shadow-sm hover:shadow hover:-translate-y-1 active:translate-y-0
                                 ${s.idle} hover:border-${s.color.split(' ')[0].replace('bg-', '')}
                             `}
                         >
-                            <span className="block text-[22px] md:text-[28px] font-black mb-1">{s.short}</span>
-                            <span className="block text-[11px] md:text-[13px] font-bold opacity-90 leading-tight text-center px-1 break-words w-full">{s.label}</span>
+                            <span className="block text-[14px] sm:text-[13px] md:text-[15px] font-bold opacity-90 leading-tight text-center px-1 break-words w-full">{langMode === "हिंदी" ? s.labelHindi : langMode === "English" ? s.label : `${s.label} / ${s.labelHindi}`}</span>
                         </button>
                     ))}
                 </div>

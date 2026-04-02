@@ -14,11 +14,11 @@ const CATEGORY_COLORS = {
 };
 
 const SCALE = [
-    { value: -2, label: "Strongly Disagree", short: "-2", color: "bg-[#D32F2F] text-white border-[#D32F2F]", idle: "bg-white border border-[#D32F2F] text-[#D32F2F] hover:bg-[#D32F2F]/10" },
-    { value: -1, label: "Disagree", short: "-1", color: "bg-[#F57C00] text-white border-[#F57C00]", idle: "bg-white border border-[#F57C00] text-[#F57C00] hover:bg-[#F57C00]/10" },
-    { value: 0, label: "Neutral", short: "0", color: "bg-[#616161] text-white border-[#616161]", idle: "bg-white border border-[#616161] text-[#616161] hover:bg-[#616161]/10" },
-    { value: 1, label: "Agree", short: "+1", color: "bg-[#388E3C] text-white border-[#388E3C]", idle: "bg-white border border-[#388E3C] text-[#388E3C] hover:bg-[#388E3C]/10" },
-    { value: 2, label: "Strongly Agree", short: "+2", color: "bg-[#1B5E20] text-white border-[#1B5E20]", idle: "bg-white border border-[#1B5E20] text-[#1B5E20] hover:bg-[#1B5E20]/10" },
+    { value: -2, label: "Strongly Disagree", labelHindi: "पूर्णतः असहमत", short: "-2", color: "bg-[#D32F2F] text-white border-[#D32F2F]", idle: "bg-white border border-[#D32F2F] text-[#D32F2F] hover:bg-[#D32F2F]/10" },
+    { value: -1, label: "Disagree", labelHindi: "असहमत", short: "-1", color: "bg-[#F57C00] text-white border-[#F57C00]", idle: "bg-white border border-[#F57C00] text-[#F57C00] hover:bg-[#F57C00]/10" },
+    { value: 0, label: "Neutral", labelHindi: "तटस्थ", short: "0", color: "bg-[#616161] text-white border-[#616161]", idle: "bg-white border border-[#616161] text-[#616161] hover:bg-[#616161]/10" },
+    { value: 1, label: "Agree", labelHindi: "सहमत", short: "+1", color: "bg-[#388E3C] text-white border-[#388E3C]", idle: "bg-white border border-[#388E3C] text-[#388E3C] hover:bg-[#388E3C]/10" },
+    { value: 2, label: "Strongly Agree", labelHindi: "पूर्णतः सहमत", short: "+2", color: "bg-[#1B5E20] text-white border-[#1B5E20]", idle: "bg-white border border-[#1B5E20] text-[#1B5E20] hover:bg-[#1B5E20]/10" },
 ];
 
 const LANG_MODES = ["Both", "English", "हिंदी"];
@@ -165,16 +165,9 @@ export default function EvaluationForm({
                         Question <span className="text-[#003087] font-bold">{Math.min(answeredCount + 1, totalCount)}</span> of{" "}
                         <span className="text-[#003087] font-bold">{totalCount}</span>
                     </span>
-                    <div className="flex items-center gap-4">
-                        <span className="text-[14px] text-[#333333]">
-                            Score: <span className={`font-bold text-[18px] ${runningTotal > 0 ? "text-[#1B5E20]" : runningTotal < 0 ? "text-[#D32F2F]" : "text-[#333333]"}`}>
-                                {runningTotal > 0 ? `+${runningTotal}` : runningTotal}
-                            </span>
-                        </span>
-                        <span className="text-[14px] font-bold text-[#003087]">
-                            {answeredCount}/{totalCount}
-                        </span>
-                    </div>
+                    <span className="text-[14px] font-bold text-[#003087]">
+                        {answeredCount}/{totalCount}
+                    </span>
                 </div>
                 <div className="w-full bg-[#E0E0E0] rounded-full h-2">
                     <div
@@ -209,10 +202,8 @@ export default function EvaluationForm({
                 <div className="flex gap-2 flex-wrap sm:flex-nowrap">
                     {SCALE.map((s) => (
                         <span key={s.value} className="text-[12px] text-[#333333] flex items-center gap-1.5 font-medium">
-                            <span className={`inline-block w-6 h-6 rounded text-center leading-6 text-[12px] font-bold ${s.color}`}>
-                                {s.short}
-                            </span>
-                            <span className="hidden sm:inline">{s.label}</span>
+                            <span className={`inline-block w-3 h-3 rounded-full ${s.color.split(' ')[0]}`} />
+                            <span>{langMode === "हिंदी" ? s.labelHindi : langMode === "English" ? s.label : `${s.label} / ${s.labelHindi}`}</span>
                         </span>
                     ))}
                 </div>
@@ -264,14 +255,14 @@ export default function EvaluationForm({
 
                                 {/* -2 to +2 Rating Buttons Container */}
                                 <div className="ml-0 sm:ml-12">
-                                    <div className="grid grid-cols-5 gap-2">
+                                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
                                         {SCALE.map((s) => (
                                             <button
                                                 key={s.value}
                                                 onClick={() => handleScore(q.id, s.value)}
                                                 disabled={disabled}
                                                 title={s.label}
-                                                className={`min-h-[48px] min-w-[48px] p-2 rounded-lg text-[14px] transition-all cursor-pointer box-border flex flex-col items-center justify-center shadow-sm hover:shadow
+                                                className={`min-h-[44px] sm:min-h-[48px] sm:min-w-[48px] p-2 sm:p-2 rounded-lg text-[14px] transition-all cursor-pointer box-border flex items-center justify-center sm:flex-col shadow-sm hover:shadow
                                                     ${scores[q.id] === s.value
                                                         ? `${s.color} ring-2 ring-offset-1 ring-${s.color.split(' ')[0].replace('bg-', '')}`
                                                         : `${s.idle}`
@@ -279,8 +270,7 @@ export default function EvaluationForm({
                                                     ${disabled ? "opacity-50 !bg-[#CCCCCC] !text-[#666666] !border-transparent cursor-not-allowed shadow-none" : ""}
                                                 `}
                                             >
-                                                <span className="block text-[16px] font-black">{s.short}</span>
-                                                <span className="block text-[10px] mt-1 opacity-90 leading-tight font-bold text-center px-1 hidden sm:block">{s.label}</span>
+                                                <span className="block text-[13px] sm:text-[12px] sm:text-[13px] font-bold opacity-90 leading-tight text-center px-1">{langMode === "हिंदी" ? s.labelHindi : langMode === "English" ? s.label : `${s.label} / ${s.labelHindi}`}</span>
                                             </button>
                                         ))}
                                     </div>
@@ -296,15 +286,13 @@ export default function EvaluationForm({
                 <div className="pt-6 sticky bottom-4 z-10">
                     <div className="bg-white border border-[#E0E0E0] shadow-xl rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
                         <div className="text-center sm:text-left">
-                            <span className="text-[14px] text-[#333333] font-medium block">
-                                Current Score:{" "}
-                                <span className={`font-bold text-[20px] ml-1 ${runningTotal > 0 ? "text-[#1B5E20]" : runningTotal < 0 ? "text-[#D32F2F]" : "text-[#333333]"}`}>
-                                    {runningTotal > 0 ? `+${runningTotal}` : runningTotal}
-                                </span>
-                            </span>
-                            {!allAnswered && (
-                                <p className="text-[#D32F2F] text-[13px] font-bold mt-0.5">
+                            {!allAnswered ? (
+                                <p className="text-[#D32F2F] text-[13px] font-bold">
                                     {totalCount - answeredCount} question{totalCount - answeredCount !== 1 ? "s" : ""} remaining
+                                </p>
+                            ) : (
+                                <p className="text-[#1B5E20] text-[13px] font-bold">
+                                    All questions answered ✓
                                 </p>
                             )}
                         </div>

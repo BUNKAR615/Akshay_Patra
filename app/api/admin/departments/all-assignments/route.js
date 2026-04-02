@@ -24,25 +24,21 @@ export const GET = withRole(["ADMIN"], async () => {
             },
         });
 
-        const globalBM = await prisma.user.findFirst({
-            where: { role: "BRANCH_MANAGER" },
-            select: { id: true, name: true, email: true, designation: true }
-        });
-        const globalCM = await prisma.user.findFirst({
-            where: { role: "CLUSTER_MANAGER" },
-            select: { id: true, name: true, email: true, designation: true }
-        });
-
         const result = departments.map((dept) => {
             const roles = dept.departmentRoles;
+            const supervisors = roles.filter((r) => r.role === "SUPERVISOR").map(r => r.user);
+            const branchManagers = roles.filter((r) => r.role === "BRANCH_MANAGER").map(r => r.user);
+            const clusterManagers = roles.filter((r) => r.role === "CLUSTER_MANAGER").map(r => r.user);
             return {
                 id: dept.id,
                 name: dept.name,
                 branch: dept.branch.name,
                 employeeCount: dept._count.users,
-                supervisor: roles.find((r) => r.role === "SUPERVISOR")?.user || null,
-                branchManager: globalBM,
-                clusterManagers: globalCM ? [globalCM] : [],
+                supervisor: supervisors[0] || null,
+                supervisors,
+                branchManager: branchManagers[0] || null,
+                branchManagers,
+                clusterManagers,
             };
         });
 

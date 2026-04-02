@@ -113,7 +113,7 @@ export async function POST(request: Request) {
         data: {
           userId: userId,
           quarterId: quarter.id,
-          answers: JSON.stringify(answers),
+          answers: answers,
           rawScore,
           maxScore,
           normalizedScore,

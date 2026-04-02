@@ -122,27 +122,31 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
             stages.push({ stage: 4, name: "Cluster Manager Evaluation", status: "pending" });
         }
 
-        // ── Get the quarter winner (visible only after quarter is CLOSED) ──
+        // ── Get the quarter winner for this employee's department (visible only after quarter is CLOSED) ──
         let winner = null;
         if (quarter.status === "CLOSED") {
-            const be = await prisma.bestEmployee.findUnique({
-                where: { quarterId: qId },
-                include: {
-                    user: { select: { id: true, name: true } },
-                    department: { select: { name: true } },
-                },
-            });
-            if (be) {
-                winner = {
-                    name: be.user.name,
-                    department: be.department.name,
-                    isCurrentUser: be.userId === userId,
-                };
+            // Get the employee's departmentId
+            const emp = await prisma.user.findUnique({ where: { id: userId }, select: { departmentId: true } });
+            if (emp?.departmentId) {
+                const be = await prisma.bestEmployee.findUnique({
+                    where: { quarterId_departmentId: { quarterId: qId, departmentId: emp.departmentId } },
+                    include: {
+                        user: { select: { id: true, name: true } },
+                        department: { select: { name: true } },
+                    },
+                });
+                if (be) {
+                    winner = {
+                        name: be.user.name,
+                        department: be.department.name,
+                        isCurrentUser: be.userId === userId,
+                    };
+                }
             }
         }
 
         return ok({
-            quarter: { id: quarter.id, name: quarter.name, status: quarter.status },
+            quarter: { id: quarter.id, name: quarter.name, status: quarter.status, questionCount: quarter.questionCount },
             submitted: !!selfAssessment,
             selfAssessment: selfAssessment
                 ? {

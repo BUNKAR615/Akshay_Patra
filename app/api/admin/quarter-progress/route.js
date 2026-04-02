@@ -22,15 +22,21 @@ export const GET = withRole(["ADMIN"], async () => {
         const [
             departments,
             allUsers,
-            bestEmployeeDoc
+            bestEmployeeDocs
         ] = await Promise.all([
             prisma.department.findMany({ select: { id: true, name: true } }),
             prisma.user.findMany({ where: { role: "EMPLOYEE" }, select: { id: true, name: true, departmentId: true } }),
-            prisma.bestEmployee.findUnique({
+            prisma.bestEmployee.findMany({
                 where: { quarterId: qId },
                 include: { user: { select: { id: true, name: true } } }
             })
         ]);
+
+        // Build a map of departmentId -> bestEmployee for quick lookup
+        const bestEmployeeByDept = {};
+        for (const be of bestEmployeeDocs) {
+            bestEmployeeByDept[be.departmentId] = be;
+        }
 
         // 3. Department to Employee mapping
         const deptEmployees = {};
@@ -135,7 +141,8 @@ export const GET = withRole(["ADMIN"], async () => {
             }
 
             // Did someone from this department win?
-            const deptWinner = (quarter.status === "CLOSED" && bestEmployeeDoc?.departmentId === did) ? { id: bestEmployeeDoc.user.id, name: bestEmployeeDoc.user.name } : null;
+            const bestEmpForDept = bestEmployeeByDept[did];
+            const deptWinner = (quarter.status === "CLOSED" && bestEmpForDept) ? { id: bestEmpForDept.user.id, name: bestEmpForDept.user.name } : null;
 
             resultDepartments.push({
                 departmentId: did,
@@ -189,10 +196,18 @@ export const GET = withRole(["ADMIN"], async () => {
                 totalEmployees: overallTotalEmployees,
                 totalSubmitted: overallSubmitted,
                 overallPercentage,
-                quarterWinner: (quarter.status === "CLOSED" && bestEmployeeDoc) ? {
-                    id: bestEmployeeDoc.user.id,
-                    name: bestEmployeeDoc.user.name,
-                    department: departments.find(d => d.id === bestEmployeeDoc.departmentId)?.name || ""
+                quarterWinners: (quarter.status === "CLOSED" && bestEmployeeDocs.length > 0)
+                    ? bestEmployeeDocs.map(be => ({
+                        id: be.user.id,
+                        name: be.user.name,
+                        department: departments.find(d => d.id === be.departmentId)?.name || ""
+                    }))
+                    : [],
+                // Backward compat: first winner
+                quarterWinner: (quarter.status === "CLOSED" && bestEmployeeDocs.length > 0) ? {
+                    id: bestEmployeeDocs[0].user.id,
+                    name: bestEmployeeDocs[0].user.name,
+                    department: departments.find(d => d.id === bestEmployeeDocs[0].departmentId)?.name || ""
                 } : null
             }
         });

@@ -339,11 +339,13 @@ export default function AdminDashboard() {
             {/* Profile Card */}
             <UserProfileCard user={user} roles={user?.departmentRoles?.map(dr => dr.role)} />
 
-            {/* Tabs */}
-            <div className="flex gap-1 bg-[#F5F5F5] rounded-xl p-1 mb-6 border border-[#E0E0E0] w-fit flex-wrap">
-                {TABS.map((t) => (
-                    <button key={t.id} onClick={() => setTab(t.id)} className={`min-h-[44px] min-w-[80px] px-4 py-2 rounded-lg text-[14px] font-bold transition-all cursor-pointer ${tab === t.id ? "bg-[#003087] text-white shadow-sm" : "text-[#333333] hover:text-[#003087] hover:bg-white"}`}>{t.label}</button>
-                ))}
+            {/* Tabs — scrollable on mobile */}
+            <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 mb-6 pb-1">
+                <div className="flex gap-1 bg-[#F5F5F5] rounded-xl p-1 border border-[#E0E0E0] w-max sm:w-fit">
+                    {TABS.map((t) => (
+                        <button key={t.id} onClick={() => setTab(t.id)} className={`min-h-[40px] sm:min-h-[44px] px-3 sm:px-4 py-2 rounded-lg text-[13px] sm:text-[14px] font-bold transition-all cursor-pointer whitespace-nowrap ${tab === t.id ? "bg-[#003087] text-white shadow-sm" : "text-[#333333] hover:text-[#003087] hover:bg-white"}`}>{t.label}</button>
+                    ))}
+                </div>
             </div>
 
             {/* ═══════ SUMMARY TAB ═══════ */}
@@ -356,69 +358,67 @@ export default function AdminDashboard() {
                     ) : quarterProgress ? (
                         <>
                             {/* SECTION A — Quarter Status Bar */}
-                            <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                            <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-3 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
                                 <div>
-                                    <h2 className="text-xl font-bold text-[#003087] flex items-center gap-3">
+                                    <h2 className="text-lg sm:text-xl font-bold text-[#003087] flex items-center gap-2 sm:gap-3 flex-wrap">
                                         {quarterProgress.quarter.name}
-                                        <span className={`text-xs px-2.5 py-1 rounded-full border ${quarterProgress.quarter.status === "ACTIVE" ? "bg-[#E3F2FD] text-[#003087] border-[#90CAF9]" : "bg-[#FFEBEE] text-[#D32F2F] border-[#EF9A9A]"}`}>
+                                        <span className={`text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border ${quarterProgress.quarter.status === "ACTIVE" ? "bg-[#E3F2FD] text-[#003087] border-[#90CAF9]" : "bg-[#FFEBEE] text-[#D32F2F] border-[#EF9A9A]"}`}>
                                             {quarterProgress.quarter.status}
                                         </span>
                                     </h2>
-                                    <p className="text-[#333333] text-sm mt-1 font-medium">
+                                    <p className="text-[#333333] text-xs sm:text-sm mt-1 font-medium">
                                         Started: {new Date(quarterProgress.quarter.startDate).toLocaleDateString()}
                                     </p>
                                 </div>
-                                <div className="flex gap-2 w-full md:w-auto">
-                                    {quarterProgress.quarter.status === "ACTIVE" ? (
-                                        <button onClick={requestCloseQuarter} disabled={quarterLoading} className="flex-1 md:flex-none px-4 py-2 bg-[#D32F2F] hover:bg-[#B71C1C] text-white font-bold rounded-lg text-sm transition-colors cursor-pointer shadow-sm">
-                                            Close Quarter
-                                        </button>
-                                    ) : null}
-                                </div>
+                                {quarterProgress.quarter.status === "ACTIVE" && (
+                                    <button onClick={requestCloseQuarter} disabled={quarterLoading} className="w-full sm:w-auto px-4 py-2 bg-[#D32F2F] hover:bg-[#B71C1C] text-white font-bold rounded-lg text-sm transition-colors cursor-pointer shadow-sm">
+                                        Close Quarter
+                                    </button>
+                                )}
                             </div>
 
                             {/* SECTION B — Overall Stats */}
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 shadow-sm">
-                                    <p className="text-[#333333] tracking-wide text-xs uppercase font-medium">Total Employees</p>
-                                    <p className="text-2xl font-bold text-[#1A1A2E] mt-1">{quarterProgress.overallStats.totalEmployees}</p>
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+                                <div className="bg-white border border-[#E0E0E0] rounded-xl p-3 sm:p-5 shadow-sm">
+                                    <p className="text-[#333333] tracking-wide text-[10px] sm:text-xs uppercase font-medium">Total Employees</p>
+                                    <p className="text-xl sm:text-2xl font-bold text-[#1A1A2E] mt-1">{quarterProgress.overallStats.totalEmployees}</p>
                                 </div>
-                                <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 shadow-sm">
-                                    <p className="text-[#333333] tracking-wide text-xs uppercase font-medium">Assessments Submitted</p>
-                                    <p className="text-2xl font-bold text-[#003087] mt-1">{quarterProgress.overallStats.totalSubmitted}</p>
+                                <div className="bg-white border border-[#E0E0E0] rounded-xl p-3 sm:p-5 shadow-sm">
+                                    <p className="text-[#333333] tracking-wide text-[10px] sm:text-xs uppercase font-medium">Submitted</p>
+                                    <p className="text-xl sm:text-2xl font-bold text-[#003087] mt-1">{quarterProgress.overallStats.totalSubmitted}</p>
                                 </div>
-                                <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 shadow-sm">
-                                    <p className="text-[#333333] tracking-wide text-xs uppercase font-medium">Overall Completion</p>
-                                    <p className="text-2xl font-bold text-[#00843D] mt-1">{quarterProgress.overallStats.overallPercentage}%</p>
+                                <div className="bg-white border border-[#E0E0E0] rounded-xl p-3 sm:p-5 shadow-sm">
+                                    <p className="text-[#333333] tracking-wide text-[10px] sm:text-xs uppercase font-medium">Completion</p>
+                                    <p className="text-xl sm:text-2xl font-bold text-[#00843D] mt-1">{quarterProgress.overallStats.overallPercentage}%</p>
                                 </div>
-                                <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 shadow-sm">
-                                    <p className="text-[#333333] tracking-wide text-xs uppercase font-medium">Quarter Winner</p>
+                                <div className="bg-white border border-[#E0E0E0] rounded-xl p-3 sm:p-5 shadow-sm">
+                                    <p className="text-[#333333] tracking-wide text-[10px] sm:text-xs uppercase font-medium">Quarter Winner</p>
                                     {quarterProgress.overallStats.quarterWinner ? (
                                         <div>
-                                            <p className="text-lg font-bold text-[#F7941D] mt-1 truncate" title={quarterProgress.overallStats.quarterWinner.name}>{quarterProgress.overallStats.quarterWinner.name}</p>
-                                            <p className="text-xs text-[#666666] truncate">{quarterProgress.overallStats.quarterWinner.department}</p>
+                                            <p className="text-sm sm:text-lg font-bold text-[#F7941D] mt-1 truncate" title={quarterProgress.overallStats.quarterWinner.name}>{quarterProgress.overallStats.quarterWinner.name}</p>
+                                            <p className="text-[10px] sm:text-xs text-[#666666] truncate">{quarterProgress.overallStats.quarterWinner.department}</p>
                                         </div>
                                     ) : (
-                                        <p className="text-lg font-bold text-[#666666] mt-1 italic">In Progress</p>
+                                        <p className="text-sm sm:text-lg font-bold text-[#666666] mt-1 italic">In Progress</p>
                                     )}
                                 </div>
                             </div>
 
                             {/* SECTION E — Quick Actions */}
-                            <div className="flex flex-wrap gap-3 pb-2">
-                                <button onClick={() => setTab("questions")} className="px-4 py-2 bg-white border border-[#CCCCCC] hover:bg-[#F5F5F5] hover:text-[#003087] text-[#333333] font-bold rounded-lg text-sm transition-colors cursor-pointer shadow-sm">
+                            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 pb-2">
+                                <button onClick={() => setTab("questions")} className="px-3 sm:px-4 py-2 bg-white border border-[#CCCCCC] hover:bg-[#F5F5F5] hover:text-[#003087] text-[#333333] font-bold rounded-lg text-xs sm:text-sm transition-colors cursor-pointer shadow-sm">
                                     Manage Questions
                                 </button>
-                                <button onClick={() => setTab("logs")} className="px-4 py-2 bg-white border border-[#CCCCCC] hover:bg-[#F5F5F5] hover:text-[#003087] text-[#333333] font-bold rounded-lg text-sm transition-colors cursor-pointer shadow-sm">
+                                <button onClick={() => setTab("logs")} className="px-3 sm:px-4 py-2 bg-white border border-[#CCCCCC] hover:bg-[#F5F5F5] hover:text-[#003087] text-[#333333] font-bold rounded-lg text-xs sm:text-sm transition-colors cursor-pointer shadow-sm">
                                     View Audit Logs
                                 </button>
-                                <button onClick={() => { fetchReport(); setTimeout(exportCSV, 500); }} className="px-4 py-2 bg-[#003087] hover:bg-[#00843D] text-white font-bold rounded-lg text-sm transition-colors cursor-pointer shadow-sm flex items-center gap-2">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                    Export Results
+                                <button onClick={() => { fetchReport(); setTimeout(exportCSV, 500); }} className="px-3 sm:px-4 py-2 bg-[#003087] hover:bg-[#00843D] text-white font-bold rounded-lg text-xs sm:text-sm transition-colors cursor-pointer shadow-sm flex items-center justify-center gap-1.5 sm:gap-2">
+                                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                    Export
                                 </button>
-                                <button onClick={fetchProgress} className="px-4 py-2 bg-white border border-[#CCCCCC] hover:bg-[#E3F2FD] hover:text-[#003087] text-[#333333] font-bold rounded-lg text-sm transition-colors cursor-pointer ml-auto flex items-center gap-1.5 shadow-sm">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                                    Refresh Summary
+                                <button onClick={fetchProgress} className="px-3 sm:px-4 py-2 bg-white border border-[#CCCCCC] hover:bg-[#E3F2FD] hover:text-[#003087] text-[#333333] font-bold rounded-lg text-xs sm:text-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-sm">
+                                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                    Refresh
                                 </button>
                             </div>
 
@@ -427,8 +427,8 @@ export default function AdminDashboard() {
                                 <h3 className="text-lg font-bold text-[#003087]">Department Progress</h3>
 
                                 <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl overflow-hidden">
-                                    <div className="overflow-x-auto min-w-full">
-                                        <table className="w-full text-sm">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm min-w-[700px]">
                                             <thead>
                                                 <tr className="border-b border-[#E0E0E0] bg-[#F5F5F5]">
                                                     <th className="text-left font-medium text-[#333333] px-4 py-3 min-w-[150px]">Department</th>
@@ -596,25 +596,37 @@ export default function AdminDashboard() {
                     ) : (
                         <div className="grid grid-cols-1 gap-6">
                             {orgStructure.map((dept) => (
-                                <div key={dept.id} className="bg-white border border-[#E0E0E0] rounded-xl p-5 shadow-sm">
-                                    <div className="flex justify-between items-center border-b border-[#E0E0E0] pb-3 mb-4">
+                                <div key={dept.id} className="bg-white border border-[#E0E0E0] rounded-xl p-3 sm:p-5 shadow-sm">
+                                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center border-b border-[#E0E0E0] pb-3 mb-4 gap-1">
                                         <div>
-                                            <h3 className="text-lg font-bold text-[#003087]">{dept.name}</h3>
-                                            <p className="text-xs text-[#333333] uppercase tracking-wider">{dept.branch} Branch &middot; {dept.employeeCount} Employees</p>
+                                            <h3 className="text-base sm:text-lg font-bold text-[#003087]">{dept.name}</h3>
+                                            <p className="text-[10px] sm:text-xs text-[#333333] uppercase tracking-wider">{dept.branch} Branch &middot; {dept.employeeCount} Employees</p>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <div className="bg-[#F5F5F5] rounded-lg p-3 border border-[#E0E0E0]">
-                                            <p className="text-xs text-[#333333] mb-1 font-medium">Supervisor</p>
-                                            {dept.supervisor ? (
+                                            <p className="text-xs text-[#333333] mb-1 font-medium">Supervisor(s)</p>
+                                            {dept.supervisors?.length > 0 ? (
+                                                <div className="space-y-2">
+                                                    {dept.supervisors.map(sup => (
+                                                        <div key={sup.id}><p className="text-sm text-[#1A1A2E] font-medium">{sup.name}</p><p className="text-xs text-[#666666]">{sup.designation || "No Designation"}</p></div>
+                                                    ))}
+                                                </div>
+                                            ) : dept.supervisor ? (
                                                 <div><p className="text-sm text-[#1A1A2E] font-medium">{dept.supervisor.name}</p><p className="text-xs text-[#666666]">{dept.supervisor.designation || "No Designation"}</p></div>
                                             ) : (
                                                 <p className="text-sm text-[#999999] italic">Not Assigned</p>
                                             )}
                                         </div>
                                         <div className="bg-[#F5F5F5] rounded-lg p-3 border border-[#E0E0E0]">
-                                            <p className="text-xs text-[#333333] mb-1 font-medium">Branch Manager</p>
-                                            {dept.branchManager ? (
+                                            <p className="text-xs text-[#333333] mb-1 font-medium">Branch Manager(s)</p>
+                                            {dept.branchManagers?.length > 0 ? (
+                                                <div className="space-y-2">
+                                                    {dept.branchManagers.map(bm => (
+                                                        <div key={bm.id}><p className="text-sm text-[#1A1A2E] font-medium">{bm.name}</p><p className="text-xs text-[#666666]">{bm.designation || "No Designation"}</p></div>
+                                                    ))}
+                                                </div>
+                                            ) : dept.branchManager ? (
                                                 <div><p className="text-sm text-[#1A1A2E] font-medium">{dept.branchManager.name}</p><p className="text-xs text-[#666666]">{dept.branchManager.designation || "No Designation"}</p></div>
                                             ) : (
                                                 <p className="text-sm text-[#999999] italic">Not Assigned</p>
@@ -701,27 +713,29 @@ export default function AdminDashboard() {
                     )}
 
                     {/* Filter Bar */}
-                    <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 flex flex-wrap items-end gap-3">
-                        <div className="flex-1 min-w-[200px]">
+                    <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-3 sm:p-4 space-y-2 sm:space-y-0 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
+                        <div className="w-full sm:flex-1 sm:min-w-[200px]">
                             <label className="block text-xs text-[#333333] mb-1 font-medium">Search</label>
                             <input type="text" value={qFilter.search} onChange={(e) => setQFilter({ ...qFilter, search: e.target.value })} placeholder="Search questions..." className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]" />
                         </div>
-                        <div>
-                            <label className="block text-xs text-[#333333] mb-1 font-medium">Level</label>
-                            <select value={qFilter.level} onChange={(e) => setQFilter({ ...qFilter, level: e.target.value })} className="px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087] min-w-[150px]">
-                                <option value="">All Levels</option>
-                                {LEVELS.map((l) => <option key={l} value={l}>{l.replaceAll("_", " ")}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs text-[#333333] mb-1 font-medium">Category</label>
-                            <select value={qFilter.category} onChange={(e) => setQFilter({ ...qFilter, category: e.target.value })} className="px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087] min-w-[150px]">
-                                <option value="">All Categories</option>
-                                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                            </select>
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
+                            <div>
+                                <label className="block text-xs text-[#333333] mb-1 font-medium">Level</label>
+                                <select value={qFilter.level} onChange={(e) => setQFilter({ ...qFilter, level: e.target.value })} className="w-full sm:w-auto px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087] sm:min-w-[150px]">
+                                    <option value="">All Levels</option>
+                                    {LEVELS.map((l) => <option key={l} value={l}>{l.replaceAll("_", " ")}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs text-[#333333] mb-1 font-medium">Category</label>
+                                <select value={qFilter.category} onChange={(e) => setQFilter({ ...qFilter, category: e.target.value })} className="w-full sm:w-auto px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087] sm:min-w-[150px]">
+                                    <option value="">All Categories</option>
+                                    {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                            </div>
                         </div>
                         {(qFilter.search || qFilter.level || qFilter.category) && (
-                            <button onClick={() => setQFilter({ level: "", category: "", search: "" })} className="px-3 py-2 bg-[#F5F5F5] hover:bg-white border border-[#E0E0E0] text-[#333333] rounded-lg text-sm cursor-pointer transition-colors">Clear</button>
+                            <button onClick={() => setQFilter({ level: "", category: "", search: "" })} className="w-full sm:w-auto px-3 py-2 bg-[#F5F5F5] hover:bg-white border border-[#E0E0E0] text-[#333333] rounded-lg text-sm cursor-pointer transition-colors">Clear</button>
                         )}
                     </div>
 
@@ -745,9 +759,9 @@ export default function AdminDashboard() {
                                         </div>
                                         <div className="divide-y divide-[#E0E0E0]">
                                             {catQs.map((q) => (
-                                                <div key={q.id} className="px-4 py-3 flex items-center gap-3 hover:bg-[#F5F5F5] transition-colors group">
+                                                <div key={q.id} className="px-3 sm:px-4 py-3 hover:bg-[#F5F5F5] transition-colors group">
                                                     {editingQ?.id === q.id ? (
-                                                        <div className="flex-1 space-y-2">
+                                                        <div className="space-y-2">
                                                             <textarea value={editingQ.text} onChange={(e) => setEditingQ({ ...editingQ, text: e.target.value })} rows={2} placeholder="English text" className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087] resize-none" />
                                                             <textarea value={editingQ.textHindi || ""} onChange={(e) => setEditingQ({ ...editingQ, textHindi: e.target.value })} rows={2} placeholder="Hindi text" className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087] resize-none" />
                                                             <div className="grid grid-cols-2 gap-2">
@@ -755,22 +769,22 @@ export default function AdminDashboard() {
                                                                 <select value={editingQ.level} onChange={(e) => setEditingQ({ ...editingQ, level: e.target.value })} className="px-2 py-1.5 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-xs">{LEVELS.map((l) => <option key={l} value={l}>{l.replaceAll("_", " ")}</option>)}</select>
                                                             </div>
                                                             <div className="flex gap-2">
-                                                                <button onClick={saveEditQuestion} className="min-h-[44px] min-w-[80px] px-3 py-1.5 bg-[#003087] hover:bg-[#00843D] text-white text-[14px] font-bold rounded-lg cursor-pointer transition-colors shadow-sm">Save Changes</button>
-                                                                <button onClick={() => setEditingQ(null)} className="min-h-[44px] min-w-[80px] px-3 py-1.5 bg-white border border-[#CCCCCC] text-[#333333] font-bold text-[14px] rounded-lg cursor-pointer hover:bg-[#F5F5F5] transition-colors">Cancel</button>
+                                                                <button onClick={saveEditQuestion} className="min-h-[40px] px-3 py-1.5 bg-[#003087] hover:bg-[#00843D] text-white text-[13px] sm:text-[14px] font-bold rounded-lg cursor-pointer transition-colors shadow-sm">Save</button>
+                                                                <button onClick={() => setEditingQ(null)} className="min-h-[40px] px-3 py-1.5 bg-white border border-[#CCCCCC] text-[#333333] font-bold text-[13px] sm:text-[14px] rounded-lg cursor-pointer hover:bg-[#F5F5F5] transition-colors">Cancel</button>
                                                             </div>
                                                         </div>
                                                     ) : (
-                                                        <>
+                                                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                                                             <div className={`flex-1 ${q.isActive ? "" : "opacity-50"}`}>
-                                                                <p className={`text-sm tracking-tight ${q.isActive ? "text-[#1A1A2E]" : "text-[#999999] line-through"}`}>{q.text}</p>
-                                                                {q.textHindi && <p className="text-[13px] text-[#666666] italic mt-0.5">{q.textHindi}</p>}
+                                                                <p className={`text-[13px] sm:text-sm tracking-tight ${q.isActive ? "text-[#1A1A2E]" : "text-[#999999] line-through"}`}>{q.text}</p>
+                                                                {q.textHindi && <p className="text-[12px] sm:text-[13px] text-[#666666] italic mt-0.5">{q.textHindi}</p>}
                                                             </div>
-                                                            <div className="flex items-center gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                <button onClick={() => setEditingQ({ id: q.id, text: q.text, textHindi: q.textHindi || "", category: q.category, level: q.level })} className="min-h-[44px] min-w-[80px] text-[14px] px-3 py-2 bg-[#F5F5F5] font-bold border border-[#E0E0E0] text-[#333333] hover:text-[#003087] rounded-md cursor-pointer transition-colors">✏️ Edit</button>
-                                                                <button onClick={() => setDeleteQ(q)} className="min-h-[44px] min-w-[80px] text-[14px] px-3 py-2 bg-[#F5F5F5] font-bold border border-[#E0E0E0] text-[#333333] hover:text-[#D32F2F] rounded-md cursor-pointer transition-colors">🗑️ Delete</button>
+                                                            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                                                                <button onClick={() => setEditingQ({ id: q.id, text: q.text, textHindi: q.textHindi || "", category: q.category, level: q.level })} className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-3 py-1.5 bg-[#F5F5F5] font-bold border border-[#E0E0E0] text-[#333333] hover:text-[#003087] rounded-md cursor-pointer transition-colors text-[12px] sm:text-[13px]">Edit</button>
+                                                                <button onClick={() => setDeleteQ(q)} className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-3 py-1.5 bg-[#F5F5F5] font-bold border border-[#E0E0E0] text-[#333333] hover:text-[#D32F2F] rounded-md cursor-pointer transition-colors text-[12px] sm:text-[13px]">Delete</button>
+                                                                <button onClick={() => toggleQuestion(q.id)} className={`min-h-[36px] sm:min-h-[40px] text-[12px] sm:text-[13px] font-bold px-2.5 sm:px-3 py-1.5 rounded-lg border transition-colors cursor-pointer shrink-0 shadow-sm ${q.isActive ? "bg-[#00843D] text-[#FFFFFF] border-[#A5D6A7]" : "bg-[#CCCCCC] text-[#333333] border-[#EF9A9A]"}`}>{q.isActive ? "Active" : "Off"}</button>
                                                             </div>
-                                                            <button onClick={() => toggleQuestion(q.id)} className={`min-h-[44px] min-w-[80px] text-[14px] font-bold px-3 py-1.5 rounded-lg border transition-colors cursor-pointer shrink-0 shadow-sm ${q.isActive ? "bg-[#00843D] text-[#FFFFFF] border-[#A5D6A7] hover:bg-[#D32F2F] hover:border-[#EF9A9A]" : "bg-[#CCCCCC] text-[#333333] border-[#EF9A9A] hover:bg-[#003087] hover:text-[#FFFFFF] hover:border-[#A5D6A7]"}`}>{q.isActive ? "Active ✓" : "Inactive ✗"}</button>
-                                                        </>
+                                                        </div>
                                                     )}
                                                 </div>
                                             ))}
@@ -799,22 +813,22 @@ export default function AdminDashboard() {
             {/* ═══════ EMPLOYEES TAB ═══════ */}
             {tab === "employees" && (
                 <div className="space-y-6">
-                    <div className="bg-white border flex flex-col sm:flex-row gap-4 justify-between items-center rounded-xl p-5 shadow-sm border-[#E0E0E0]">
-                        <div className="relative flex-1 w-full sm:max-w-xs">
+                    <div className="bg-white border rounded-xl p-3 sm:p-5 shadow-sm border-[#E0E0E0] space-y-3 sm:space-y-0 sm:flex sm:flex-row sm:gap-4 sm:justify-between sm:items-center">
+                        <div className="relative w-full sm:flex-1 sm:max-w-xs">
                             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#999999]"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></span>
-                            <input type="text" placeholder="Search by name or code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-10 pl-10 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
+                            <input type="text" placeholder="Search name or code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-10 pl-10 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
                         </div>
-                        <div className="flex gap-4 w-full sm:w-auto">
-                            <select value={empFilter.department} onChange={(e) => setEmpFilter({ ...empFilter, department: e.target.value })} className="h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] flex-1 sm:w-40">
-                                <option value="">All Departments</option>
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-4 sm:w-auto">
+                            <select value={empFilter.department} onChange={(e) => setEmpFilter({ ...empFilter, department: e.target.value })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-40">
+                                <option value="">All Depts</option>
                                 {[...new Set(employees.map(e => e.department))].sort().map(d => <option key={d} value={d}>{d}</option>)}
                             </select>
-                            <select value={empFilter.role} onChange={(e) => setEmpFilter({ ...empFilter, role: e.target.value })} className="h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] flex-1 sm:w-36">
+                            <select value={empFilter.role} onChange={(e) => setEmpFilter({ ...empFilter, role: e.target.value })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-36">
                                 <option value="">All Roles</option>
                                 <option value="EMPLOYEE">Employee</option>
                                 <option value="SUPERVISOR">Supervisor</option>
-                                <option value="BRANCH_MANAGER">Branch Manager</option>
-                                <option value="CLUSTER_MANAGER">Cluster Manager</option>
+                                <option value="BRANCH_MANAGER">Branch Mgr</option>
+                                <option value="CLUSTER_MANAGER">Cluster Mgr</option>
                                 <option value="ADMIN">Admin</option>
                             </select>
                         </div>
@@ -860,24 +874,28 @@ export default function AdminDashboard() {
                 tab === "logs" && (
                     <div className="space-y-4">
                         {/* Filter Bar */}
-                        <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 flex flex-wrap items-end gap-3">
-                            <div>
+                        <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-3 sm:p-4 space-y-2 sm:space-y-0 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
+                            <div className="w-full sm:w-auto">
                                 <label className="block text-xs text-[#333333] mb-1 font-medium">Action</label>
-                                <select value={logFilter.action} onChange={(e) => setLogFilter({ ...logFilter, action: e.target.value })} className="px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087] min-w-[160px]">
+                                <select value={logFilter.action} onChange={(e) => setLogFilter({ ...logFilter, action: e.target.value })} className="w-full sm:w-auto px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087] sm:min-w-[160px]">
                                     <option value="">All Actions</option>
                                     {logActions.map((a) => <option key={a} value={a}>{a}</option>)}
                                 </select>
                             </div>
-                            <div>
-                                <label className="block text-xs text-[#333333] mb-1 font-medium">From</label>
-                                <input type="date" value={logFilter.from} onChange={(e) => setLogFilter({ ...logFilter, from: e.target.value })} className="px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]" />
+                            <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
+                                <div>
+                                    <label className="block text-xs text-[#333333] mb-1 font-medium">From</label>
+                                    <input type="date" value={logFilter.from} onChange={(e) => setLogFilter({ ...logFilter, from: e.target.value })} className="w-full sm:w-auto px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-[#333333] mb-1 font-medium">To</label>
+                                    <input type="date" value={logFilter.to} onChange={(e) => setLogFilter({ ...logFilter, to: e.target.value })} className="w-full sm:w-auto px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]" />
+                                </div>
                             </div>
-                            <div>
-                                <label className="block text-xs text-[#333333] mb-1 font-medium">To</label>
-                                <input type="date" value={logFilter.to} onChange={(e) => setLogFilter({ ...logFilter, to: e.target.value })} className="px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]" />
+                            <div className="flex gap-2">
+                                <button onClick={() => fetchLogs(1, logFilter)} className="flex-1 sm:flex-none px-4 py-2 bg-[#003087] hover:bg-[#00843D] text-white rounded-lg text-sm font-medium cursor-pointer transition-colors shadow-sm">Apply</button>
+                                <button onClick={() => { setLogFilter({ action: "", from: "", to: "" }); fetchLogs(1, { action: "", from: "", to: "" }); }} className="flex-1 sm:flex-none px-4 py-2 bg-[#F5F5F5] hover:bg-white border border-[#E0E0E0] text-[#333333] rounded-lg text-sm cursor-pointer transition-colors">Clear</button>
                             </div>
-                            <button onClick={() => fetchLogs(1, logFilter)} className="px-4 py-2 bg-[#003087] hover:bg-[#00843D] text-white rounded-lg text-sm font-medium cursor-pointer transition-colors shadow-sm">Apply</button>
-                            <button onClick={() => { setLogFilter({ action: "", from: "", to: "" }); fetchLogs(1, { action: "", from: "", to: "" }); }} className="px-4 py-2 bg-[#F5F5F5] hover:bg-white border border-[#E0E0E0] text-[#333333] rounded-lg text-sm cursor-pointer transition-colors">Clear</button>
                         </div>
 
                         {/* Table */}

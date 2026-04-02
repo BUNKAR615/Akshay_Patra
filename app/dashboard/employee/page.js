@@ -58,7 +58,7 @@ export default function EmployeeDashboard() {
             setLoading(true);
             setError(null);
 
-            const res = await fetch("/api/employee/status", {
+            const res = await fetch("/api/employee/current-status", {
                 headers: { "Content-Type": "application/json" },
             });
 

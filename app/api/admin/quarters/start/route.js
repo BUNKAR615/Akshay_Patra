@@ -197,7 +197,10 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
                 });
 
                 if (singleEmployee) {
-                    const existingWinner = await prisma.bestEmployee.findUnique({ where: { quarterId: quarter.id } });
+                    // Check if winner already exists for this specific department+quarter
+                    const existingWinner = await prisma.bestEmployee.findFirst({
+                        where: { quarterId: quarter.id, departmentId: dept.id }
+                    });
                     if (!existingWinner) {
                         await prisma.bestEmployee.create({
                             data: {
