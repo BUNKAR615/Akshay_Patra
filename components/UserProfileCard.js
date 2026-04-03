@@ -20,7 +20,7 @@ export default function UserProfileCard({ user, extraInfo, roles }) {
     if (!user) return null;
 
     const branch = user.department?.branch?.name || user.branch || "Jaipur";
-    const dept = user.department?.name || user.departmentName || "—";
+    const dept = user.department?.name || user.departmentName || (user.departmentRoles?.length > 0 ? user.departmentRoles[0].department?.name : null) || "—";
     const firstName = user.name?.split(" ")[0];
     const greeting = firstName
         ? `${firstName.charAt(0).toUpperCase()}${firstName.slice(1).toLowerCase()}`
