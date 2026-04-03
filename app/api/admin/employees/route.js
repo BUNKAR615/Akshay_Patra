@@ -20,52 +20,61 @@ export const GET = withRole(["ADMIN"], async (request) => {
         const limit = 50;
 
         const where = {};
+        const andConditions = [];
 
         if (search) {
-            where.OR = [
-                { name: { contains: search, mode: "insensitive" } },
-                { empCode: { contains: search, mode: "insensitive" } },
-                { designation: { contains: search, mode: "insensitive" } },
-            ];
-        }
-
-        // Role filtering: check both User.role AND departmentRoleMapping
-        if (role === "EMPLOYEE") {
-            // Only regular employees (no evaluator mappings, not ADMIN)
-            where.role = "EMPLOYEE";
-            where.departmentRoles = { none: {} };
-        } else if (role === "ADMIN") {
-            where.role = "ADMIN";
-        } else if (role === "EVALUATOR") {
-            // Any user who has at least one evaluator role mapping
-            where.departmentRoles = { some: {} };
-        } else if (role === "SUPERVISOR" || role === "BRANCH_MANAGER" || role === "CLUSTER_MANAGER") {
-            where.departmentRoles = { some: { role } };
-        }
-
-        // Department filtering: match employee's department OR departments they evaluate
-        if (department) {
-            where.OR = [
-                ...(where.OR || []),
-                { department: { name: department } },
-                { departmentRoles: { some: { department: { name: department } } } },
-            ];
-            // If we already had a search OR, merge them with AND
-            if (search && department) {
-                const searchOR = [
+            andConditions.push({
+                OR: [
                     { name: { contains: search, mode: "insensitive" } },
                     { empCode: { contains: search, mode: "insensitive" } },
                     { designation: { contains: search, mode: "insensitive" } },
-                ];
-                delete where.OR;
-                where.AND = [
-                    { OR: searchOR },
-                    { OR: [
+                ],
+            });
+        }
+
+        const isEvalRole = role === "SUPERVISOR" || role === "BRANCH_MANAGER" || role === "CLUSTER_MANAGER";
+
+        if (department && isEvalRole) {
+            // Combined: find users who hold this specific role in this specific department
+            andConditions.push({
+                departmentRoles: { some: { role, department: { name: department } } },
+            });
+        } else if (department && role === "EVALUATOR") {
+            andConditions.push({
+                departmentRoles: { some: { department: { name: department } } },
+            });
+        } else if (department && role === "EMPLOYEE") {
+            andConditions.push({ department: { name: department } });
+            where.role = "EMPLOYEE";
+            where.departmentRoles = { none: {} };
+        } else {
+            // Department only or role only
+            if (department) {
+                andConditions.push({
+                    OR: [
                         { department: { name: department } },
                         { departmentRoles: { some: { department: { name: department } } } },
-                    ]},
-                ];
+                    ],
+                });
             }
+            if (role === "EMPLOYEE") {
+                where.role = "EMPLOYEE";
+                where.departmentRoles = { none: {} };
+            } else if (role === "ADMIN") {
+                where.role = "ADMIN";
+            } else if (role === "EVALUATOR") {
+                where.departmentRoles = { some: {} };
+            } else if (isEvalRole) {
+                where.departmentRoles = { some: { role } };
+            }
+        }
+
+        if (department && role === "ADMIN") {
+            where.role = "ADMIN";
+        }
+
+        if (andConditions.length > 0) {
+            where.AND = andConditions;
         }
 
         const [rawEmployees, total] = await Promise.all([
