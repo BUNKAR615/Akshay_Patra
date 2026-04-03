@@ -55,14 +55,26 @@ export default function AdminDashboard() {
 
     // Employees
     const [employees, setEmployees] = useState([]);
+    const [empDepartments, setEmpDepartments] = useState([]);
+    const [empTotal, setEmpTotal] = useState(0);
+    const [empTotalPages, setEmpTotalPages] = useState(1);
+    const [empPage, setEmpPage] = useState(1);
     const [empLoading, setEmpLoading] = useState(false);
     const [empFilter, setEmpFilter] = useState({ search: "", department: "", role: "" });
 
-    const fetchEmployees = async () => {
+    const fetchEmployees = async (pg = empPage, filters = empFilter) => {
         setEmpLoading(true);
         try {
-            const d = await api("/api/admin/employees");
+            const params = new URLSearchParams({ page: pg.toString() });
+            if (filters.search) params.set("search", filters.search);
+            if (filters.department) params.set("department", filters.department);
+            if (filters.role) params.set("role", filters.role);
+            const d = await api(`/api/admin/employees?${params}`);
             setEmployees(d.employees);
+            setEmpTotal(d.total);
+            setEmpTotalPages(d.totalPages);
+            setEmpPage(pg);
+            if (d.departments) setEmpDepartments(d.departments);
         } catch { }
         setEmpLoading(false);
     };
@@ -301,7 +313,8 @@ export default function AdminDashboard() {
         } catch { }
     };
 
-    useEffect(() => { if (tab === "employees" && employees.length === 0) fetchEmployees(); }, [tab]);
+    useEffect(() => { if (tab === "employees") fetchEmployees(1); }, [tab]);
+    useEffect(() => { if (tab === "employees") { const t = setTimeout(() => fetchEmployees(1, empFilter), 300); return () => clearTimeout(t); } }, [empFilter.search, empFilter.department, empFilter.role]);
 
     useEffect(() => { if (tab === "logs") fetchLogs(); }, [tab]);
 
@@ -858,16 +871,17 @@ export default function AdminDashboard() {
                             <input type="text" placeholder="Search name or code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-10 pl-10 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
                         </div>
                         <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-4 sm:w-auto">
-                            <select value={empFilter.department} onChange={(e) => setEmpFilter({ ...empFilter, department: e.target.value })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-40">
-                                <option value="">All Depts</option>
-                                {[...new Set(employees.map(e => e.department))].sort().map(d => <option key={d} value={d}>{d}</option>)}
+                            <select value={empFilter.department} onChange={(e) => setEmpFilter({ ...empFilter, department: e.target.value })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-48">
+                                <option value="">All Departments</option>
+                                {empDepartments.map(d => <option key={d} value={d}>{d}</option>)}
                             </select>
-                            <select value={empFilter.role} onChange={(e) => setEmpFilter({ ...empFilter, role: e.target.value })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-36">
+                            <select value={empFilter.role} onChange={(e) => setEmpFilter({ ...empFilter, role: e.target.value })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-40">
                                 <option value="">All Roles</option>
                                 <option value="EMPLOYEE">Employee</option>
                                 <option value="SUPERVISOR">Supervisor</option>
-                                <option value="BRANCH_MANAGER">Branch Mgr</option>
-                                <option value="CLUSTER_MANAGER">Cluster Mgr</option>
+                                <option value="BRANCH_MANAGER">Branch Manager</option>
+                                <option value="CLUSTER_MANAGER">Cluster Manager</option>
+                                <option value="EVALUATOR">All Evaluators</option>
                                 <option value="ADMIN">Admin</option>
                             </select>
                         </div>
@@ -881,18 +895,13 @@ export default function AdminDashboard() {
                                         <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Name</th>
                                         <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Department</th>
                                         <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Designation</th>
-                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Role</th>
+                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Roles</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[#E0E0E0]">
                                     {empLoading ? <tr><td colSpan={5} className="px-5 py-8 text-center text-[#666666]">Loading...</td></tr> :
-                                    employees.filter(e => {
-                                        const searchStr = empFilter.search.toLowerCase();
-                                        const matchSearch = e.name.toLowerCase().includes(searchStr) || (e.empCode && e.empCode.includes(searchStr));
-                                        const matchDept = empFilter.department ? (e.department === empFilter.department || (e.evaluatorRoles || []).some(er => er.department === empFilter.department)) : true;
-                                        const matchRole = empFilter.role ? (e.roles || [e.role]).includes(empFilter.role) : true;
-                                        return matchSearch && matchDept && matchRole;
-                                    }).map(e => {
+                                    employees.length === 0 ? <tr><td colSpan={5} className="px-5 py-8 text-center text-[#666666]">No employees found</td></tr> :
+                                    employees.map(e => {
                                         const roles = e.roles || [e.role];
                                         return (
                                         <tr key={e.id} className="hover:bg-[#FAFAFA] transition-colors">
@@ -907,6 +916,15 @@ export default function AdminDashboard() {
                                 </tbody>
                             </table>
                         </div>
+                        {!empLoading && empTotal > 50 && (
+                            <div className="px-5 py-3 border-t border-[#E0E0E0] flex items-center justify-between">
+                                <span className="text-xs text-[#666666]">Showing {(empPage-1)*50+1}-{Math.min(empPage*50,empTotal)} of {empTotal}</span>
+                                <div className="flex gap-1">
+                                    <button disabled={empPage===1} onClick={()=>fetchEmployees(empPage-1,empFilter)} className="px-3 py-1 border border-[#E0E0E0] rounded text-sm disabled:opacity-50 cursor-pointer">Prev</button>
+                                    <button disabled={empPage===empTotalPages} onClick={()=>fetchEmployees(empPage+1,empFilter)} className="px-3 py-1 border border-[#E0E0E0] rounded text-sm disabled:opacity-50 cursor-pointer">Next</button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
