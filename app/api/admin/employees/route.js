@@ -129,7 +129,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
                 role: u.role,
                 roles,
                 designation: u.designation || "—",
-                department: u.department?.name || "—",
+                department: u.department?.name || (u.departmentRoles.length > 0 ? u.departmentRoles[0].department.name : "—"),
                 departmentObj: u.department || null,
                 evaluatorRoles,
             };
