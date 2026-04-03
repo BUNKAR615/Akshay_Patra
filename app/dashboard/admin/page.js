@@ -885,22 +885,25 @@ export default function AdminDashboard() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[#E0E0E0]">
-                                    {empLoading ? <tr><td colSpan={5} className="px-5 py-8 text-center text-[#666666]">Loading...</td></tr> : 
+                                    {empLoading ? <tr><td colSpan={5} className="px-5 py-8 text-center text-[#666666]">Loading...</td></tr> :
                                     employees.filter(e => {
                                         const searchStr = empFilter.search.toLowerCase();
                                         const matchSearch = e.name.toLowerCase().includes(searchStr) || (e.empCode && e.empCode.includes(searchStr));
-                                        const matchDept = empFilter.department ? e.department === empFilter.department : true;
-                                        const matchRole = empFilter.role ? e.role === empFilter.role : true;
+                                        const matchDept = empFilter.department ? (e.department === empFilter.department || (e.evaluatorRoles || []).some(er => er.department === empFilter.department)) : true;
+                                        const matchRole = empFilter.role ? (e.roles || [e.role]).includes(empFilter.role) : true;
                                         return matchSearch && matchDept && matchRole;
-                                    }).map(e => (
+                                    }).map(e => {
+                                        const roles = e.roles || [e.role];
+                                        return (
                                         <tr key={e.id} className="hover:bg-[#FAFAFA] transition-colors">
                                             <td className="px-5 py-3 text-sm text-[#333333] font-mono">{e.empCode || "—"}</td>
                                             <td className="px-5 py-3 text-sm font-bold text-[#003087]">{e.name}</td>
-                                            <td className="px-5 py-3 text-sm text-[#333333]">{e.department}</td>
+                                            <td className="px-5 py-3 text-sm text-[#333333]">{e.department}{e.evaluatorRoles?.length > 0 && <span className="block text-[10px] text-[#666666] mt-0.5">{e.evaluatorRoles.map(er => `${er.role.replace("_"," ")} — ${er.department}`).join(", ")}</span>}</td>
                                             <td className="px-5 py-3 text-sm text-[#666666]">{e.designation}</td>
-                                            <td className="px-5 py-3"><span className={`text-[11px] px-2.5 py-1 rounded-full border font-bold uppercase tracking-wider ${e.role === "EMPLOYEE" ? "bg-gray-50 text-gray-700 border-gray-200" : e.role === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : e.role === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : e.role === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-[#003087] text-white border-[#003087]"}`}>{e.role.replace("_", " ")}</span></td>
+                                            <td className="px-5 py-3"><div className="flex flex-wrap gap-1">{roles.map(r => <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-700 border-gray-200" : r === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace("_", " ")}</span>)}</div></td>
                                         </tr>
-                                    ))}
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>

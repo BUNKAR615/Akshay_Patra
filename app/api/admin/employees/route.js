@@ -8,7 +8,7 @@ import { NextResponse } from "next/server";
 /**
  * GET /api/admin/employees
  * Returns paginated, searchable employee list for the admin directory.
- * Backward-compatible with the existing admin tab (flat department string).
+ * Includes evaluator role mappings so filtering by SUPERVISOR/BM/CM works.
  */
 export const GET = withRole(["ADMIN"], async (request) => {
     try {
@@ -29,12 +29,43 @@ export const GET = withRole(["ADMIN"], async (request) => {
             ];
         }
 
-        if (department) {
-            where.department = { name: department };
+        // Role filtering: check both User.role AND departmentRoleMapping
+        if (role === "EMPLOYEE") {
+            // Only regular employees (no evaluator mappings, not ADMIN)
+            where.role = "EMPLOYEE";
+            where.departmentRoles = { none: {} };
+        } else if (role === "ADMIN") {
+            where.role = "ADMIN";
+        } else if (role === "EVALUATOR") {
+            // Any user who has at least one evaluator role mapping
+            where.departmentRoles = { some: {} };
+        } else if (role === "SUPERVISOR" || role === "BRANCH_MANAGER" || role === "CLUSTER_MANAGER") {
+            where.departmentRoles = { some: { role } };
         }
 
-        if (role) {
-            where.role = role;
+        // Department filtering: match employee's department OR departments they evaluate
+        if (department) {
+            where.OR = [
+                ...(where.OR || []),
+                { department: { name: department } },
+                { departmentRoles: { some: { department: { name: department } } } },
+            ];
+            // If we already had a search OR, merge them with AND
+            if (search && department) {
+                const searchOR = [
+                    { name: { contains: search, mode: "insensitive" } },
+                    { empCode: { contains: search, mode: "insensitive" } },
+                    { designation: { contains: search, mode: "insensitive" } },
+                ];
+                delete where.OR;
+                where.AND = [
+                    { OR: searchOR },
+                    { OR: [
+                        { department: { name: department } },
+                        { departmentRoles: { some: { department: { name: department } } } },
+                    ]},
+                ];
+            }
         }
 
         const [rawEmployees, total] = await Promise.all([
@@ -48,6 +79,12 @@ export const GET = withRole(["ADMIN"], async (request) => {
                     role: true,
                     designation: true,
                     department: { select: { id: true, name: true } },
+                    departmentRoles: {
+                        select: {
+                            role: true,
+                            department: { select: { name: true } },
+                        },
+                    },
                 },
                 orderBy: [
                     { department: { name: "asc" } },
@@ -59,21 +96,38 @@ export const GET = withRole(["ADMIN"], async (request) => {
             prisma.user.count({ where }),
         ]);
 
-        // Map employees to include BOTH a flat "department" string (for existing admin tab)
-        // AND the full department object (for new standalone page)
-        const employees = rawEmployees.map((u) => ({
-            id: u.id,
-            empCode: u.empCode,
-            name: u.name,
-            email: u.email,
-            role: u.role,
-            designation: u.designation || "—",
-            department: u.department?.name || "—",         // flat string for backward compat
-            departmentObj: u.department || null,            // object for new page
-        }));
+        const employees = rawEmployees.map((u) => {
+            // Build effective roles list
+            const roles = [];
+            if (u.role === "ADMIN") roles.push("ADMIN");
+            if (u.department) roles.push("EMPLOYEE");
+            for (const dr of u.departmentRoles) {
+                if (!roles.includes(dr.role)) roles.push(dr.role);
+            }
+            if (roles.length === 0) roles.push("EMPLOYEE");
 
-        // Fetch department stats and role stats in parallel
-        const [departmentsData, roleStatsRaw] = await Promise.all([
+            // Build evaluator info
+            const evaluatorRoles = u.departmentRoles.map((dr) => ({
+                role: dr.role,
+                department: dr.department.name,
+            }));
+
+            return {
+                id: u.id,
+                empCode: u.empCode,
+                name: u.name,
+                email: u.email,
+                role: u.role,
+                roles,
+                designation: u.designation || "—",
+                department: u.department?.name || "—",
+                departmentObj: u.department || null,
+                evaluatorRoles,
+            };
+        });
+
+        // Fetch department stats and role stats
+        const [departmentsData, roleStatsRaw, evaluatorStats] = await Promise.all([
             prisma.department.findMany({
                 select: {
                     name: true,
@@ -85,12 +139,30 @@ export const GET = withRole(["ADMIN"], async (request) => {
                 by: ["role"],
                 _count: { id: true },
             }),
+            prisma.departmentRoleMapping.groupBy({
+                by: ["role"],
+                _count: { userId: true },
+            }),
         ]);
 
         const roleStats = {};
         for (const r of roleStatsRaw) {
             roleStats[r.role] = r._count.id;
         }
+        // Add evaluator role counts from departmentRoleMapping
+        let totalEvaluators = 0;
+        for (const r of evaluatorStats) {
+            roleStats[`MAPPED_${r.role}`] = r._count.userId;
+            totalEvaluators += r._count.userId;
+        }
+        roleStats.EVALUATOR_TOTAL = totalEvaluators;
+
+        // Count unique evaluators
+        const uniqueEvaluators = await prisma.departmentRoleMapping.findMany({
+            select: { userId: true },
+            distinct: ["userId"],
+        });
+        roleStats.UNIQUE_EVALUATORS = uniqueEvaluators.length;
 
         return NextResponse.json({
             success: true,
