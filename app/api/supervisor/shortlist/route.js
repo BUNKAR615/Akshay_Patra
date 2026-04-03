@@ -54,7 +54,7 @@ export const GET = withRole(["SUPERVISOR"], async (request, { user }) => {
         }
 
         const evaluated = await prisma.supervisorEvaluation.findMany({
-            where: { supervisorId: user.userId, quarterId: activeQuarter.id },
+            where: { supervisorId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: deptId } },
             select: { employeeId: true },
         });
         const evaluatedSet = new Set(evaluated.map((e) => e.employeeId));

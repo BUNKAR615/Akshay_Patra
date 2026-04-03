@@ -20,11 +20,27 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         const activeQuarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" }, select: { id: true, name: true } });
         if (!activeQuarter) return notFound("No active quarter found");
 
-        const allDepartments = await prisma.department.findMany({
-            orderBy: { name: "asc" }
+        // Only show departments this CM is assigned to via departmentRoleMapping
+        const deptMappings = await prisma.departmentRoleMapping.findMany({
+            where: { userId: user.userId, role: "CLUSTER_MANAGER" },
+            include: { department: true },
+            orderBy: { department: { name: "asc" } },
         });
 
-        const departmentsData = await Promise.all(allDepartments.map(async (dept) => {
+        // Fallback: if no mappings, use user's primary department
+        if (deptMappings.length === 0) {
+            const cmUser = await prisma.user.findUnique({
+                where: { id: user.userId },
+                select: { departmentId: true, department: true },
+            });
+            if (cmUser?.department) {
+                deptMappings.push({ departmentId: cmUser.departmentId, department: cmUser.department });
+            }
+        }
+
+        const assignedDepts = deptMappings.map(m => m.department);
+
+        const departmentsData = await Promise.all(assignedDepts.map(async (dept) => {
             const shortlists = await prisma.shortlistStage3.findMany({
                 where: { departmentId: dept.id, quarterId: activeQuarter.id },
                 select: { userId: true, user: { select: { id: true, name: true, empCode: true, designation: true } } }

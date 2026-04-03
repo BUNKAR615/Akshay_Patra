@@ -20,12 +20,28 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         const activeQuarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" }, select: { id: true, name: true } });
         if (!activeQuarter) return notFound("No active quarter found");
 
-        const allDepartments = await prisma.department.findMany({
-            orderBy: { name: "asc" }
+        // Only show departments this BM is assigned to via departmentRoleMapping
+        const deptMappings = await prisma.departmentRoleMapping.findMany({
+            where: { userId: user.userId, role: "BRANCH_MANAGER" },
+            include: { department: true },
+            orderBy: { department: { name: "asc" } },
         });
 
-        // For each department, find number of S2 shortlists and how many evaluated by this BM
-        const departmentsData = await Promise.all(allDepartments.map(async (dept) => {
+        // Fallback: if no mappings, use user's primary department
+        if (deptMappings.length === 0) {
+            const bmUser = await prisma.user.findUnique({
+                where: { id: user.userId },
+                select: { departmentId: true, department: true },
+            });
+            if (bmUser?.department) {
+                deptMappings.push({ departmentId: bmUser.departmentId, department: bmUser.department });
+            }
+        }
+
+        const assignedDepts = deptMappings.map(m => m.department);
+
+        // For each assigned department, find number of S2 shortlists and how many evaluated by this BM
+        const departmentsData = await Promise.all(assignedDepts.map(async (dept) => {
             const shortlists = await prisma.shortlistStage2.findMany({
                 where: { departmentId: dept.id, quarterId: activeQuarter.id },
                 select: { userId: true, user: { select: { id: true, name: true, empCode: true, designation: true } } }
