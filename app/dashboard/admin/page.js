@@ -881,7 +881,6 @@ export default function AdminDashboard() {
                                 <option value="SUPERVISOR">Supervisor</option>
                                 <option value="BRANCH_MANAGER">Branch Manager</option>
                                 <option value="CLUSTER_MANAGER">Cluster Manager</option>
-                                <option value="EVALUATOR">All Evaluators</option>
                                 <option value="ADMIN">Admin</option>
                             </select>
                         </div>
