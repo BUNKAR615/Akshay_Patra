@@ -24,23 +24,25 @@ export const GET = withRole(["ADMIN"], async () => {
             },
         });
 
-        const result = departments.map((dept) => {
-            const roles = dept.departmentRoles;
-            const supervisors = roles.filter((r) => r.role === "SUPERVISOR").map(r => r.user);
-            const branchManagers = roles.filter((r) => r.role === "BRANCH_MANAGER").map(r => r.user);
-            const clusterManagers = roles.filter((r) => r.role === "CLUSTER_MANAGER").map(r => r.user);
-            return {
-                id: dept.id,
-                name: dept.name,
-                branch: dept.branch.name,
-                employeeCount: dept._count.users,
-                supervisor: supervisors[0] || null,
-                supervisors,
-                branchManager: branchManagers[0] || null,
-                branchManagers,
-                clusterManagers,
-            };
-        });
+        const result = departments
+            .filter((dept) => dept._count.users > 0 || dept.departmentRoles.length > 0)
+            .map((dept) => {
+                const roles = dept.departmentRoles;
+                const supervisors = roles.filter((r) => r.role === "SUPERVISOR").map(r => r.user);
+                const branchManagers = roles.filter((r) => r.role === "BRANCH_MANAGER").map(r => r.user);
+                const clusterManagers = roles.filter((r) => r.role === "CLUSTER_MANAGER").map(r => r.user);
+                return {
+                    id: dept.id,
+                    name: dept.name,
+                    branch: dept.branch.name,
+                    employeeCount: dept._count.users,
+                    supervisor: supervisors[0] || null,
+                    supervisors,
+                    branchManager: branchManagers[0] || null,
+                    branchManagers,
+                    clusterManagers,
+                };
+            });
 
         return ok({ departments: result });
     } catch (err) {
