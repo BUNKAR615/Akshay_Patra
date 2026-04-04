@@ -6,6 +6,7 @@ import ConfirmDialog from "../../../components/ConfirmDialog";
 import { PageSpinner, SkeletonCard, SkeletonStats } from "../../../components/Skeleton";
 import UserProfileCard from "../../../components/UserProfileCard";
 import Papa from "papaparse";
+import * as XLSX from "xlsx";
 
 async function api(url, opts) {
     const res = await fetch(url, opts);
@@ -137,6 +138,51 @@ export default function AdminDashboard() {
             setEditConfirm(false);
         }
         setEditLoading(false);
+    };
+
+    // Org Structure — expandable departments and person detail modal
+    const [expandedDeptId, setExpandedDeptId] = useState(null);
+    const [personDetail, setPersonDetail] = useState(null);
+
+    const toggleDept = (deptId) => setExpandedDeptId(prev => prev === deptId ? null : deptId);
+
+    const openPersonDetail = (person) => setPersonDetail(person);
+    const closePersonDetail = () => setPersonDetail(null);
+
+    // Excel export — downloads filtered employee list as .xlsx
+    const [excelLoading, setExcelLoading] = useState(false);
+    const downloadExcel = async () => {
+        setExcelLoading(true);
+        try {
+            const params = new URLSearchParams({ page: "1", export: "true" });
+            if (empFilter.search) params.set("search", empFilter.search);
+            if (empFilter.department) params.set("department", empFilter.department);
+            if (empFilter.role) params.set("role", empFilter.role);
+            const d = await api(`/api/admin/employees?${params}`);
+            const rows = (d.employees || []).map((e, i) => ({
+                "S.No": i + 1,
+                "Emp Code": e.empCode || "—",
+                "Name": e.name,
+                "Department": e.department,
+                "Designation": e.designation || "—",
+                "Mobile": e.mobile || "",
+                "Role": (e.roles || [e.role]).join(", ").replace(/_/g, " "),
+                "Evaluator Roles": (e.evaluatorRoles || []).map(er => `${er.role.replace(/_/g, " ")} — ${er.department}`).join("; "),
+            }));
+            const ws = XLSX.utils.json_to_sheet(rows);
+            // Auto-size columns
+            const colWidths = Object.keys(rows[0] || {}).map(key => ({
+                wch: Math.max(key.length, ...rows.map(r => String(r[key] || "").length)) + 2,
+            }));
+            ws["!cols"] = colWidths;
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Employees");
+            const filterLabel = [empFilter.department, empFilter.role?.replace(/_/g, " "), empFilter.search].filter(Boolean).join("_") || "All";
+            XLSX.writeFile(wb, `Employees_${filterLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        } catch (err) {
+            console.error("Excel export error:", err);
+        }
+        setExcelLoading(false);
     };
 
     const fetchEmployees = async (pg = empPage, filters = empFilter) => {
@@ -726,59 +772,119 @@ export default function AdminDashboard() {
                     {orgLoading ? (
                         <div className="flex items-center justify-center h-32"><div className="animate-spin h-8 w-8 border-2 border-[#003087] border-t-transparent rounded-full" /></div>
                     ) : (
-                        <div className="grid grid-cols-1 gap-6">
-                            {orgStructure.map((dept) => (
-                                <div key={dept.id} className="bg-white border border-[#E0E0E0] rounded-xl p-3 sm:p-5 shadow-sm">
-                                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center border-b border-[#E0E0E0] pb-3 mb-4 gap-1">
-                                        <div>
-                                            <h3 className="text-base sm:text-lg font-bold text-[#003087]">{dept.name}</h3>
-                                            <p className="text-[10px] sm:text-xs text-[#333333] uppercase tracking-wider">{dept.branch} Branch &middot; {dept.employeeCount} Employees</p>
+                        <div className="grid grid-cols-1 gap-4">
+                            {orgStructure.map((dept) => {
+                                const isExpanded = expandedDeptId === dept.id;
+                                return (
+                                <div key={dept.id} className={`bg-white border rounded-xl shadow-sm transition-all ${isExpanded ? "border-[#003087] ring-1 ring-[#003087]/20" : "border-[#E0E0E0]"}`}>
+                                    {/* Department Header — clickable */}
+                                    <button onClick={() => toggleDept(dept.id)} className="w-full flex items-center justify-between p-3 sm:p-5 cursor-pointer text-left group">
+                                        <div className="flex-1">
+                                            <h3 className="text-base sm:text-lg font-bold text-[#003087] group-hover:text-[#00843D] transition-colors">{dept.name}</h3>
+                                            <p className="text-[10px] sm:text-xs text-[#666666] uppercase tracking-wider">{dept.branch} Branch &middot; {dept.employeeCount} Employees</p>
                                         </div>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div className="bg-[#F5F5F5] rounded-lg p-3 border border-[#E0E0E0]">
-                                            <p className="text-xs text-[#333333] mb-1 font-medium">Supervisor(s)</p>
-                                            {dept.supervisors?.length > 0 ? (
-                                                <div className="space-y-2">
-                                                    {dept.supervisors.map(sup => (
-                                                        <div key={sup.id}><p className="text-sm text-[#1A1A2E] font-medium">{sup.name}</p><p className="text-xs text-[#666666]">{sup.designation || "No Designation"}</p></div>
-                                                    ))}
+                                        <div className="flex items-center gap-3">
+                                            {/* Role badges summary */}
+                                            <div className="hidden sm:flex gap-1.5">
+                                                {dept.supervisors?.length > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-[#003087] border border-blue-200 font-bold">{dept.supervisors.length} SUP</span>}
+                                                {dept.branchManagers?.length > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-[#00843D] border border-emerald-200 font-bold">{dept.branchManagers.length} BM</span>}
+                                                {dept.clusterManagers?.length > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-50 text-[#F7941D] border border-orange-200 font-bold">{dept.clusterManagers.length} CM</span>}
+                                            </div>
+                                            <svg className={`w-5 h-5 text-[#666666] transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                        </div>
+                                    </button>
+
+                                    {/* Expanded content */}
+                                    {isExpanded && (
+                                        <div className="border-t border-[#E0E0E0] p-3 sm:p-5 space-y-5">
+                                            {/* Role Assignments */}
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <div className="bg-blue-50/60 rounded-lg p-3 border border-blue-100">
+                                                    <p className="text-xs font-bold text-[#003087] mb-2 uppercase tracking-wider">Supervisor(s)</p>
+                                                    {dept.supervisors?.length > 0 ? (
+                                                        <div className="space-y-2">
+                                                            {dept.supervisors.map(sup => (
+                                                                <button key={sup.id} onClick={() => openPersonDetail(sup)} className="w-full text-left p-2 rounded-lg hover:bg-white transition-colors cursor-pointer group/person">
+                                                                    <p className="text-sm text-[#003087] font-semibold group-hover/person:underline">{sup.name}</p>
+                                                                    <p className="text-xs text-[#666666]">{sup.designation || "—"} {sup.empCode ? `(${sup.empCode})` : ""}</p>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    ) : <p className="text-sm text-[#999999] italic">Not Assigned</p>}
                                                 </div>
-                                            ) : dept.supervisor ? (
-                                                <div><p className="text-sm text-[#1A1A2E] font-medium">{dept.supervisor.name}</p><p className="text-xs text-[#666666]">{dept.supervisor.designation || "No Designation"}</p></div>
-                                            ) : (
-                                                <p className="text-sm text-[#999999] italic">Not Assigned</p>
-                                            )}
-                                        </div>
-                                        <div className="bg-[#F5F5F5] rounded-lg p-3 border border-[#E0E0E0]">
-                                            <p className="text-xs text-[#333333] mb-1 font-medium">Branch Manager(s)</p>
-                                            {dept.branchManagers?.length > 0 ? (
-                                                <div className="space-y-2">
-                                                    {dept.branchManagers.map(bm => (
-                                                        <div key={bm.id}><p className="text-sm text-[#1A1A2E] font-medium">{bm.name}</p><p className="text-xs text-[#666666]">{bm.designation || "No Designation"}</p></div>
-                                                    ))}
+                                                <div className="bg-emerald-50/60 rounded-lg p-3 border border-emerald-100">
+                                                    <p className="text-xs font-bold text-[#00843D] mb-2 uppercase tracking-wider">Branch Manager(s)</p>
+                                                    {dept.branchManagers?.length > 0 ? (
+                                                        <div className="space-y-2">
+                                                            {dept.branchManagers.map(bm => (
+                                                                <button key={bm.id} onClick={() => openPersonDetail(bm)} className="w-full text-left p-2 rounded-lg hover:bg-white transition-colors cursor-pointer group/person">
+                                                                    <p className="text-sm text-[#00843D] font-semibold group-hover/person:underline">{bm.name}</p>
+                                                                    <p className="text-xs text-[#666666]">{bm.designation || "—"} {bm.empCode ? `(${bm.empCode})` : ""}</p>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    ) : <p className="text-sm text-[#999999] italic">Not Assigned</p>}
                                                 </div>
-                                            ) : dept.branchManager ? (
-                                                <div><p className="text-sm text-[#1A1A2E] font-medium">{dept.branchManager.name}</p><p className="text-xs text-[#666666]">{dept.branchManager.designation || "No Designation"}</p></div>
-                                            ) : (
-                                                <p className="text-sm text-[#999999] italic">Not Assigned</p>
-                                            )}
-                                        </div>
-                                        <div className="bg-[#F5F5F5] rounded-lg p-3 border border-[#E0E0E0]">
-                                            <p className="text-xs text-[#333333] mb-1 font-medium">Cluster Manager(s)</p>
-                                            {dept.clusterManagers?.length > 0 ? (
-                                                <div className="space-y-2">
-                                                    {dept.clusterManagers.map(cm => (
-                                                        <div key={cm.id}><p className="text-sm text-[#1A1A2E] font-medium">{cm.name}</p><p className="text-xs text-[#666666]">{cm.designation || "No Designation"}</p></div>
-                                                    ))}
+                                                <div className="bg-orange-50/60 rounded-lg p-3 border border-orange-100">
+                                                    <p className="text-xs font-bold text-[#E65100] mb-2 uppercase tracking-wider">Cluster Manager(s)</p>
+                                                    {dept.clusterManagers?.length > 0 ? (
+                                                        <div className="space-y-2">
+                                                            {dept.clusterManagers.map(cm => (
+                                                                <button key={cm.id} onClick={() => openPersonDetail(cm)} className="w-full text-left p-2 rounded-lg hover:bg-white transition-colors cursor-pointer group/person">
+                                                                    <p className="text-sm text-[#E65100] font-semibold group-hover/person:underline">{cm.name}</p>
+                                                                    <p className="text-xs text-[#666666]">{cm.designation || "—"} {cm.empCode ? `(${cm.empCode})` : ""}</p>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    ) : <p className="text-sm text-[#999999] italic">Not Assigned</p>}
                                                 </div>
-                                            ) : (
-                                                <p className="text-sm text-[#999999] italic">Not Assigned</p>
-                                            )}
+                                            </div>
+
+                                            {/* Employee List */}
+                                            <div>
+                                                <p className="text-xs font-bold text-[#333333] mb-2 uppercase tracking-wider">All Employees ({dept.employees?.length || 0})</p>
+                                                {dept.employees?.length > 0 ? (
+                                                    <div className="border border-[#E0E0E0] rounded-lg overflow-hidden">
+                                                        <div className="overflow-x-auto">
+                                                            <table className="w-full text-left border-collapse">
+                                                                <thead>
+                                                                    <tr className="bg-[#F5F5F5] border-b border-[#E0E0E0]">
+                                                                        <th className="px-3 py-2 text-[10px] font-bold text-[#666666] uppercase">Emp Code</th>
+                                                                        <th className="px-3 py-2 text-[10px] font-bold text-[#666666] uppercase">Name</th>
+                                                                        <th className="px-3 py-2 text-[10px] font-bold text-[#666666] uppercase">Designation</th>
+                                                                        <th className="px-3 py-2 text-[10px] font-bold text-[#666666] uppercase">Mobile</th>
+                                                                        <th className="px-3 py-2 text-[10px] font-bold text-[#666666] uppercase">Roles</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody className="divide-y divide-[#E0E0E0]">
+                                                                    {dept.employees.map(emp => (
+                                                                        <tr key={emp.id} className="hover:bg-[#FAFAFA] transition-colors">
+                                                                            <td className="px-3 py-2 text-xs text-[#333333] font-mono">{emp.empCode || "—"}</td>
+                                                                            <td className="px-3 py-2">
+                                                                                <button onClick={() => openPersonDetail(emp)} className="text-xs font-bold text-[#003087] hover:underline cursor-pointer text-left">{emp.name}</button>
+                                                                            </td>
+                                                                            <td className="px-3 py-2 text-xs text-[#666666]">{emp.designation || "—"}</td>
+                                                                            <td className="px-3 py-2 text-xs text-[#666666]">{emp.mobile || <span className="text-[#BBB] italic">—</span>}</td>
+                                                                            <td className="px-3 py-2">
+                                                                                <div className="flex flex-wrap gap-1">
+                                                                                    {(emp.roles || [emp.role]).map(r => (
+                                                                                        <span key={r} className={`text-[9px] px-1.5 py-0.5 rounded-full border font-bold uppercase ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-600 border-gray-200" : r === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace(/_/g, " ")}</span>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                ) : <p className="text-sm text-[#999999] italic">No employees in this department</p>}
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -978,6 +1084,10 @@ export default function AdminDashboard() {
                                 <option value="CLUSTER_MANAGER">Cluster Manager</option>
                                 <option value="ADMIN">Admin</option>
                             </select>
+                            <button onClick={downloadExcel} disabled={excelLoading} className="col-span-2 sm:col-span-1 h-10 px-4 bg-[#00843D] hover:bg-[#006B32] text-white text-xs sm:text-sm font-bold rounded-lg flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-60">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                {excelLoading ? "Exporting..." : "Download Excel"}
+                            </button>
                         </div>
                     </div>
                     <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm">
@@ -1092,6 +1202,81 @@ export default function AdminDashboard() {
                     </div>
                 )
             }
+            {/* ═══════ PERSON DETAIL MODAL ═══════ */}
+            {personDetail && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-[#E0E0E0]">
+                        <div className="px-6 py-5 border-b border-[#E0E0E0] flex items-center justify-between">
+                            <h2 className="text-lg font-bold text-[#003087]">Employee Details</h2>
+                            <button onClick={closePersonDetail} className="text-[#666666] hover:text-[#333333] transition-colors cursor-pointer">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                        <div className="px-6 py-5 space-y-4">
+                            {/* Avatar + Name */}
+                            <div className="flex items-center gap-4">
+                                <div className="h-14 w-14 rounded-full bg-[#E3F2FD] flex items-center justify-center text-[#003087] font-bold text-xl border-2 border-[#90CAF9] shrink-0">
+                                    {personDetail.name?.charAt(0)?.toUpperCase()}
+                                </div>
+                                <div>
+                                    <p className="text-lg font-bold text-[#003087]">{personDetail.name}</p>
+                                    {personDetail.mappedRole && (
+                                        <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase ${personDetail.mappedRole === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : personDetail.mappedRole === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : personDetail.mappedRole === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-gray-50 text-gray-600 border-gray-200"}`}>{personDetail.mappedRole.replace(/_/g, " ")}</span>
+                                    )}
+                                </div>
+                            </div>
+                            {/* Details grid */}
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                                <div>
+                                    <p className="text-[10px] text-[#999999] font-bold uppercase tracking-wider">Emp Code</p>
+                                    <p className="text-sm font-semibold text-[#333333]">{personDetail.empCode || "—"}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] text-[#999999] font-bold uppercase tracking-wider">Designation</p>
+                                    <p className="text-sm font-semibold text-[#333333]">{personDetail.designation || "—"}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] text-[#999999] font-bold uppercase tracking-wider">Email</p>
+                                    <p className="text-sm font-semibold text-[#333333] truncate">{personDetail.email || "—"}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] text-[#999999] font-bold uppercase tracking-wider">Mobile</p>
+                                    <p className="text-sm font-semibold text-[#333333]">{personDetail.mobile ? <a href={`tel:${personDetail.mobile}`} className="text-[#003087] hover:underline">{personDetail.mobile}</a> : <span className="text-[#BBB] italic">Not provided</span>}</p>
+                                </div>
+                            </div>
+                            {/* Roles */}
+                            {personDetail.roles?.length > 0 && (
+                                <div>
+                                    <p className="text-[10px] text-[#999999] font-bold uppercase tracking-wider mb-1.5">Roles</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {personDetail.roles.map(r => (
+                                            <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-600 border-gray-200" : r === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace(/_/g, " ")}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            {/* Evaluator roles */}
+                            {personDetail.evaluatorRoles?.length > 0 && (
+                                <div>
+                                    <p className="text-[10px] text-[#999999] font-bold uppercase tracking-wider mb-1.5">Evaluator Assignments</p>
+                                    <div className="space-y-1.5">
+                                        {personDetail.evaluatorRoles.map((er, i) => (
+                                            <div key={i} className="flex items-center gap-2">
+                                                <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase ${er.role === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : er.role === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : "bg-orange-50 text-[#F7941D] border-orange-200"}`}>{er.role.replace(/_/g, " ")}</span>
+                                                <span className="text-xs text-[#333333]">{er.department}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="px-6 py-4 border-t border-[#E0E0E0]">
+                            <button onClick={closePersonDetail} className="w-full py-2.5 bg-[#003087] hover:bg-[#00843D] text-white rounded-xl text-sm font-semibold transition-colors cursor-pointer">Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* ═══════ EDIT EMPLOYEE MODAL ═══════ */}
             {editEmp && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

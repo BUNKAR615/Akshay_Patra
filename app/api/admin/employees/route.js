@@ -21,7 +21,8 @@ export const GET = withRole(["ADMIN"], async (request) => {
         const department = searchParams.get("department") ?? "";
         const role = searchParams.get("role") ?? "";
         const page = parseInt(searchParams.get("page") ?? "1");
-        const limit = 50;
+        const isExport = searchParams.get("export") === "true";
+        const limit = isExport ? 10000 : 50;
 
         const where = {};
         const andConditions = [];
