@@ -400,12 +400,34 @@ model EmployeeQuarterQuestions {
   @@map("employee_quarter_questions")
 }
 
+/// ArchivedEmployee — soft-deleted employees with reason for leaving
+model ArchivedEmployee {
+  id             String   @id @default(cuid())
+  empCode        String?
+  name           String
+  email          String
+  mobile         String?
+  designation    String?
+  department     String
+  joiningDate    DateTime?
+  removalDate    DateTime @default(now())
+  reasonLeaving  String
+  archivedBy     String
+  originalUserId String?
+  createdAt      DateTime @default(now())
+
+  @@index([department])
+  @@index([removalDate])
+  @@map("archived_employees")
+}
+
 enum Role {
   EMPLOYEE
   SUPERVISOR
   BRANCH_MANAGER
   CLUSTER_MANAGER
   ADMIN
+  HR_ADMIN
 }
 
 enum QuarterStatus {

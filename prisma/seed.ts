@@ -58,9 +58,10 @@ async function main() {
       continue;
     }
 
-    // RISHPAL KUMAWAT: ADMIN + SUPERVISOR only, NOT EMPLOYEE
+    // RISHPAL KUMAWAT: full ADMIN, CHETAN SINGH BHATI: HR_ADMIN
     const isRishpal = emp.empCode === '1800349';
-    const userRole = isRishpal ? 'ADMIN' : 'EMPLOYEE';
+    const isChetan = emp.empCode === '5100029';
+    const userRole = isRishpal ? 'ADMIN' : isChetan ? 'HR_ADMIN' : 'EMPLOYEE';
 
     const hashed = await bcrypt.hash(emp.password, SALT_ROUNDS);
     await prisma.user.upsert({
