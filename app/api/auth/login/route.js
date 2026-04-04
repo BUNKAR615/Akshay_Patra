@@ -6,7 +6,7 @@ import prisma from "../../../../lib/prisma";
 import { signToken, signRefreshToken } from "../../../../lib/auth";
 import { ok, fail, serverError, validateBody } from "../../../../lib/api-response";
 import { loginSchema } from "../../../../lib/validators";
-import { checkLoginRateLimit, getClientIp } from "../../../../lib/rate-limit";
+import { getClientIp } from "../../../../lib/rate-limit";
 import { sanitize } from "../../../../lib/sanitize";
 
 /**
@@ -22,12 +22,6 @@ import { sanitize } from "../../../../lib/sanitize";
  */
 export async function POST(request) {
     try {
-        // ── Rate limit check ──
-        const rateLimitResponse = await checkLoginRateLimit(request);
-        if (rateLimitResponse) {
-            return rateLimitResponse;
-        }
-
         const { data, error } = await validateBody(request, loginSchema);
         if (error) {
             return error;
