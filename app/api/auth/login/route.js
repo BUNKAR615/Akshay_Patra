@@ -136,17 +136,18 @@ export async function POST(request) {
             return response;
         }
 
-        // Single role
+        // Single role — use the resolved role (may differ from user.role for supervisor-only users)
+        const resolvedRole = allRoles[0];
         const tokenPayload = {
             userId: user.id,
             empCode: user.empCode,
-            role: user.role,
+            role: resolvedRole,
             departmentIds,
         };
         const token = await signToken(tokenPayload);
         const refreshToken = await signRefreshToken(tokenPayload);
 
-        const response = ok({ token, user: safeUser });
+        const response = ok({ token, user: { ...safeUser, role: resolvedRole } });
 
         // Access token cookie — 8 hours
         response.cookies.set("token", token, {
