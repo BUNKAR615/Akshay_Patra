@@ -123,7 +123,7 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
                             selfScore: wSelf?.normalizedScore || 0, supervisorScore: wSup?.supervisorNormalized || 0, bmScore: wBM?.bmNormalized || 0,
                             cmScore: winner.cmNormalized, finalScore: winner.finalScore,
                         },
-                        include: { user: { select: { id: true, name: true, email: true } } },
+                        include: { user: { select: { id: true, name: true } } },
                     });
                     bestEmployeeSelected = true;
                 }

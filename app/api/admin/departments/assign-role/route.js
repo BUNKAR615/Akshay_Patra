@@ -24,7 +24,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         // Validate user exists and role matches
         const targetUser = await prisma.user.findUnique({
             where: { id: data.userId },
-            select: { id: true, name: true, role: true, email: true },
+            select: { id: true, name: true, role: true },
         });
         if (!targetUser) return fail("User not found");
         if (targetUser.role !== data.role) {
@@ -39,11 +39,11 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         if (data.role === "SUPERVISOR" || data.role === "BRANCH_MANAGER") {
             const existing = await prisma.departmentRoleMapping.findFirst({
                 where: { departmentId: data.departmentId, role: data.role },
-                include: { user: { select: { name: true, email: true } } },
+                include: { user: { select: { name: true } } },
             });
             if (existing && existing.userId !== data.userId) {
                 return conflict(
-                    `Department "${dept.name}" already has a ${data.role}: ${existing.user.name} (${existing.user.email}). Remove them first.`
+                    `Department "${dept.name}" already has a ${data.role}: ${existing.user.name}. Remove them first.`
                 );
             }
         }

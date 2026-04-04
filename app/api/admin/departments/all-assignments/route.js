@@ -19,14 +19,13 @@ export const GET = withRole(["ADMIN"], async () => {
                 name: true,
                 branch: { select: { name: true } },
                 departmentRoles: {
-                    include: { user: { select: { id: true, empCode: true, name: true, email: true, designation: true, mobile: true } } },
+                    include: { user: { select: { id: true, empCode: true, name: true, designation: true, mobile: true } } },
                 },
                 users: {
                     select: {
                         id: true,
                         empCode: true,
                         name: true,
-                        email: true,
                         designation: true,
                         mobile: true,
                         role: true,
@@ -73,7 +72,6 @@ export const GET = withRole(["ADMIN"], async () => {
                         id: u.id,
                         empCode: u.empCode,
                         name: u.name,
-                        email: u.email,
                         designation: u.designation || null,
                         mobile: u.mobile || null,
                         role: u.role,

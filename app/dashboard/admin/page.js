@@ -1236,10 +1236,6 @@ export default function AdminDashboard() {
                                     <p className="text-sm font-semibold text-[#333333]">{personDetail.designation || "—"}</p>
                                 </div>
                                 <div>
-                                    <p className="text-[10px] text-[#999999] font-bold uppercase tracking-wider">Email</p>
-                                    <p className="text-sm font-semibold text-[#333333] truncate">{personDetail.email || "—"}</p>
-                                </div>
-                                <div>
                                     <p className="text-[10px] text-[#999999] font-bold uppercase tracking-wider">Mobile</p>
                                     <p className="text-sm font-semibold text-[#333333]">{personDetail.mobile ? <a href={`tel:${personDetail.mobile}`} className="text-[#003087] hover:underline">{personDetail.mobile}</a> : <span className="text-[#BBB] italic">Not provided</span>}</p>
                                 </div>

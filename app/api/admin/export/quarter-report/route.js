@@ -42,7 +42,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
         // ── Gather all employee data ──
         const employees = await prisma.user.findMany({
             where: { role: "EMPLOYEE" },
-            select: { id: true, name: true, email: true, departmentId: true, department: { select: { name: true } } },
+            select: { id: true, name: true, departmentId: true, department: { select: { name: true } } },
             orderBy: { name: "asc" },
         });
 
@@ -89,7 +89,6 @@ export const GET = withRole(["ADMIN"], async (request) => {
             const activeEval = cmEval || bmEval || supEval;
             report.push({
                 employeeName: emp.name,
-                email: emp.email,
                 department: emp.department.name,
                 departmentId: emp.departmentId,
                 selfNorm: selfA.normalizedScore,
@@ -126,7 +125,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
         const bestEmployees = await prisma.bestEmployee.findMany({
             where: { quarterId },
             include: {
-                user: { select: { id: true, name: true, email: true } },
+                user: { select: { id: true, name: true } },
                 department: { select: { name: true } },
             },
         });
@@ -139,7 +138,6 @@ export const GET = withRole(["ADMIN"], async (request) => {
             employees: report,
             winners: bestEmployees.map(be => ({
                 name: be.user.name,
-                email: be.user.email,
                 department: be.department.name,
                 selfScore: be.selfScore,
                 supervisorScore: be.supervisorScore,
@@ -150,7 +148,6 @@ export const GET = withRole(["ADMIN"], async (request) => {
             // Backward compat
             winner: bestEmployees.length > 0 ? {
                 name: bestEmployees[0].user.name,
-                email: bestEmployees[0].user.email,
                 department: bestEmployees[0].department.name,
                 selfScore: bestEmployees[0].selfScore,
                 supervisorScore: bestEmployees[0].supervisorScore,

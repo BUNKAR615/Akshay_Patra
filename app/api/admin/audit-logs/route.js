@@ -36,7 +36,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
                 orderBy: { createdAt: "desc" },
                 skip: (page - 1) * limit,
                 take: limit,
-                include: { user: { select: { id: true, name: true, email: true, role: true } } },
+                include: { user: { select: { id: true, name: true, role: true } } },
             }),
             prisma.auditLog.count({ where }),
         ]);

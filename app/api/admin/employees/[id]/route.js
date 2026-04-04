@@ -64,7 +64,6 @@ export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
             data: {
                 empCode: employee.empCode,
                 name: employee.name,
-                email: employee.email,
                 mobile: employee.mobile,
                 designation: employee.designation,
                 department: employee.department?.name || "Unknown",

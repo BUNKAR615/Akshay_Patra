@@ -151,7 +151,6 @@ async function main() {
       create: {
         empCode: emp.empCode,
         name: emp.name,
-        email: `${emp.empCode}@akshayapatra.org`,
         password: hashed,
         role: 'EMPLOYEE',
         designation: emp.designation,

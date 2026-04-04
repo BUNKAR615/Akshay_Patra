@@ -89,7 +89,6 @@ export const GET = withRole(["ADMIN"], async (request) => {
                     id: true,
                     empCode: true,
                     name: true,
-                    email: true,
                     role: true,
                     designation: true,
                     mobile: true,
@@ -131,7 +130,6 @@ export const GET = withRole(["ADMIN"], async (request) => {
                 id: u.id,
                 empCode: u.empCode,
                 name: u.name,
-                email: u.email,
                 role: u.role,
                 roles,
                 designation: u.designation || "—",
@@ -247,10 +245,6 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             }
         }
 
-        // Generate email from name
-        const emailBase = name.toLowerCase().replace(/\s+/g, ".").replace(/[^a-z.]/g, "");
-        const email = `${emailBase}.${Date.now()}@akshayapatra.org`;
-
         // Generate default password: FirstName_lastTwoDigitsOfEmpCode
         const firstName = name.split(" ")[0];
         const codeSuffix = empCode ? empCode.slice(-2) : String(Date.now()).slice(-2);
@@ -261,7 +255,6 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             data: {
                 empCode: empCode || null,
                 name: name.toUpperCase(),
-                email,
                 password: hashedPassword,
                 role: "EMPLOYEE",
                 departmentId: dept.id,
@@ -269,7 +262,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
                 mobile: mobile || null,
             },
             select: {
-                id: true, empCode: true, name: true, email: true,
+                id: true, empCode: true, name: true,
                 role: true, designation: true, mobile: true,
                 department: { select: { name: true } },
             },

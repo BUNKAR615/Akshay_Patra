@@ -193,7 +193,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             if (deptLimits.autoWinner) {
                 const singleEmployee = await prisma.user.findFirst({
                     where: { departmentId: dept.id, role: "EMPLOYEE" },
-                    select: { id: true, name: true, email: true },
+                    select: { id: true, name: true },
                 });
 
                 if (singleEmployee) {

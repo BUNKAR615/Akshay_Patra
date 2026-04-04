@@ -23,7 +23,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
 
         const roles = await prisma.departmentRoleMapping.findMany({
             where: { departmentId },
-            include: { user: { select: { id: true, name: true, email: true, designation: true, role: true } } },
+            include: { user: { select: { id: true, name: true, designation: true, role: true } } },
         });
 
         const supervisor = roles.find((r) => r.role === "SUPERVISOR")?.user || null;
