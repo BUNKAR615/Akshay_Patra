@@ -131,6 +131,21 @@ export default function SupervisorDashboard() {
                 />
             )}
 
+            {/* HR Management link — only for authorized HR users */}
+            {user && (user.empCode === "1800349" || user.empCode === "5100029") && (
+                <a href="/dashboard/hr" className="block bg-[#FFF3E0] border border-[#FFB74D] rounded-xl p-4 mb-4 shadow-sm hover:bg-[#FFE0B2] transition-colors">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center border border-[#FFB74D] text-[#F57C00]">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        </div>
+                        <div>
+                            <p className="text-sm font-bold text-[#E65100]">HR Employee Management</p>
+                            <p className="text-xs text-[#F57C00]">Add or remove employees, view removed history</p>
+                        </div>
+                    </div>
+                </a>
+            )}
+
             {/* Department Selector — shown only if supervisor has multiple departments */}
             {isMultiDept && (
                 <div className="bg-[#E3F2FD] border border-[#90CAF9] rounded-xl p-5 mb-8 shadow-sm">

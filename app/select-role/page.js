@@ -9,7 +9,6 @@ const ROLE_REDIRECTS = {
     BRANCH_MANAGER: "/dashboard/branch-manager",
     CLUSTER_MANAGER: "/dashboard/cluster-manager",
     ADMIN: "/dashboard/admin",
-    HR_ADMIN: "/dashboard/admin",
 };
 
 const ROLE_LABELS = {
@@ -18,7 +17,6 @@ const ROLE_LABELS = {
     BRANCH_MANAGER: "Branch Manager",
     CLUSTER_MANAGER: "Cluster Manager",
     ADMIN: "Admin",
-    HR_ADMIN: "HR Admin",
 };
 
 const ROLE_ICONS = {

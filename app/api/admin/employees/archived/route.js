@@ -9,7 +9,9 @@ import { NextResponse } from "next/server";
  * GET /api/admin/employees/archived
  * Returns list of archived (removed) employees with their details.
  */
-export const GET = withRole(["ADMIN", "HR_ADMIN"], async () => {
+const HR_ALLOWED = ["1800349", "5100029"];
+
+export const GET = withRole(["ADMIN"], async () => {
     try {
         const archived = await prisma.archivedEmployee.findMany({
             orderBy: { removalDate: "desc" },
@@ -26,4 +28,4 @@ export const GET = withRole(["ADMIN", "HR_ADMIN"], async () => {
             { status: 500 }
         );
     }
-});
+}, { allowedEmpCodes: HR_ALLOWED });

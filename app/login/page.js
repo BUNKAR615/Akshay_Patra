@@ -9,7 +9,6 @@ const ROLE_REDIRECTS = {
     BRANCH_MANAGER: "/dashboard/branch-manager",
     CLUSTER_MANAGER: "/dashboard/cluster-manager",
     ADMIN: "/dashboard/admin",
-    HR_ADMIN: "/dashboard/admin",
 };
 
 export default function LoginPage() {

@@ -427,7 +427,6 @@ enum Role {
   BRANCH_MANAGER
   CLUSTER_MANAGER
   ADMIN
-  HR_ADMIN
 }
 
 enum QuarterStatus {

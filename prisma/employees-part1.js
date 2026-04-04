@@ -44,7 +44,7 @@ module.exports = [
   { empCode: '1800996', name: 'CHANDESHWAR THAKUR', department: 'Production', designation: 'Operator', role: 'EMPLOYEE', password: 'Chandeshwar_96' },
   { empCode: '1802330', name: 'CHANDRASHEKHAR', department: 'Distribution', designation: 'Supervisor', role: 'SUPERVISOR', password: 'Chandrashekhar_30' },
   { empCode: '1802045', name: 'CHARAT KUMAR DHOBI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Charat_45' },
-  { empCode: '5100029', name: 'CHETAN SINGH BHATI', department: 'Human Resources', designation: 'Senior Executive - HR', role: 'HR_ADMIN', password: 'Chetan_29' },
+  { empCode: '5100029', name: 'CHETAN SINGH BHATI', department: 'Human Resources', designation: 'Senior Executive - HR', role: 'EMPLOYEE', password: 'Chetan_29' },
   { empCode: '1802130', name: 'CHHOTI DEVI', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Chhoti_30' },
   { empCode: '1802129', name: 'CHHOTURAM GUJAR', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Chhoturam_29' },
   { empCode: '1800122', name: 'CHOTA DEVI REGAR', department: 'Production', designation: 'Helper', role: 'EMPLOYEE', password: 'Chota_22' },

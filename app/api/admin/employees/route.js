@@ -7,7 +7,7 @@ import { withRole } from "../../../../lib/withRole";
 import { NextResponse } from "next/server";
 
 // Only these two empCodes can add/remove employees
-const HR_ALLOWED = ["1800349", "5100029"]; // Rishpal Kumar (ADMIN), Chetan Singh Bhati (HR_ADMIN)
+const HR_ALLOWED = ["1800349", "5100029"]; // Rishpal Kumar (ADMIN), Chetan Singh Bhati (Supervisor + HR)
 
 /**
  * GET /api/admin/employees
@@ -199,13 +199,13 @@ export const GET = withRole(["ADMIN"], async (request) => {
             { status: 500 }
         );
     }
-});
+}, { allowedEmpCodes: HR_ALLOWED });
 
 /**
  * POST /api/admin/employees
  * Add a new employee. Only Rishpal Kumar and Chetan Singh Bhati can do this.
  */
-export const POST = withRole(["ADMIN", "HR_ADMIN"], async (request, { user }) => {
+export const POST = withRole(["ADMIN"], async (request, { user }) => {
     try {
         if (!HR_ALLOWED.includes(user.empCode)) {
             return NextResponse.json(
@@ -302,4 +302,4 @@ export const POST = withRole(["ADMIN", "HR_ADMIN"], async (request, { user }) =>
             { status: 500 }
         );
     }
-});
+}, { allowedEmpCodes: HR_ALLOWED });

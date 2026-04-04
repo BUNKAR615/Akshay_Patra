@@ -62,18 +62,7 @@ export default function AdminDashboard() {
     const [empLoading, setEmpLoading] = useState(false);
     const [empFilter, setEmpFilter] = useState({ search: "", department: "", role: "" });
 
-    // Employee management (add/remove) — only for Rishpal & Chetan
-    const [showAddEmp, setShowAddEmp] = useState(false);
-    const [addEmpForm, setAddEmpForm] = useState({ name: "", mobile: "", departmentName: "", joiningDate: "", reason: "", empCode: "", designation: "" });
-    const [addEmpMsg, setAddEmpMsg] = useState({ type: "", text: "" });
-    const [addEmpLoading, setAddEmpLoading] = useState(false);
-    const [removeEmpId, setRemoveEmpId] = useState(null);
-    const [removeReason, setRemoveReason] = useState("");
-    const [removeLoading, setRemoveLoading] = useState(false);
-    const [archivedEmps, setArchivedEmps] = useState([]);
-    const [archivedLoading, setArchivedLoading] = useState(false);
-    const [empSubTab, setEmpSubTab] = useState("active"); // "active" | "archived"
-
+    // Employee management link for admin (Rishpal)
     const canManageEmployees = user && (user.empCode === "1800349" || user.empCode === "5100029");
 
     const fetchEmployees = async (pg = empPage, filters = empFilter) => {
@@ -93,51 +82,6 @@ export default function AdminDashboard() {
         setEmpLoading(false);
     };
 
-    const fetchArchived = async () => {
-        setArchivedLoading(true);
-        try {
-            const d = await api("/api/admin/employees/archived");
-            setArchivedEmps(d.archived);
-        } catch { }
-        setArchivedLoading(false);
-    };
-
-    const handleAddEmployee = async () => {
-        setAddEmpLoading(true);
-        setAddEmpMsg({ type: "", text: "" });
-        try {
-            const d = await api("/api/admin/employees", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(addEmpForm),
-            });
-            setAddEmpMsg({ type: "success", text: `${d.employee.name} added. Default password: ${d.defaultPassword}` });
-            setAddEmpForm({ name: "", mobile: "", departmentName: "", joiningDate: "", reason: "", empCode: "", designation: "" });
-            fetchEmployees(1);
-        } catch (err) {
-            setAddEmpMsg({ type: "error", text: err.message || "Failed to add employee" });
-        }
-        setAddEmpLoading(false);
-    };
-
-    const handleRemoveEmployee = async () => {
-        if (!removeEmpId || !removeReason) return;
-        setRemoveLoading(true);
-        try {
-            await api(`/api/admin/employees/${removeEmpId}`, {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ reasonLeaving: removeReason }),
-            });
-            setRemoveEmpId(null);
-            setRemoveReason("");
-            fetchEmployees(1);
-        } catch (err) {
-            alert(err.message || "Failed to remove employee");
-        }
-        setRemoveLoading(false);
-    };
-
     // Logs
     const [logs, setLogs] = useState([]);
     const [logPage, setLogPage] = useState(1);
@@ -150,7 +94,6 @@ export default function AdminDashboard() {
             try {
                 const d = await api("/api/auth/me");
                 setUser(d.user);
-                if (d.user.role === "HR_ADMIN") setTab("employees");
             } catch { }
             setLoading(false);
         })();
@@ -376,16 +319,12 @@ export default function AdminDashboard() {
         } catch { }
     };
 
-    useEffect(() => { if (tab === "employees") { fetchEmployees(1); if (empSubTab === "archived") fetchArchived(); } }, [tab]);
+    useEffect(() => { if (tab === "employees") fetchEmployees(1); }, [tab]);
     useEffect(() => { if (tab === "employees") { const t = setTimeout(() => fetchEmployees(1, empFilter), 300); return () => clearTimeout(t); } }, [empFilter.search, empFilter.department, empFilter.role]);
-    useEffect(() => { if (tab === "employees" && empSubTab === "archived") fetchArchived(); }, [empSubTab]);
 
     useEffect(() => { if (tab === "logs") fetchLogs(); }, [tab]);
 
-    const isHrAdmin = user?.role === "HR_ADMIN";
-    const TABS = isHrAdmin ? [
-        { id: "employees", label: "All Employees" },
-    ] : [
+    const TABS = [
         { id: "summary", label: "Summary" },
         { id: "org", label: "Org Structure" },
         { id: "quarter", label: "Quarter" },
@@ -932,191 +871,81 @@ export default function AdminDashboard() {
             {/* ═══════ EMPLOYEES TAB ═══════ */}
             {tab === "employees" && (
                 <div className="space-y-6">
-                    {/* Sub-tabs: Active / Archived + Add button */}
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <div className="flex gap-2">
-                            <button onClick={() => setEmpSubTab("active")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all cursor-pointer ${empSubTab === "active" ? "bg-[#003087] text-white" : "bg-[#F5F5F5] text-[#333333] border border-[#E0E0E0]"}`}>Active Employees</button>
-                            <button onClick={() => setEmpSubTab("archived")} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all cursor-pointer ${empSubTab === "archived" ? "bg-[#003087] text-white" : "bg-[#F5F5F5] text-[#333333] border border-[#E0E0E0]"}`}>Removed History</button>
+                    {/* HR Management link for authorized users */}
+                    {canManageEmployees && (
+                        <a href="/dashboard/hr" className="block bg-[#FFF3E0] border border-[#FFB74D] rounded-xl p-4 shadow-sm hover:bg-[#FFE0B2] transition-colors">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center border border-[#FFB74D] text-[#F57C00]">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                </div>
+                                <div>
+                                    <p className="text-sm font-bold text-[#E65100]">HR Employee Management</p>
+                                    <p className="text-xs text-[#F57C00]">Add or remove employees, view removed history</p>
+                                </div>
+                            </div>
+                        </a>
+                    )}
+
+                    <div className="bg-white border rounded-xl p-3 sm:p-5 shadow-sm border-[#E0E0E0] space-y-3 sm:space-y-0 sm:flex sm:flex-row sm:gap-4 sm:justify-between sm:items-center">
+                        <div className="relative w-full sm:flex-1 sm:max-w-xs">
+                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#999999]"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></span>
+                            <input type="text" placeholder="Search name or code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-10 pl-10 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
                         </div>
-                        {canManageEmployees && empSubTab === "active" && (
-                            <button onClick={() => { setShowAddEmp(!showAddEmp); setAddEmpMsg({ type: "", text: "" }); }} className="px-4 py-2 bg-[#00843D] text-white rounded-lg text-sm font-bold hover:bg-[#006B32] transition-colors cursor-pointer">
-                                {showAddEmp ? "Cancel" : "+ Add Employee"}
-                            </button>
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-4 sm:w-auto">
+                            <select value={empFilter.department} onChange={(e) => setEmpFilter({ ...empFilter, department: e.target.value })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-48">
+                                <option value="">All Departments</option>
+                                {empDepartments.map(d => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                            <select value={empFilter.role} onChange={(e) => setEmpFilter({ ...empFilter, role: e.target.value })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-40">
+                                <option value="">All Roles</option>
+                                <option value="EMPLOYEE">Employee</option>
+                                <option value="SUPERVISOR">Supervisor</option>
+                                <option value="BRANCH_MANAGER">Branch Manager</option>
+                                <option value="CLUSTER_MANAGER">Cluster Manager</option>
+                                <option value="ADMIN">Admin</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-[#F5F5F5] border-b border-[#E0E0E0]">
+                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Emp Code</th>
+                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Name</th>
+                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Department</th>
+                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Designation</th>
+                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Roles</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[#E0E0E0]">
+                                    {empLoading ? <tr><td colSpan={5} className="px-5 py-8 text-center text-[#666666]">Loading...</td></tr> :
+                                    employees.length === 0 ? <tr><td colSpan={5} className="px-5 py-8 text-center text-[#666666]">No employees found</td></tr> :
+                                    employees.map(e => {
+                                        const roles = e.roles || [e.role];
+                                        return (
+                                        <tr key={e.id} className="hover:bg-[#FAFAFA] transition-colors">
+                                            <td className="px-5 py-3 text-sm text-[#333333] font-mono">{e.empCode || "—"}</td>
+                                            <td className="px-5 py-3 text-sm font-bold text-[#003087]">{e.name}</td>
+                                            <td className="px-5 py-3 text-sm text-[#333333]">{e.department}{e.evaluatorRoles?.length > 0 && <span className="block text-[10px] text-[#666666] mt-0.5">{e.evaluatorRoles.map(er => `${er.role.replace("_"," ")} — ${er.department}`).join(", ")}</span>}</td>
+                                            <td className="px-5 py-3 text-sm text-[#666666]">{e.designation}</td>
+                                            <td className="px-5 py-3"><div className="flex flex-wrap gap-1">{roles.map(r => <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-700 border-gray-200" : r === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace("_", " ")}</span>)}</div></td>
+                                        </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                        {!empLoading && empTotal > 50 && (
+                            <div className="px-5 py-3 border-t border-[#E0E0E0] flex items-center justify-between">
+                                <span className="text-xs text-[#666666]">Showing {(empPage-1)*50+1}-{Math.min(empPage*50,empTotal)} of {empTotal}</span>
+                                <div className="flex gap-1">
+                                    <button disabled={empPage===1} onClick={()=>fetchEmployees(empPage-1,empFilter)} className="px-3 py-1 border border-[#E0E0E0] rounded text-sm disabled:opacity-50 cursor-pointer">Prev</button>
+                                    <button disabled={empPage===empTotalPages} onClick={()=>fetchEmployees(empPage+1,empFilter)} className="px-3 py-1 border border-[#E0E0E0] rounded text-sm disabled:opacity-50 cursor-pointer">Next</button>
+                                </div>
+                            </div>
                         )}
                     </div>
-
-                    {/* ── Add Employee Form ── */}
-                    {canManageEmployees && showAddEmp && empSubTab === "active" && (
-                        <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 shadow-sm space-y-4">
-                            <h3 className="text-lg font-bold text-[#003087]">Add New Employee</h3>
-                            {addEmpMsg.text && (
-                                <div className={`p-3 rounded-lg text-sm font-medium ${addEmpMsg.type === "success" ? "bg-green-50 text-green-800 border border-green-200" : "bg-red-50 text-red-800 border border-red-200"}`}>{addEmpMsg.text}</div>
-                            )}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1">Name *</label>
-                                    <input type="text" value={addEmpForm.name} onChange={(e) => setAddEmpForm({ ...addEmpForm, name: e.target.value })} placeholder="Full name" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1">Employee Code</label>
-                                    <input type="text" value={addEmpForm.empCode} onChange={(e) => setAddEmpForm({ ...addEmpForm, empCode: e.target.value })} placeholder="e.g. 5100030" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1">Mobile Number</label>
-                                    <input type="text" value={addEmpForm.mobile} onChange={(e) => setAddEmpForm({ ...addEmpForm, mobile: e.target.value })} placeholder="Phone number" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1">Department *</label>
-                                    <select value={addEmpForm.departmentName} onChange={(e) => setAddEmpForm({ ...addEmpForm, departmentName: e.target.value })} className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm">
-                                        <option value="">Select Department</option>
-                                        {empDepartments.map(d => <option key={d} value={d}>{d}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1">Designation</label>
-                                    <input type="text" value={addEmpForm.designation} onChange={(e) => setAddEmpForm({ ...addEmpForm, designation: e.target.value })} placeholder="e.g. Executive" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1">Joining Date</label>
-                                    <input type="date" value={addEmpForm.joiningDate} onChange={(e) => setAddEmpForm({ ...addEmpForm, joiningDate: e.target.value })} className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
-                                </div>
-                                <div className="sm:col-span-2 lg:col-span-3">
-                                    <label className="block text-xs font-bold text-[#666666] mb-1">Reason for Joining</label>
-                                    <input type="text" value={addEmpForm.reason} onChange={(e) => setAddEmpForm({ ...addEmpForm, reason: e.target.value })} placeholder="e.g. New hire, Transfer from another branch" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
-                                </div>
-                            </div>
-                            <button onClick={handleAddEmployee} disabled={addEmpLoading || !addEmpForm.name || !addEmpForm.departmentName} className="px-6 py-2 bg-[#003087] text-white rounded-lg text-sm font-bold hover:bg-[#002266] transition-colors cursor-pointer disabled:opacity-50">
-                                {addEmpLoading ? "Adding..." : "Add Employee"}
-                            </button>
-                        </div>
-                    )}
-
-                    {/* ── Remove Employee Confirmation Modal ── */}
-                    {removeEmpId && (
-                        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-                            <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl space-y-4">
-                                <h3 className="text-lg font-bold text-red-700">Remove Employee</h3>
-                                <p className="text-sm text-[#666666]">This will archive the employee record and remove them from the active list. This action cannot be undone.</p>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1">Reason for Leaving *</label>
-                                    <textarea value={removeReason} onChange={(e) => setRemoveReason(e.target.value)} placeholder="e.g. Resignation, Termination, Transfer" rows={3} className="w-full px-3 py-2 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm resize-none" />
-                                </div>
-                                <div className="flex gap-3 justify-end">
-                                    <button onClick={() => { setRemoveEmpId(null); setRemoveReason(""); }} className="px-4 py-2 border border-[#E0E0E0] rounded-lg text-sm font-bold text-[#333333] cursor-pointer">Cancel</button>
-                                    <button onClick={handleRemoveEmployee} disabled={removeLoading || !removeReason} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 cursor-pointer disabled:opacity-50">
-                                        {removeLoading ? "Removing..." : "Confirm Remove"}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* ── Active Employees View ── */}
-                    {empSubTab === "active" && (
-                        <>
-                            <div className="bg-white border rounded-xl p-3 sm:p-5 shadow-sm border-[#E0E0E0] space-y-3 sm:space-y-0 sm:flex sm:flex-row sm:gap-4 sm:justify-between sm:items-center">
-                                <div className="relative w-full sm:flex-1 sm:max-w-xs">
-                                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#999999]"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></span>
-                                    <input type="text" placeholder="Search name or code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-10 pl-10 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
-                                </div>
-                                <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-4 sm:w-auto">
-                                    <select value={empFilter.department} onChange={(e) => setEmpFilter({ ...empFilter, department: e.target.value })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-48">
-                                        <option value="">All Departments</option>
-                                        {empDepartments.map(d => <option key={d} value={d}>{d}</option>)}
-                                    </select>
-                                    <select value={empFilter.role} onChange={(e) => setEmpFilter({ ...empFilter, role: e.target.value })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-40">
-                                        <option value="">All Roles</option>
-                                        <option value="EMPLOYEE">Employee</option>
-                                        <option value="SUPERVISOR">Supervisor</option>
-                                        <option value="BRANCH_MANAGER">Branch Manager</option>
-                                        <option value="CLUSTER_MANAGER">Cluster Manager</option>
-                                        <option value="ADMIN">Admin</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left border-collapse">
-                                        <thead>
-                                            <tr className="bg-[#F5F5F5] border-b border-[#E0E0E0]">
-                                                <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Emp Code</th>
-                                                <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Name</th>
-                                                <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Department</th>
-                                                <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Designation</th>
-                                                <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Roles</th>
-                                                {canManageEmployees && <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Action</th>}
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-[#E0E0E0]">
-                                            {empLoading ? <tr><td colSpan={canManageEmployees ? 6 : 5} className="px-5 py-8 text-center text-[#666666]">Loading...</td></tr> :
-                                            employees.length === 0 ? <tr><td colSpan={canManageEmployees ? 6 : 5} className="px-5 py-8 text-center text-[#666666]">No employees found</td></tr> :
-                                            employees.map(e => {
-                                                const roles = e.roles || [e.role];
-                                                const isAdminUser = roles.includes("ADMIN") || roles.includes("HR_ADMIN");
-                                                return (
-                                                <tr key={e.id} className="hover:bg-[#FAFAFA] transition-colors">
-                                                    <td className="px-5 py-3 text-sm text-[#333333] font-mono">{e.empCode || "—"}</td>
-                                                    <td className="px-5 py-3 text-sm font-bold text-[#003087]">{e.name}</td>
-                                                    <td className="px-5 py-3 text-sm text-[#333333]">{e.department}{e.evaluatorRoles?.length > 0 && <span className="block text-[10px] text-[#666666] mt-0.5">{e.evaluatorRoles.map(er => `${er.role.replace("_"," ")} — ${er.department}`).join(", ")}</span>}</td>
-                                                    <td className="px-5 py-3 text-sm text-[#666666]">{e.designation}</td>
-                                                    <td className="px-5 py-3"><div className="flex flex-wrap gap-1">{roles.map(r => <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-700 border-gray-200" : r === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace("_", " ")}</span>)}</div></td>
-                                                    {canManageEmployees && (
-                                                        <td className="px-5 py-3">
-                                                            {!isAdminUser && <button onClick={() => setRemoveEmpId(e.id)} className="text-xs px-3 py-1 bg-red-50 text-red-700 border border-red-200 rounded-full font-bold hover:bg-red-100 cursor-pointer">Remove</button>}
-                                                        </td>
-                                                    )}
-                                                </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                                {!empLoading && empTotal > 50 && (
-                                    <div className="px-5 py-3 border-t border-[#E0E0E0] flex items-center justify-between">
-                                        <span className="text-xs text-[#666666]">Showing {(empPage-1)*50+1}-{Math.min(empPage*50,empTotal)} of {empTotal}</span>
-                                        <div className="flex gap-1">
-                                            <button disabled={empPage===1} onClick={()=>fetchEmployees(empPage-1,empFilter)} className="px-3 py-1 border border-[#E0E0E0] rounded text-sm disabled:opacity-50 cursor-pointer">Prev</button>
-                                            <button disabled={empPage===empTotalPages} onClick={()=>fetchEmployees(empPage+1,empFilter)} className="px-3 py-1 border border-[#E0E0E0] rounded text-sm disabled:opacity-50 cursor-pointer">Next</button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </>
-                    )}
-
-                    {/* ── Archived / Removed Employees View ── */}
-                    {empSubTab === "archived" && (
-                        <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm">
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse">
-                                    <thead>
-                                        <tr className="bg-[#F5F5F5] border-b border-[#E0E0E0]">
-                                            <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Emp Code</th>
-                                            <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Name</th>
-                                            <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Department</th>
-                                            <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Designation</th>
-                                            <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Removal Date</th>
-                                            <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Reason</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-[#E0E0E0]">
-                                        {archivedLoading ? <tr><td colSpan={6} className="px-5 py-8 text-center text-[#666666]">Loading...</td></tr> :
-                                        archivedEmps.length === 0 ? <tr><td colSpan={6} className="px-5 py-8 text-center text-[#666666]">No removed employees found</td></tr> :
-                                        archivedEmps.map(a => (
-                                            <tr key={a.id} className="hover:bg-[#FAFAFA] transition-colors">
-                                                <td className="px-5 py-3 text-sm text-[#333333] font-mono">{a.empCode || "—"}</td>
-                                                <td className="px-5 py-3 text-sm font-bold text-[#333333]">{a.name}</td>
-                                                <td className="px-5 py-3 text-sm text-[#333333]">{a.department}</td>
-                                                <td className="px-5 py-3 text-sm text-[#666666]">{a.designation || "—"}</td>
-                                                <td className="px-5 py-3 text-sm text-[#666666]">{new Date(a.removalDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</td>
-                                                <td className="px-5 py-3 text-sm text-[#666666]">{a.reasonLeaving}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
                 </div>
             )}
 

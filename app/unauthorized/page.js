@@ -33,7 +33,6 @@ export default function UnauthorizedPage() {
 
         switch (userRole) {
             case "ADMIN":
-            case "HR_ADMIN":
                 router.push("/dashboard/admin");
                 break;
             case "CLUSTER_MANAGER":
