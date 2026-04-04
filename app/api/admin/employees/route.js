@@ -91,6 +91,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
                     email: true,
                     role: true,
                     designation: true,
+                    mobile: true,
                     department: { select: { id: true, name: true } },
                     departmentRoles: {
                         select: {
@@ -133,6 +134,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
                 role: u.role,
                 roles,
                 designation: u.designation || "—",
+                mobile: u.mobile || null,
                 department: u.department?.name || (u.departmentRoles.length > 0 ? u.departmentRoles[0].department.name : "—"),
                 departmentObj: u.department || null,
                 evaluatorRoles,

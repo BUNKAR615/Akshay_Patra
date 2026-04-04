@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../../lib/prisma";
+import bcrypt from "bcryptjs";
 import { withRole } from "../../../../../lib/withRole";
 import { NextResponse } from "next/server";
 
@@ -155,3 +156,121 @@ export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
         );
     }
 }, { allowedEmpCodes: HR_ALLOWED });
+
+/**
+ * PATCH /api/admin/employees/[id]
+ * Edit employee details: department, role, designation, password.
+ * Only Rishpal Kumar (ADMIN) can do this.
+ * Sends a notification to the employee listing what was changed.
+ * On department change, clears old dept FK shortcuts (supervisorId/branchManagerId).
+ */
+export const PATCH = withRole(["ADMIN"], async (request, { params, user }) => {
+    try {
+        const { id } = await params;
+        const body = await request.json();
+        const { department, role, designation, password } = body;
+
+        // Fetch current employee data
+        const employee = await prisma.user.findUnique({
+            where: { id },
+            include: {
+                department: { select: { id: true, name: true } },
+                departmentRoles: { select: { id: true, role: true, departmentId: true } },
+            },
+        });
+
+        if (!employee) {
+            return NextResponse.json({ success: false, message: "Employee not found" }, { status: 404 });
+        }
+
+        const updateData = {};
+        const changes = [];
+
+        // Designation
+        if (designation !== undefined && designation !== (employee.designation || "")) {
+            updateData.designation = designation || null;
+            changes.push(`Designation changed from "${employee.designation || "—"}" to "${designation || "—"}"`);
+        }
+
+        // Role
+        const validRoles = ["EMPLOYEE", "SUPERVISOR", "BRANCH_MANAGER", "CLUSTER_MANAGER", "ADMIN"];
+        if (role !== undefined && role !== employee.role && validRoles.includes(role)) {
+            updateData.role = role;
+            changes.push(`Role changed from "${employee.role}" to "${role}"`);
+        }
+
+        // Password
+        if (password && password.trim().length >= 6) {
+            updateData.password = await bcrypt.hash(password.trim(), 10);
+            changes.push("Password was updated");
+        }
+
+        // Department
+        let oldDeptId = employee.departmentId;
+        let newDeptId = null;
+        if (department !== undefined && department !== (employee.department?.name || "")) {
+            const dept = await prisma.department.findFirst({ where: { name: department } });
+            if (!dept) {
+                return NextResponse.json({ success: false, message: `Department "${department}" not found` }, { status: 400 });
+            }
+            newDeptId = dept.id;
+            updateData.departmentId = newDeptId;
+            changes.push(`Department changed from "${employee.department?.name || "—"}" to "${department}"`);
+        }
+
+        if (changes.length === 0) {
+            return NextResponse.json({ success: false, message: "No changes detected" }, { status: 400 });
+        }
+
+        await prisma.$transaction(async (tx) => {
+            // Update the user
+            await tx.user.update({ where: { id }, data: updateData });
+
+            // If department changed, clear old FK shortcuts on the old department
+            if (newDeptId && oldDeptId) {
+                // Clear supervisorId if this user was the supervisor of the old dept
+                await tx.department.updateMany({
+                    where: { id: oldDeptId, supervisorId: id },
+                    data: { supervisorId: null },
+                });
+                // Clear branchManagerId if this user was the BM of the old dept
+                await tx.department.updateMany({
+                    where: { id: oldDeptId, branchManagerId: id },
+                    data: { branchManagerId: null },
+                });
+            }
+
+            // Send notification to the employee
+            await tx.notification.create({
+                data: {
+                    userId: id,
+                    message: `Your profile details have been updated by Admin: ${changes.join("; ")}`,
+                    isRead: false,
+                },
+            });
+
+            // Audit log
+            await tx.auditLog.create({
+                data: {
+                    userId: user.userId,
+                    action: "EMPLOYEE_UPDATED",
+                    details: {
+                        employeeId: id,
+                        employeeName: employee.name,
+                        empCode: employee.empCode,
+                        changes,
+                        updatedBy: user.empCode,
+                    },
+                },
+            });
+        });
+
+        return NextResponse.json({
+            success: true,
+            data: { message: "Employee updated successfully", changes },
+        });
+    } catch (err) {
+        console.error("[EDIT EMPLOYEE] Error:", err);
+        return NextResponse.json({ success: false, message: "Server error" }, { status: 500 });
+    }
+});

@@ -65,6 +65,80 @@ export default function AdminDashboard() {
     // Employee management link for admin (Rishpal)
     const canManageEmployees = user && (user.empCode === "1800349" || user.empCode === "5100029");
 
+    // Edit employee modal state (admin only)
+    const [editEmp, setEditEmp] = useState(null);           // employee being edited
+    const [editForm, setEditForm] = useState({});           // form values
+    const [editConfirm, setEditConfirm] = useState(false);  // show confirmation step
+    const [editChanges, setEditChanges] = useState([]);     // list of changes to confirm
+    const [editLoading, setEditLoading] = useState(false);
+    const [editMsg, setEditMsg] = useState({ type: "", text: "" });
+
+    const openEditModal = (emp) => {
+        setEditEmp(emp);
+        setEditForm({
+            department: emp.departmentObj?.name || "",
+            role: emp.role || "EMPLOYEE",
+            designation: emp.designation === "—" ? "" : emp.designation || "",
+            password: "",
+        });
+        setEditConfirm(false);
+        setEditChanges([]);
+        setEditMsg({ type: "", text: "" });
+    };
+
+    const buildChanges = () => {
+        const changes = [];
+        if (editForm.department && editForm.department !== (editEmp.departmentObj?.name || ""))
+            changes.push(`Department: "${editEmp.departmentObj?.name || "—"}" → "${editForm.department}"`);
+        if (editForm.role && editForm.role !== editEmp.role)
+            changes.push(`Role: "${editEmp.role}" → "${editForm.role}"`);
+        if (editForm.designation !== (editEmp.designation === "—" ? "" : editEmp.designation || ""))
+            changes.push(`Designation: "${editEmp.designation === "—" ? "" : editEmp.designation || ""}" → "${editForm.designation}"`);
+        if (editForm.password && editForm.password.trim().length >= 6)
+            changes.push("Password will be updated");
+        return changes;
+    };
+
+    const handleEditPreview = () => {
+        const changes = buildChanges();
+        if (changes.length === 0) { setEditMsg({ type: "error", text: "No changes made." }); return; }
+        if (editForm.password && editForm.password.trim().length > 0 && editForm.password.trim().length < 6) {
+            setEditMsg({ type: "error", text: "Password must be at least 6 characters." }); return;
+        }
+        setEditChanges(changes);
+        setEditConfirm(true);
+        setEditMsg({ type: "", text: "" });
+    };
+
+    const handleEditSave = async () => {
+        setEditLoading(true);
+        setEditMsg({ type: "", text: "" });
+        try {
+            const body = {};
+            if (editForm.department && editForm.department !== (editEmp.departmentObj?.name || "")) body.department = editForm.department;
+            if (editForm.role && editForm.role !== editEmp.role) body.role = editForm.role;
+            const origDesig = editEmp.designation === "—" ? "" : editEmp.designation || "";
+            if (editForm.designation !== origDesig) body.designation = editForm.designation;
+            if (editForm.password && editForm.password.trim().length >= 6) body.password = editForm.password.trim();
+
+            const res = await fetch(`/api/admin/employees/${editEmp.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            const json = await res.json();
+            if (!res.ok || !json.success) throw new Error(json.message || "Update failed");
+            setEditMsg({ type: "success", text: "Employee updated successfully!" });
+            setEditConfirm(false);
+            await fetchEmployees(empPage, empFilter);
+            setTimeout(() => setEditEmp(null), 1200);
+        } catch (err) {
+            setEditMsg({ type: "error", text: err.message });
+            setEditConfirm(false);
+        }
+        setEditLoading(false);
+    };
+
     const fetchEmployees = async (pg = empPage, filters = empFilter) => {
         setEmpLoading(true);
         try {
@@ -915,12 +989,14 @@ export default function AdminDashboard() {
                                         <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Name</th>
                                         <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Department</th>
                                         <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Designation</th>
+                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Mobile</th>
                                         <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Roles</th>
+                                        {user?.role === "ADMIN" && <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Action</th>}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[#E0E0E0]">
-                                    {empLoading ? <tr><td colSpan={5} className="px-5 py-8 text-center text-[#666666]">Loading...</td></tr> :
-                                    employees.length === 0 ? <tr><td colSpan={5} className="px-5 py-8 text-center text-[#666666]">No employees found</td></tr> :
+                                    {empLoading ? <tr><td colSpan={user?.role === "ADMIN" ? 7 : 6} className="px-5 py-8 text-center text-[#666666]">Loading...</td></tr> :
+                                    employees.length === 0 ? <tr><td colSpan={user?.role === "ADMIN" ? 7 : 6} className="px-5 py-8 text-center text-[#666666]">No employees found</td></tr> :
                                     employees.map(e => {
                                         const roles = e.roles || [e.role];
                                         return (
@@ -929,7 +1005,9 @@ export default function AdminDashboard() {
                                             <td className="px-5 py-3 text-sm font-bold text-[#003087]">{e.name}</td>
                                             <td className="px-5 py-3 text-sm text-[#333333]">{e.department}{e.evaluatorRoles?.length > 0 && <span className="block text-[10px] text-[#666666] mt-0.5">{e.evaluatorRoles.map(er => `${er.role.replace("_"," ")} — ${er.department}`).join(", ")}</span>}</td>
                                             <td className="px-5 py-3 text-sm text-[#666666]">{e.designation}</td>
+                                            <td className="px-5 py-3 text-sm text-[#666666]">{e.mobile ? <a href={`tel:${e.mobile}`} className="text-[#003087] hover:underline">{e.mobile}</a> : <span className="text-[#BBBBBB] italic text-xs">Not provided</span>}</td>
                                             <td className="px-5 py-3"><div className="flex flex-wrap gap-1">{roles.map(r => <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-700 border-gray-200" : r === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace("_", " ")}</span>)}</div></td>
+                                            {user?.role === "ADMIN" && <td className="px-5 py-3"><button onClick={() => openEditModal(e)} className="text-xs px-3 py-1.5 bg-[#003087] hover:bg-[#00843D] text-white rounded-lg font-semibold transition-colors cursor-pointer">Edit</button></td>}
                                         </tr>
                                         );
                                     })}
@@ -1014,6 +1092,90 @@ export default function AdminDashboard() {
                     </div>
                 )
             }
+            {/* ═══════ EDIT EMPLOYEE MODAL ═══════ */}
+            {editEmp && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-[#E0E0E0]">
+                        <div className="px-6 py-5 border-b border-[#E0E0E0] flex items-center justify-between">
+                            <div>
+                                <h2 className="text-lg font-bold text-[#003087]">Edit Employee</h2>
+                                <p className="text-xs text-[#666666] mt-0.5">{editEmp.name} &middot; {editEmp.empCode || "No Code"}</p>
+                            </div>
+                            <button onClick={() => setEditEmp(null)} className="text-[#666666] hover:text-[#333333] transition-colors cursor-pointer">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+
+                        {editConfirm ? (
+                            <div className="px-6 py-5 space-y-4">
+                                <div className="bg-[#FFF8E1] border border-[#FFD600] rounded-xl p-4">
+                                    <p className="text-sm font-bold text-[#E65100] mb-2">Confirm the following changes:</p>
+                                    <ul className="space-y-1">
+                                        {editChanges.map((c, i) => (
+                                            <li key={i} className="text-sm text-[#333333] flex items-start gap-2">
+                                                <span className="text-[#00843D] font-bold mt-0.5">✓</span>
+                                                <span>{c}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                <p className="text-xs text-[#666666]">A notification will be sent to the employee about these changes.</p>
+                                {editMsg.text && <p className={`text-sm font-medium ${editMsg.type === "error" ? "text-[#D32F2F]" : "text-[#00843D]"}`}>{editMsg.text}</p>}
+                                <div className="flex gap-3">
+                                    <button onClick={() => setEditConfirm(false)} className="flex-1 py-2.5 border border-[#CCCCCC] rounded-xl text-sm font-semibold text-[#333333] hover:bg-[#F5F5F5] transition-colors cursor-pointer">Back</button>
+                                    <button onClick={handleEditSave} disabled={editLoading} className="flex-1 py-2.5 bg-[#003087] hover:bg-[#00843D] text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 cursor-pointer">
+                                        {editLoading ? "Saving..." : "Confirm & Save"}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="px-6 py-5 space-y-4">
+                                {editMsg.text && <p className={`text-sm font-medium ${editMsg.type === "error" ? "text-[#D32F2F]" : "text-[#00843D]"}`}>{editMsg.text}</p>}
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-[#333333] mb-1">Department</label>
+                                    <select value={editForm.department} onChange={e => setEditForm({ ...editForm, department: e.target.value })}
+                                        className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]">
+                                        <option value="">— Select Department —</option>
+                                        {empDepartments.map(d => <option key={d} value={d}>{d}</option>)}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-[#333333] mb-1">Role</label>
+                                    <select value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })}
+                                        className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]">
+                                        <option value="EMPLOYEE">Employee</option>
+                                        <option value="SUPERVISOR">Supervisor</option>
+                                        <option value="BRANCH_MANAGER">Branch Manager</option>
+                                        <option value="CLUSTER_MANAGER">Cluster Manager</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-[#333333] mb-1">Designation</label>
+                                    <input type="text" value={editForm.designation} onChange={e => setEditForm({ ...editForm, designation: e.target.value })}
+                                        placeholder="e.g. Senior Executive - HR"
+                                        className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-[#333333] mb-1">New Password <span className="text-[#999999] font-normal">(leave blank to keep current)</span></label>
+                                    <input type="password" value={editForm.password} onChange={e => setEditForm({ ...editForm, password: e.target.value })}
+                                        placeholder="Min 6 characters"
+                                        className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
+                                </div>
+
+                                <div className="flex gap-3 pt-1">
+                                    <button onClick={() => setEditEmp(null)} className="flex-1 py-2.5 border border-[#CCCCCC] rounded-xl text-sm font-semibold text-[#333333] hover:bg-[#F5F5F5] transition-colors cursor-pointer">Cancel</button>
+                                    <button onClick={handleEditPreview} className="flex-1 py-2.5 bg-[#003087] hover:bg-[#00843D] text-white rounded-xl text-sm font-semibold transition-colors cursor-pointer">Preview Changes</button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Confirmation Dialogs */}
             <ConfirmDialog
                 open={confirm.open && confirm.type === "start"}
