@@ -3,7 +3,7 @@ export const runtime = 'nodejs'
 
 import prisma from "../../../../../lib/prisma";
 import { withRole } from "../../../../../lib/withRole";
-import { created, fail, conflict, serverError, validateBody } from "../../../../../lib/api-response";
+import { created, fail, serverError, validateBody } from "../../../../../lib/api-response";
 import { z } from "zod";
 
 const assignRoleSchema = z.object({
@@ -15,45 +15,49 @@ const assignRoleSchema = z.object({
 /**
  * POST /api/admin/departments/assign-role
  * Assigns a user as evaluator for a specific department.
+ * Replace behaviour: removes ALL existing holders for that role in that dept before assigning the new one.
  */
 export const POST = withRole(["ADMIN"], async (request, { user }) => {
     try {
         const { data, error } = await validateBody(request, assignRoleSchema);
         if (error) return error;
 
-        // Validate user exists and role matches
         const targetUser = await prisma.user.findUnique({
             where: { id: data.userId },
             select: { id: true, name: true, role: true },
         });
         if (!targetUser) return fail("User not found");
-        if (targetUser.role !== data.role) {
-            return fail(`User "${targetUser.name}" has role ${targetUser.role}, cannot assign as ${data.role}`);
-        }
 
-        // Validate department exists
-        const dept = await prisma.department.findUnique({ where: { id: data.departmentId }, select: { id: true, name: true } });
+        const dept = await prisma.department.findUnique({
+            where: { id: data.departmentId },
+            select: { id: true, name: true },
+        });
         if (!dept) return fail("Department not found");
 
-        // For SUPERVISOR and BRANCH_MANAGER — only one per department
-        if (data.role === "SUPERVISOR" || data.role === "BRANCH_MANAGER") {
-            const existing = await prisma.departmentRoleMapping.findFirst({
-                where: { departmentId: data.departmentId, role: data.role },
-                include: { user: { select: { name: true } } },
-            });
-            if (existing && existing.userId !== data.userId) {
-                return conflict(
-                    `Department "${dept.name}" already has a ${data.role}: ${existing.user.name}. Remove them first.`
-                );
-            }
-        }
+        // Collect names of whoever is being replaced (for audit)
+        const displaced = await prisma.departmentRoleMapping.findMany({
+            where: { departmentId: data.departmentId, role: data.role },
+            include: { user: { select: { name: true } } },
+        });
+        const displacedNames = displaced.map(d => d.user.name).filter(n => n !== targetUser.name);
 
-        // Upsert the DepartmentRoleMapping + update Department FK + sync user departmentId — atomically
-        const deptRole = await prisma.$transaction(async (tx) => {
-            const role = await tx.DepartmentRoleMapping.upsert({
-                where: { userId_departmentId_role: { userId: data.userId, departmentId: data.departmentId, role: data.role } },
-                update: { assignedAt: new Date() },
-                create: { userId: data.userId, departmentId: data.departmentId, role: data.role },
+        await prisma.$transaction(async (tx) => {
+            // Remove ALL current holders of this role in this dept (replace behaviour)
+            if (displaced.length > 0) {
+                await tx.departmentRoleMapping.deleteMany({
+                    where: { departmentId: data.departmentId, role: data.role },
+                });
+                // Clear department FK shortcuts
+                if (data.role === "SUPERVISOR") {
+                    await tx.department.update({ where: { id: data.departmentId }, data: { supervisorId: null } });
+                } else if (data.role === "BRANCH_MANAGER") {
+                    await tx.department.update({ where: { id: data.departmentId }, data: { branchManagerId: null } });
+                }
+            }
+
+            // Create the new assignment
+            await tx.departmentRoleMapping.create({
+                data: { userId: data.userId, departmentId: data.departmentId, role: data.role },
             });
 
             // Update Department FK shortcuts
@@ -65,8 +69,6 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
 
             // Sync user's departmentId
             await tx.user.update({ where: { id: data.userId }, data: { departmentId: data.departmentId } });
-
-            return role;
         });
 
         await prisma.auditLog.create({
@@ -79,14 +81,15 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
                     departmentId: data.departmentId,
                     departmentName: dept.name,
                     role: data.role,
-                    message: `User ${targetUser.name} assigned as ${data.role} for ${dept.name}`,
+                    replaced: displacedNames,
+                    message: `${targetUser.name} assigned as ${data.role} for ${dept.name}${displacedNames.length ? ` (replaced: ${displacedNames.join(", ")})` : ""}`,
                 },
             },
         });
 
         return created({
-            message: `${targetUser.name} assigned as ${data.role} for ${dept.name}`,
-            assignment: { id: deptRole.id, userId: data.userId, departmentId: data.departmentId, role: data.role },
+            message: `${targetUser.name} assigned as ${data.role} for ${dept.name}${displacedNames.length ? ` (replaced ${displacedNames.join(", ")})` : ""}`,
+            assignment: { userId: data.userId, departmentId: data.departmentId, role: data.role },
         });
     } catch (err) {
         console.error("Assign role error:", err);

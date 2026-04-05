@@ -64,8 +64,8 @@ export default function AdminDashboard() {
     const [empLoading, setEmpLoading] = useState(false);
     const [empFilter, setEmpFilter] = useState({ search: "", department: "", role: "" });
 
-    // Employee management link for admin (Rishpal)
-    const canManageEmployees = user && (user.empCode === "1800349" || user.empCode === "5100029");
+    // Employee management link for admin (Rishpal only)
+    const canManageEmployees = user && user.empCode === "1800349";
 
     // Edit employee modal state (admin only)
     const [editEmp, setEditEmp] = useState(null);           // employee being edited
@@ -224,6 +224,14 @@ export default function AdminDashboard() {
     const [orgStructure, setOrgStructure] = useState([]);
     const [orgLoading, setOrgLoading] = useState(false);
 
+    // Reassign role modal state (org structure tab)
+    const [reassignModal, setReassignModal] = useState(null); // { dept: {id, name}, role }
+    const [reassignSearch, setReassignSearch] = useState("");
+    const [reassignTarget, setReassignTarget] = useState(null); // selected employee obj
+    const [reassignAllEmps, setReassignAllEmps] = useState([]); // flat employee list for picker
+    const [reassignLoading, setReassignLoading] = useState(false);
+    const [reassignMsg, setReassignMsg] = useState({ type: "", text: "" });
+
     // Quarter Progress
     const [quarterProgress, setQuarterProgress] = useState(null);
     const [progressLoading, setProgressLoading] = useState(true);
@@ -259,6 +267,44 @@ export default function AdminDashboard() {
             setOrgStructure(d.departments);
         } catch { }
         setOrgLoading(false);
+    };
+
+    const openReassignModal = async (dept, role) => {
+        setReassignModal({ dept, role });
+        setReassignSearch("");
+        setReassignTarget(null);
+        setReassignMsg({ type: "", text: "" });
+        if (reassignAllEmps.length === 0) {
+            try {
+                const d = await api("/api/admin/employees?export=true");
+                setReassignAllEmps(d.employees || []);
+            } catch { }
+        }
+    };
+
+    const handleReassign = async () => {
+        if (!reassignTarget || !reassignModal) return;
+        setReassignLoading(true);
+        setReassignMsg({ type: "", text: "" });
+        try {
+            const d = await api("/api/admin/departments/assign-role", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    userId: reassignTarget.id,
+                    departmentId: reassignModal.dept.id,
+                    role: reassignModal.role,
+                }),
+            });
+            setReassignMsg({ type: "success", text: d.message });
+            setTimeout(() => {
+                setReassignModal(null);
+                fetchOrg();
+            }, 1200);
+        } catch (err) {
+            setReassignMsg({ type: "error", text: err.message });
+        }
+        setReassignLoading(false);
     };
 
     const fetchQuestions = async () => {
@@ -806,7 +852,10 @@ export default function AdminDashboard() {
                                             {/* Role Assignments */}
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                 <div className="bg-blue-50/60 rounded-lg p-3 border border-blue-100">
-                                                    <p className="text-xs font-bold text-[#003087] mb-2 uppercase tracking-wider">Supervisor(s)</p>
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <p className="text-xs font-bold text-[#003087] uppercase tracking-wider">Supervisor</p>
+                                                        <button onClick={() => openReassignModal({ id: dept.id, name: dept.name }, "SUPERVISOR")} className="text-[10px] px-2 py-0.5 rounded bg-[#003087] text-white font-bold hover:bg-[#00843D] transition-colors cursor-pointer">Reassign</button>
+                                                    </div>
                                                     {dept.supervisors?.length > 0 ? (
                                                         <div className="space-y-2">
                                                             {dept.supervisors.map(sup => (
@@ -819,7 +868,10 @@ export default function AdminDashboard() {
                                                     ) : <p className="text-sm text-[#999999] italic">Not Assigned</p>}
                                                 </div>
                                                 <div className="bg-emerald-50/60 rounded-lg p-3 border border-emerald-100">
-                                                    <p className="text-xs font-bold text-[#00843D] mb-2 uppercase tracking-wider">Branch Manager(s)</p>
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <p className="text-xs font-bold text-[#00843D] uppercase tracking-wider">Branch Manager</p>
+                                                        <button onClick={() => openReassignModal({ id: dept.id, name: dept.name }, "BRANCH_MANAGER")} className="text-[10px] px-2 py-0.5 rounded bg-[#00843D] text-white font-bold hover:bg-[#003087] transition-colors cursor-pointer">Reassign</button>
+                                                    </div>
                                                     {dept.branchManagers?.length > 0 ? (
                                                         <div className="space-y-2">
                                                             {dept.branchManagers.map(bm => (
@@ -832,7 +884,10 @@ export default function AdminDashboard() {
                                                     ) : <p className="text-sm text-[#999999] italic">Not Assigned</p>}
                                                 </div>
                                                 <div className="bg-orange-50/60 rounded-lg p-3 border border-orange-100">
-                                                    <p className="text-xs font-bold text-[#E65100] mb-2 uppercase tracking-wider">Cluster Manager(s)</p>
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <p className="text-xs font-bold text-[#E65100] uppercase tracking-wider">Cluster Manager</p>
+                                                        <button onClick={() => openReassignModal({ id: dept.id, name: dept.name }, "CLUSTER_MANAGER")} className="text-[10px] px-2 py-0.5 rounded bg-[#E65100] text-white font-bold hover:bg-[#003087] transition-colors cursor-pointer">Reassign</button>
+                                                    </div>
                                                     {dept.clusterManagers?.length > 0 ? (
                                                         <div className="space-y-2">
                                                             {dept.clusterManagers.map(cm => (
@@ -1208,6 +1263,75 @@ export default function AdminDashboard() {
                     </div>
                 )
             }
+            {/* ═══════ REASSIGN ROLE MODAL ═══════ */}
+            {reassignModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-[#E0E0E0] flex flex-col max-h-[90vh]">
+                        <div className="px-6 py-5 border-b border-[#E0E0E0] flex items-center justify-between shrink-0">
+                            <div>
+                                <h2 className="text-lg font-bold text-[#003087]">Reassign {reassignModal.role.replace(/_/g, " ")}</h2>
+                                <p className="text-xs text-[#666666] mt-0.5">{reassignModal.dept.name}</p>
+                            </div>
+                            <button onClick={() => setReassignModal(null)} className="text-[#666666] hover:text-[#333333] cursor-pointer">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                        <div className="px-6 py-4 space-y-4 overflow-y-auto flex-1">
+                            {reassignMsg.text && (
+                                <div className={`p-3 rounded-lg text-sm border ${reassignMsg.type === "success" ? "bg-[#E8F5E9] border-[#A5D6A7] text-[#1B5E20]" : "bg-[#FFEBEE] border-[#EF9A9A] text-[#D32F2F]"}`}>{reassignMsg.text}</div>
+                            )}
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#999]">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                </span>
+                                <input
+                                    type="text"
+                                    placeholder="Search by name or emp code..."
+                                    value={reassignSearch}
+                                    onChange={e => setReassignSearch(e.target.value)}
+                                    className="w-full pl-9 pr-4 py-2 border border-[#CCCCCC] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]"
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="space-y-1 max-h-64 overflow-y-auto">
+                                {reassignAllEmps.length === 0 && (
+                                    <p className="text-sm text-[#999] italic text-center py-4">Loading employees…</p>
+                                )}
+                                {reassignAllEmps
+                                    .filter(e => {
+                                        const q = reassignSearch.toLowerCase();
+                                        return !q || e.name.toLowerCase().includes(q) || (e.empCode || "").toLowerCase().includes(q);
+                                    })
+                                    .map(e => {
+                                        const selected = reassignTarget?.id === e.id;
+                                        return (
+                                            <button
+                                                key={e.id}
+                                                onClick={() => setReassignTarget(e)}
+                                                className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors cursor-pointer ${selected ? "bg-[#E3F2FD] border-[#003087]" : "bg-white border-[#E0E0E0] hover:bg-[#F5F5F5]"}`}
+                                            >
+                                                <p className={`text-sm font-semibold ${selected ? "text-[#003087]" : "text-[#1A1A2E]"}`}>{e.name}</p>
+                                                <p className="text-xs text-[#666666]">{e.empCode ? `${e.empCode} · ` : ""}{e.department || "No dept"}{e.designation ? ` · ${e.designation}` : ""}</p>
+                                            </button>
+                                        );
+                                    })
+                                }
+                            </div>
+                        </div>
+                        <div className="px-6 py-4 border-t border-[#E0E0E0] shrink-0 flex gap-3">
+                            <button onClick={() => setReassignModal(null)} className="flex-1 py-2.5 border border-[#CCCCCC] rounded-xl text-sm font-semibold text-[#333333] hover:bg-[#F5F5F5] transition-colors cursor-pointer">Cancel</button>
+                            <button
+                                onClick={handleReassign}
+                                disabled={!reassignTarget || reassignLoading}
+                                className="flex-1 py-2.5 bg-[#003087] hover:bg-[#00843D] text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                                {reassignLoading ? "Saving…" : reassignTarget ? `Assign ${reassignTarget.name.split(" ")[0]}` : "Select a person"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* ═══════ PERSON DETAIL MODAL ═══════ */}
             {personDetail && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
