@@ -8,6 +8,7 @@ import { evaluateSchema } from "../../../../lib/validators";
 import { createNotification } from "../../../../lib/notifications";
 import { getDepartmentSize, logSmallDepartmentRule } from "../../../../lib/department-rules";
 import { normalizeScore, calculateStage3Score } from "../../../../lib/scoreCalculator";
+import { getEvaluatorPool } from "../../../../lib/evaluatorPool";
 
 /**
  * POST /api/branch-manager/evaluate
@@ -58,14 +59,15 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         const bmRawScore = data.answers.reduce((s, a) => s + a.score, 0);
         const bmNormalized = normalizeScore(bmRawScore, lockedIds.size);
 
-        // Guard: prior scores exist
+        // Guard: prior scores exist. Use ShortlistStage2 row as the source of
+        // truth because it carries the averaged supervisor score across all
+        // supervisors mapped to this department (multi-evaluator-safe).
         const selfA = await prisma.selfAssessment.findUnique({ where: { userId_quarterId: { userId: data.employeeId, quarterId: activeQuarter.id } }, select: { normalizedScore: true } });
-        const supEval = await prisma.supervisorEvaluation.findFirst({ where: { employeeId: data.employeeId, quarterId: activeQuarter.id }, select: { supervisorNormalized: true } });
-        if (!selfA || !supEval) return fail("Employee's prior evaluation scores not found. Earlier stages may be incomplete.");
+        if (!selfA || !shortlistEntry) return fail("Employee's prior evaluation scores not found. Earlier stages may be incomplete.");
 
         const { selfContribution, supervisorContribution, bmContribution, combined } = calculateStage3Score(
             selfA.normalizedScore,
-            supEval.supervisorNormalized,
+            shortlistEntry.supervisorScore,
             bmNormalized
         );
 
@@ -74,31 +76,87 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
                 data: { managerId: user.userId, employeeId: data.employeeId, quarterId: activeQuarter.id, answers: data.answers, bmRawScore, bmNormalized, selfContribution, supervisorContribution, bmContribution, stage3CombinedScore: combined },
             });
 
-            const shortlistCount = await tx.shortlistStage2.count({ where: { departmentId: employee.departmentId, quarterId: activeQuarter.id } });
-            const evaluatedCount = await tx.branchManagerEvaluation.count({
-                where: { managerId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId } }
+            // ── Multi-evaluator safe Stage 3 trigger ──
+            // Stage 3 is created only when EVERY mapped BM has evaluated EVERY
+            // Stage 2 shortlisted employee. BM scores are averaged across BMs.
+            const evaluatorPool = await getEvaluatorPool(tx, employee.departmentId, "BRANCH_MANAGER");
+            const stage2List = await tx.shortlistStage2.findMany({
+                where: { departmentId: employee.departmentId, quarterId: activeQuarter.id },
+                select: { userId: true, selfScore: true, supervisorScore: true },
+            });
+            const shortlistCount = stage2List.length;
+            const shortlistIds = stage2List.map((s) => s.userId);
+            const stage2ByUser = new Map(stage2List.map((s) => [s.userId, s]));
+
+            const myEvaluatedCount = await tx.branchManagerEvaluation.count({
+                where: { managerId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId } },
             });
 
-            let stage3Created = false;
-            if (evaluatedCount >= shortlistCount) {
-                // ── Small department rule: dynamic Stage 3 limit ──
-                const deptLimits = await getDepartmentSize(employee.departmentId);
-                const findArgs = {
-                    where: { managerId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId } },
-                    orderBy: { stage3CombinedScore: "desc" }
-                };
-                if (deptLimits.stage3Limit !== null) {
-                    findArgs.take = deptLimits.stage3Limit;
-                }
-                const allEvals = await tx.branchManagerEvaluation.findMany(findArgs);
-                await tx.shortlistStage3.deleteMany({ where: { departmentId: employee.departmentId, quarterId: activeQuarter.id } });
+            const totalEvalCount = await tx.branchManagerEvaluation.count({
+                where: { quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId }, employeeId: { in: shortlistIds } },
+            });
+            const expectedCount = evaluatorPool.length * shortlistCount;
 
-                for (let i = 0; i < allEvals.length; i++) {
-                    const ev = allEvals[i];
-                    const sa = await tx.selfAssessment.findUnique({ where: { userId_quarterId: { userId: ev.employeeId, quarterId: activeQuarter.id } }, select: { normalizedScore: true } });
-                    const se = await tx.supervisorEvaluation.findFirst({ where: { employeeId: ev.employeeId, quarterId: activeQuarter.id }, select: { supervisorNormalized: true } });
+            let stage3Created = false;
+            if (shortlistCount > 0 && evaluatorPool.length > 0 && totalEvalCount >= expectedCount) {
+                const allEvals = await tx.branchManagerEvaluation.findMany({
+                    where: { quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId }, employeeId: { in: shortlistIds } },
+                    select: { employeeId: true, bmNormalized: true },
+                });
+                const perEmployee = new Map();
+                for (const ev of allEvals) {
+                    const acc = perEmployee.get(ev.employeeId) || { sum: 0, n: 0 };
+                    acc.sum += ev.bmNormalized;
+                    acc.n += 1;
+                    perEmployee.set(ev.employeeId, acc);
+                }
+
+                // Tie-break by self-assessment completion time
+                const selfAssessments = await tx.selfAssessment.findMany({
+                    where: { quarterId: activeQuarter.id, userId: { in: shortlistIds } },
+                    select: { userId: true, completionTimeSeconds: true },
+                });
+                const timeByUser = new Map(selfAssessments.map((s) => [s.userId, s.completionTimeSeconds || 0]));
+
+                const ranked = shortlistIds.map((empId) => {
+                    const agg = perEmployee.get(empId) || { sum: 0, n: 0 };
+                    const avgBmNormalized = agg.n > 0 ? Math.round((agg.sum / agg.n) * 100) / 100 : 0;
+                    const s2 = stage2ByUser.get(empId);
+                    const { combined } = calculateStage3Score(
+                        s2?.selfScore || 0,
+                        s2?.supervisorScore || 0,
+                        avgBmNormalized
+                    );
+                    return {
+                        employeeId: empId,
+                        selfScore: s2?.selfScore || 0,
+                        supervisorScore: s2?.supervisorScore || 0,
+                        bmScore: avgBmNormalized,
+                        combinedScore: combined,
+                        completionTime: timeByUser.get(empId) || 0,
+                    };
+                }).sort((a, b) => {
+                    if (b.combinedScore !== a.combinedScore) return b.combinedScore - a.combinedScore;
+                    return a.completionTime - b.completionTime;
+                });
+
+                const deptLimits = await getDepartmentSize(employee.departmentId);
+                const topK = deptLimits.stage3Limit !== null ? ranked.slice(0, deptLimits.stage3Limit) : ranked;
+
+                await tx.shortlistStage3.deleteMany({ where: { departmentId: employee.departmentId, quarterId: activeQuarter.id } });
+                for (let i = 0; i < topK.length; i++) {
+                    const r = topK[i];
                     await tx.shortlistStage3.create({
-                        data: { userId: ev.employeeId, quarterId: activeQuarter.id, departmentId: employee.departmentId, selfScore: sa?.normalizedScore || 0, supervisorScore: se?.supervisorNormalized || 0, bmScore: ev.bmNormalized, combinedScore: ev.stage3CombinedScore, rank: i + 1 },
+                        data: {
+                            userId: r.employeeId,
+                            quarterId: activeQuarter.id,
+                            departmentId: employee.departmentId,
+                            selfScore: r.selfScore,
+                            supervisorScore: r.supervisorScore,
+                            bmScore: r.bmScore,
+                            combinedScore: r.combinedScore,
+                            rank: i + 1,
+                        },
                     });
                 }
                 stage3Created = true;
@@ -112,7 +170,7 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
                 }
             }
 
-            return { evaluation, stage3Created, evaluatedCount, shortlistCount };
+            return { evaluation, stage3Created, evaluatedCount: myEvaluatedCount, shortlistCount };
         });
 
         await prisma.auditLog.create({

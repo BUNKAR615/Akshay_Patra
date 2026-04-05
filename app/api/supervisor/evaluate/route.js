@@ -8,6 +8,7 @@ import { evaluateSchema } from "../../../../lib/validators";
 import { createNotification } from "../../../../lib/notifications";
 import { getDepartmentSize, logSmallDepartmentRule } from "../../../../lib/department-rules";
 import { normalizeScore, calculateStage2Score } from "../../../../lib/scoreCalculator";
+import { getEvaluatorPool } from "../../../../lib/evaluatorPool";
 
 /**
  * POST /api/supervisor/evaluate
@@ -88,26 +89,86 @@ export const POST = withRole(["SUPERVISOR"], async (request, { user }) => {
                 },
             });
 
-            const shortlistCount = await tx.shortlistStage1.count({ where: { departmentId: evaluatingDeptId, quarterId: activeQuarter.id } });
-            const evaluatedCount = await tx.supervisorEvaluation.count({ where: { supervisorId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: evaluatingDeptId } } });
+            // ── Multi-evaluator safe Stage 2 trigger ──
+            // Stage 2 is created only when EVERY mapped supervisor has evaluated
+            // EVERY Stage 1 shortlisted employee. Scores are averaged across
+            // supervisors so a later-finishing evaluator can't overwrite an earlier one.
+            const evaluatorPool = await getEvaluatorPool(tx, evaluatingDeptId, "SUPERVISOR");
+            const shortlist = await tx.shortlistStage1.findMany({
+                where: { departmentId: evaluatingDeptId, quarterId: activeQuarter.id },
+                select: { userId: true },
+            });
+            const shortlistCount = shortlist.length;
+            const shortlistIds = shortlist.map((s) => s.userId);
+
+            // Count this supervisor's progress (for the response payload only)
+            const myEvaluatedCount = await tx.supervisorEvaluation.count({
+                where: { supervisorId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: evaluatingDeptId } },
+            });
+
+            // Total evaluations submitted for this dept across ALL supervisors
+            const totalEvalCount = await tx.supervisorEvaluation.count({
+                where: { quarterId: activeQuarter.id, employee: { departmentId: evaluatingDeptId }, employeeId: { in: shortlistIds } },
+            });
+            const expectedCount = evaluatorPool.length * shortlistCount;
 
             let stage2Created = false;
-            if (evaluatedCount >= shortlistCount) {
-                // ── Small department rule: dynamic Stage 2 limit ──
-                const deptLimits = await getDepartmentSize(evaluatingDeptId);
-                const findArgs = { where: { supervisorId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: evaluatingDeptId } }, orderBy: { stage2CombinedScore: "desc" } };
-                if (deptLimits.stage2Limit !== null) {
-                    findArgs.take = deptLimits.stage2Limit;
+            if (shortlistCount > 0 && evaluatorPool.length > 0 && totalEvalCount >= expectedCount) {
+                // Aggregate: average each employee's supervisor score across all evaluators
+                const allEvals = await tx.supervisorEvaluation.findMany({
+                    where: { quarterId: activeQuarter.id, employee: { departmentId: evaluatingDeptId }, employeeId: { in: shortlistIds } },
+                    select: { employeeId: true, supervisorNormalized: true },
+                });
+                const perEmployee = new Map();
+                for (const ev of allEvals) {
+                    const acc = perEmployee.get(ev.employeeId) || { sum: 0, n: 0 };
+                    acc.sum += ev.supervisorNormalized;
+                    acc.n += 1;
+                    perEmployee.set(ev.employeeId, acc);
                 }
-                const allEvals = await tx.supervisorEvaluation.findMany(findArgs);
+
+                // Tie-break by self-assessment completion time (ascending)
+                const selfAssessments = await tx.selfAssessment.findMany({
+                    where: { quarterId: activeQuarter.id, userId: { in: shortlistIds } },
+                    select: { userId: true, normalizedScore: true, completionTimeSeconds: true },
+                });
+                const selfByUser = new Map(selfAssessments.map((s) => [s.userId, s]));
+
+                const ranked = shortlistIds.map((empId) => {
+                    const agg = perEmployee.get(empId) || { sum: 0, n: 0 };
+                    const avgSupervisorNormalized = agg.n > 0 ? Math.round((agg.sum / agg.n) * 100) / 100 : 0;
+                    const sa = selfByUser.get(empId);
+                    const selfNorm = sa?.normalizedScore || 0;
+                    const { combined } = calculateStage2Score(selfNorm, avgSupervisorNormalized);
+                    return {
+                        employeeId: empId,
+                        avgSupervisorNormalized,
+                        selfNormalized: selfNorm,
+                        combinedScore: combined,
+                        completionTime: sa?.completionTimeSeconds || 0,
+                    };
+                }).sort((a, b) => {
+                    if (b.combinedScore !== a.combinedScore) return b.combinedScore - a.combinedScore;
+                    return a.completionTime - b.completionTime;
+                });
+
+                // Apply small-department Stage 2 size limit
+                const deptLimits = await getDepartmentSize(evaluatingDeptId);
+                const topK = deptLimits.stage2Limit !== null ? ranked.slice(0, deptLimits.stage2Limit) : ranked;
 
                 await tx.shortlistStage2.deleteMany({ where: { departmentId: evaluatingDeptId, quarterId: activeQuarter.id } });
-
-                for (let i = 0; i < allEvals.length; i++) {
-                    const ev = allEvals[i];
-                    const sa = await tx.selfAssessment.findUnique({ where: { userId_quarterId: { userId: ev.employeeId, quarterId: activeQuarter.id } }, select: { normalizedScore: true } });
+                for (let i = 0; i < topK.length; i++) {
+                    const r = topK[i];
                     await tx.shortlistStage2.create({
-                        data: { userId: ev.employeeId, quarterId: activeQuarter.id, departmentId: evaluatingDeptId, selfScore: sa?.normalizedScore || 0, supervisorScore: ev.supervisorNormalized, combinedScore: ev.stage2CombinedScore, rank: i + 1 },
+                        data: {
+                            userId: r.employeeId,
+                            quarterId: activeQuarter.id,
+                            departmentId: evaluatingDeptId,
+                            selfScore: r.selfNormalized,
+                            supervisorScore: r.avgSupervisorNormalized,
+                            combinedScore: r.combinedScore,
+                            rank: i + 1,
+                        },
                     });
                 }
                 stage2Created = true;
@@ -121,7 +182,7 @@ export const POST = withRole(["SUPERVISOR"], async (request, { user }) => {
                 }
             }
 
-            return { evaluation, stage2Created, evaluatedCount, shortlistCount };
+            return { evaluation, stage2Created, evaluatedCount: myEvaluatedCount, shortlistCount };
         });
 
         console.log("Saved to DB (Supervisor Evaluation):", result.evaluation);

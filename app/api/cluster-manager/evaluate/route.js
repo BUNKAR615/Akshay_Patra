@@ -7,6 +7,7 @@ import { created, fail, notFound, conflict, serverError, validateBody } from "..
 import { evaluateSchema } from "../../../../lib/validators";
 import { createNotification } from "../../../../lib/notifications";
 import { normalizeScore, calculateFinalScore } from "../../../../lib/scoreCalculator";
+import { getEvaluatorPool } from "../../../../lib/evaluatorPool";
 
 /**
  * POST /api/cluster-manager/evaluate
@@ -57,16 +58,13 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         const cmRawScore = data.answers.reduce((s, a) => s + a.score, 0);
         const cmNormalized = normalizeScore(cmRawScore, lockedIds.size);
 
-        // Guard: all prior scores exist
-        const selfA = await prisma.selfAssessment.findUnique({ where: { userId_quarterId: { userId: data.employeeId, quarterId: activeQuarter.id } }, select: { normalizedScore: true } });
-        const supEval = await prisma.supervisorEvaluation.findFirst({ where: { employeeId: data.employeeId, quarterId: activeQuarter.id }, select: { supervisorNormalized: true } });
-        const bmEval = await prisma.branchManagerEvaluation.findFirst({ where: { employeeId: data.employeeId, quarterId: activeQuarter.id }, select: { bmNormalized: true } });
-        if (!selfA || !supEval || !bmEval) return fail("Employee's prior evaluation scores not found. Earlier stages may be incomplete.");
+        // Prior scores come from ShortlistStage3 (multi-evaluator-safe averages).
+        if (!shortlistEntry) return fail("Employee's prior evaluation scores not found. Earlier stages may be incomplete.");
 
         const { selfContribution, supervisorContribution, bmContribution, cmContribution, finalScore } = calculateFinalScore(
-            selfA.normalizedScore,
-            supEval.supervisorNormalized,
-            bmEval.bmNormalized,
+            shortlistEntry.selfScore,
+            shortlistEntry.supervisorScore,
+            shortlistEntry.bmScore,
             cmNormalized
         );
 
@@ -75,53 +73,82 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
                 data: { clusterId: user.userId, employeeId: data.employeeId, quarterId: activeQuarter.id, answers: data.answers, cmRawScore, cmNormalized, selfContribution, supervisorContribution, bmContribution, cmContribution, finalScore },
             });
 
-            const shortlistCount = await tx.shortlistStage3.count({ where: { departmentId: employee.departmentId, quarterId: activeQuarter.id } });
-            const evaluatedCount = await tx.clusterManagerEvaluation.count({
-                where: { clusterId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId } }
+            // ── Multi-evaluator safe Best Employee selection ──
+            // Winner is chosen only when EVERY mapped CM has evaluated EVERY
+            // Stage 3 shortlisted employee. CM scores are averaged across CMs.
+            const evaluatorPool = await getEvaluatorPool(tx, employee.departmentId, "CLUSTER_MANAGER");
+            const stage3List = await tx.shortlistStage3.findMany({
+                where: { departmentId: employee.departmentId, quarterId: activeQuarter.id },
+                select: { userId: true, selfScore: true, supervisorScore: true, bmScore: true },
             });
+            const shortlistCount = stage3List.length;
+            const shortlistIds = stage3List.map((s) => s.userId);
+            const stage3ByUser = new Map(stage3List.map((s) => [s.userId, s]));
+
+            const myEvaluatedCount = await tx.clusterManagerEvaluation.count({
+                where: { clusterId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId } },
+            });
+
+            const totalEvalCount = await tx.clusterManagerEvaluation.count({
+                where: { quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId }, employeeId: { in: shortlistIds } },
+            });
+            const expectedCount = evaluatorPool.length * shortlistCount;
 
             let bestEmployeeSelected = false;
             let bestEmployeeData = null;
 
-            if (evaluatedCount >= shortlistCount) {
+            if (shortlistCount > 0 && evaluatorPool.length > 0 && totalEvalCount >= expectedCount) {
                 const allEvals = await tx.clusterManagerEvaluation.findMany({
-                    where: { clusterId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId } },
-                    include: {
-                        employee: {
-                            select: {
-                                selfAssessments: {
-                                    where: { quarterId: activeQuarter.id },
-                                    select: { completionTimeSeconds: true }
-                                }
-                            }
-                        }
-                    }
+                    where: { quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId }, employeeId: { in: shortlistIds } },
+                    select: { employeeId: true, cmNormalized: true },
+                });
+                const perEmployee = new Map();
+                for (const ev of allEvals) {
+                    const acc = perEmployee.get(ev.employeeId) || { sum: 0, n: 0 };
+                    acc.sum += ev.cmNormalized;
+                    acc.n += 1;
+                    perEmployee.set(ev.employeeId, acc);
+                }
+
+                const selfAssessments = await tx.selfAssessment.findMany({
+                    where: { quarterId: activeQuarter.id, userId: { in: shortlistIds } },
+                    select: { userId: true, completionTimeSeconds: true },
+                });
+                const timeByUser = new Map(selfAssessments.map((s) => [s.userId, s.completionTimeSeconds || 0]));
+
+                const ranked = shortlistIds.map((empId) => {
+                    const agg = perEmployee.get(empId) || { sum: 0, n: 0 };
+                    const avgCmNormalized = agg.n > 0 ? Math.round((agg.sum / agg.n) * 100) / 100 : 0;
+                    const s3 = stage3ByUser.get(empId);
+                    const { finalScore: combinedFinal } = calculateFinalScore(
+                        s3?.selfScore || 0,
+                        s3?.supervisorScore || 0,
+                        s3?.bmScore || 0,
+                        avgCmNormalized
+                    );
+                    return {
+                        employeeId: empId,
+                        selfScore: s3?.selfScore || 0,
+                        supervisorScore: s3?.supervisorScore || 0,
+                        bmScore: s3?.bmScore || 0,
+                        cmScore: avgCmNormalized,
+                        finalScore: combinedFinal,
+                        completionTime: timeByUser.get(empId) || 0,
+                    };
+                }).sort((a, b) => {
+                    if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore;
+                    return a.completionTime - b.completionTime;
                 });
 
-                allEvals.sort((a, b) => {
-                    if (b.finalScore !== a.finalScore) {
-                        return b.finalScore - a.finalScore;
-                    }
-                    const timeA = a.employee?.selfAssessments?.[0]?.completionTimeSeconds || 0;
-                    const timeB = b.employee?.selfAssessments?.[0]?.completionTimeSeconds || 0;
-                    return timeA - timeB;
-                });
-
-                if (allEvals.length > 0) {
-                    const winner = allEvals[0];
-                    const wSelf = await tx.selfAssessment.findUnique({ where: { userId_quarterId: { userId: winner.employeeId, quarterId: activeQuarter.id } }, select: { normalizedScore: true } });
-                    const wSup = await tx.supervisorEvaluation.findFirst({ where: { employeeId: winner.employeeId, quarterId: activeQuarter.id }, select: { supervisorNormalized: true } });
-                    const wBM = await tx.branchManagerEvaluation.findFirst({ where: { employeeId: winner.employeeId, quarterId: activeQuarter.id }, select: { bmNormalized: true } });
-
-                    // Only one winner per department per quarter
-                    // Note: Schema says BestEmployee quarterId is unique globally? Let's verify but typically it's unique per quarter per dept
+                if (ranked.length > 0) {
+                    const winner = ranked[0];
                     await tx.bestEmployee.deleteMany({ where: { quarterId: activeQuarter.id, departmentId: employee.departmentId } });
 
                     bestEmployeeData = await tx.bestEmployee.create({
                         data: {
                             userId: winner.employeeId, quarterId: activeQuarter.id, departmentId: employee.departmentId,
-                            selfScore: wSelf?.normalizedScore || 0, supervisorScore: wSup?.supervisorNormalized || 0, bmScore: wBM?.bmNormalized || 0,
-                            cmScore: winner.cmNormalized, finalScore: winner.finalScore,
+                            selfScore: winner.selfScore, supervisorScore: winner.supervisorScore, bmScore: winner.bmScore,
+                            cmScore: winner.cmScore, finalScore: winner.finalScore,
                         },
                         include: { user: { select: { id: true, name: true } } },
                     });
@@ -129,7 +156,7 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
                 }
             }
 
-            return { evaluation, bestEmployeeSelected, bestEmployeeData, evaluatedCount, shortlistCount };
+            return { evaluation, bestEmployeeSelected, bestEmployeeData, evaluatedCount: myEvaluatedCount, shortlistCount };
         });
 
         await prisma.auditLog.create({
