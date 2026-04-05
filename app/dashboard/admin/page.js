@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import DashboardShell from "../../../components/DashboardShell";
 import ConfirmDialog from "../../../components/ConfirmDialog";
 import { PageSpinner, SkeletonCard, SkeletonStats } from "../../../components/Skeleton";
@@ -36,6 +36,7 @@ export default function AdminDashboard() {
     // Summary state
     const [report, setReport] = useState(null);
     const [reportLoading, setReportLoading] = useState(false);
+    const [expandedSummaryDept, setExpandedSummaryDept] = useState(null);
 
     // Quarter management
     const [quarterName, setQuarterName] = useState("");
@@ -243,8 +244,12 @@ export default function AdminDashboard() {
         try {
             const d = await api("/api/admin/export/quarter-report");
             setReport(d);
-        } catch { }
-        setReportLoading(false);
+            return d;
+        } catch {
+            return null;
+        } finally {
+            setReportLoading(false);
+        }
     };
 
     const fetchOrg = async () => {
@@ -284,10 +289,11 @@ export default function AdminDashboard() {
     }, [tab]);
 
     // ── CSV export ──
-    const exportCSV = () => {
-        if (!report?.employees?.length) return;
+    const exportCSV = (data) => {
+        const source = data || report;
+        if (!source?.employees?.length) return;
         const stageLabel = { 1: "Self Assessment", 2: "Supervisor", 3: "Branch Manager", 4: "Cluster Manager" };
-        const csvData = report.employees.map((e) => ({
+        const csvData = source.employees.map((e) => ({
             "Employee Name": e.employeeName,
             "Department": e.department,
             "Self (norm)": e.selfNorm?.toFixed(1) || "-",
@@ -305,7 +311,7 @@ export default function AdminDashboard() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `quarter-report-${report.quarter?.name || "export"}.csv`;
+        link.download = `quarter-report-${source.quarter?.name || "export"}.csv`;
         link.click();
         URL.revokeObjectURL(url);
     };
@@ -590,7 +596,7 @@ export default function AdminDashboard() {
                                 <button onClick={() => setTab("logs")} className="px-3 sm:px-4 py-2 bg-white border border-[#CCCCCC] hover:bg-[#F5F5F5] hover:text-[#003087] text-[#333333] font-bold rounded-lg text-xs sm:text-sm transition-colors cursor-pointer shadow-sm">
                                     View Audit Logs
                                 </button>
-                                <button onClick={() => { fetchReport(); setTimeout(exportCSV, 500); }} className="px-3 sm:px-4 py-2 bg-[#003087] hover:bg-[#00843D] text-white font-bold rounded-lg text-xs sm:text-sm transition-colors cursor-pointer shadow-sm flex items-center justify-center gap-1.5 sm:gap-2">
+                                <button onClick={async () => { const d = await fetchReport(); if (d) exportCSV(d); }} className="px-3 sm:px-4 py-2 bg-[#003087] hover:bg-[#00843D] text-white font-bold rounded-lg text-xs sm:text-sm transition-colors cursor-pointer shadow-sm flex items-center justify-center gap-1.5 sm:gap-2">
                                     <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                                     Export
                                 </button>
@@ -626,11 +632,10 @@ export default function AdminDashboard() {
                                                     else if (dept.stage3.total > 0) currentStage = "S3";
                                                     else if (dept.stage2.total > 0) currentStage = "S2";
 
+                                                    const isExpanded = expandedSummaryDept === dept.departmentId;
                                                     return (
-                                                        <tr key={dept.departmentId} className="hover:bg-[#F9F9F9] transition-colors group cursor-pointer" onClick={() => {
-                                                            const el = document.getElementById(`dept-details-${dept.departmentId}`);
-                                                            if (el) el.classList.toggle('hidden');
-                                                        }}>
+                                                        <Fragment key={dept.departmentId}>
+                                                        <tr className="hover:bg-[#F9F9F9] transition-colors group cursor-pointer" onClick={() => setExpandedSummaryDept(prev => prev === dept.departmentId ? null : dept.departmentId)}>
                                                             <td className="px-4 py-4">
                                                                 <div className="font-semibold text-[#003087] flex items-center gap-2">
                                                                     <svg className="w-4 h-4 text-[#999999]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -665,61 +670,62 @@ export default function AdminDashboard() {
                                                                 </span>
                                                             </td>
                                                         </tr>
+                                                        {isExpanded && (
+                                                            <tr>
+                                                                <td colSpan={7} className="p-0 bg-[#F5F5F5] border-t border-[#CCCCCC]">
+                                                                    <div className="p-5">
+                                                                        <div className="flex items-center justify-between mb-3 border-b border-[#CCCCCC] pb-2">
+                                                                            <h4 className="font-bold text-[#003087]">{dept.departmentName} — Candidate Backlog</h4>
+                                                                            {dept.winner && (
+                                                                                <div className="bg-[#FFF3E0] border border-[#FFCC80] text-[#F7941D] px-3 py-1 rounded-md text-xs font-bold flex items-center gap-2">
+                                                                                    🏆 Winner: {dept.winner.name}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                                                            <div>
+                                                                                <p className="text-xs font-bold text-[#333333] mb-2 border-b border-[#E0E0E0] pb-1">Stage 1: Self Assessed</p>
+                                                                                {dept.stage1.submittedNames.length > 0 ? (
+                                                                                    <ul className="text-xs text-[#1A1A2E] space-y-1 list-disc pl-4">
+                                                                                        {dept.stage1.submittedNames.map((n, i) => <li key={i}>{n}</li>)}
+                                                                                    </ul>
+                                                                                ) : <p className="text-xs text-[#999999] italic">None yet</p>}
+                                                                            </div>
+                                                                            <div>
+                                                                                <p className="text-xs font-bold text-[#333333] mb-2 border-b border-[#E0E0E0] pb-1">Stage 2: Supervisor Evaluates</p>
+                                                                                {dept.stage2.shortlistNames.length > 0 ? (
+                                                                                    <ul className="text-xs text-[#1A1A2E] space-y-1 list-disc pl-4">
+                                                                                        {dept.stage2.shortlistNames.map((n, i) => <li key={i}>{n}</li>)}
+                                                                                    </ul>
+                                                                                ) : <p className="text-xs text-[#999999] italic">Waiting for S1 close</p>}
+                                                                            </div>
+                                                                            <div>
+                                                                                <p className="text-xs font-bold text-[#333333] mb-2 border-b border-[#E0E0E0] pb-1">Stage 3: BM Evaluates</p>
+                                                                                {dept.stage3.shortlistNames.length > 0 ? (
+                                                                                    <ul className="text-xs text-[#1A1A2E] space-y-1 list-disc pl-4">
+                                                                                        {dept.stage3.shortlistNames.map((n, i) => <li key={i}>{n}</li>)}
+                                                                                    </ul>
+                                                                                ) : <p className="text-xs text-[#999999] italic">Waiting for S2 close</p>}
+                                                                            </div>
+                                                                            <div>
+                                                                                <p className="text-xs font-bold text-[#333333] mb-2 border-b border-[#E0E0E0] pb-1">Stage 4: CM Evaluates</p>
+                                                                                {dept.stage4.shortlistNames.length > 0 ? (
+                                                                                    <ul className="text-xs text-[#1A1A2E] space-y-1 list-disc pl-4">
+                                                                                        {dept.stage4.shortlistNames.map((n, i) => <li key={i}>{n}</li>)}
+                                                                                    </ul>
+                                                                                ) : <p className="text-xs text-[#999999] italic">Waiting for S3 close</p>}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                        </Fragment>
                                                     )
                                                 })}
                                             </tbody>
                                         </table>
                                     </div>
-                                </div>
-
-                                {/* Expandable Details Rows rendering below the table logically */}
-                                <div className="space-y-2 mt-4">
-                                    {quarterProgress.departments.map((dept) => (
-                                        <div key={`details-${dept.departmentId}`} id={`dept-details-${dept.departmentId}`} className="hidden bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg p-5">
-                                            <div className="flex items-center justify-between mb-3 border-b border-[#CCCCCC] pb-2">
-                                                <h4 className="font-bold text-[#003087]">{dept.departmentName} — Candidate Backlog</h4>
-                                                {dept.winner && (
-                                                    <div className="bg-[#FFF3E0] border border-[#FFCC80] text-[#F7941D] px-3 py-1 rounded-md text-xs font-bold flex items-center gap-2">
-                                                        🏆 Winner: {dept.winner.name}
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                                <div>
-                                                    <p className="text-xs font-bold text-[#333333] mb-2 border-b border-[#E0E0E0] pb-1">Stage 1: Self Assessed</p>
-                                                    {dept.stage1.submittedNames.length > 0 ? (
-                                                        <ul className="text-xs text-[#1A1A2E] space-y-1 list-disc pl-4">
-                                                            {dept.stage1.submittedNames.map((n, i) => <li key={i}>{n}</li>)}
-                                                        </ul>
-                                                    ) : <p className="text-xs text-[#999999] italic">None yet</p>}
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs font-bold text-[#333333] mb-2 border-b border-[#E0E0E0] pb-1">Stage 2: Supervisor Evaluates</p>
-                                                    {dept.stage2.shortlistNames.length > 0 ? (
-                                                        <ul className="text-xs text-[#1A1A2E] space-y-1 list-disc pl-4">
-                                                            {dept.stage2.shortlistNames.map((n, i) => <li key={i}>{n}</li>)}
-                                                        </ul>
-                                                    ) : <p className="text-xs text-[#999999] italic">Waiting for S1 close</p>}
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs font-bold text-[#333333] mb-2 border-b border-[#E0E0E0] pb-1">Stage 3: BM Evaluates</p>
-                                                    {dept.stage3.shortlistNames.length > 0 ? (
-                                                        <ul className="text-xs text-[#1A1A2E] space-y-1 list-disc pl-4">
-                                                            {dept.stage3.shortlistNames.map((n, i) => <li key={i}>{n}</li>)}
-                                                        </ul>
-                                                    ) : <p className="text-xs text-[#999999] italic">Waiting for S2 close</p>}
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs font-bold text-[#333333] mb-2 border-b border-[#E0E0E0] pb-1">Stage 4: CM Evaluates</p>
-                                                    {dept.stage4.shortlistNames.length > 0 ? (
-                                                        <ul className="text-xs text-[#1A1A2E] space-y-1 list-disc pl-4">
-                                                            {dept.stage4.shortlistNames.map((n, i) => <li key={i}>{n}</li>)}
-                                                        </ul>
-                                                    ) : <p className="text-xs text-[#999999] italic">Waiting for S3 close</p>}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
                                 </div>
                             </div>
                         </>
