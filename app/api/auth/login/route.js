@@ -1,20 +1,24 @@
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+export const maxDuration = 15
 
 import bcrypt from "bcryptjs";
 import prisma from "../../../../lib/prisma";
 import { signToken, signRefreshToken } from "../../../../lib/auth";
 import { ok, fail, serverError, validateBody } from "../../../../lib/api-response";
 import { loginSchema } from "../../../../lib/validators";
-import { getClientIp } from "../../../../lib/rate-limit";
+import { getClientIp, withDbRetry } from "../../../../lib/http";
 import { sanitize } from "../../../../lib/sanitize";
 
 /**
  * POST /api/auth/login
- * Rate limited: 5 attempts per IP per 15 minutes.
- * Authenticates via empCode + password.
+ * Authenticates via empCode + password. No rate limiting.
  * Sets httpOnly, Secure, SameSite cookies for both access and refresh tokens.
- * 
+ *
+ * DB calls are wrapped in withDbRetry to gracefully handle Neon pooler
+ * cold-start hiccups (first request after idle period can fail with a
+ * transient connection error — retry makes login succeed on attempt 1).
+ *
  * Multi-role support:
  *   If user has 1 role  → returns user object, token set in cookie
  *   If user has 2+ roles → returns requiresRoleSelection: true, availableRoles[]
@@ -30,14 +34,14 @@ export async function POST(request) {
         // Sanitize input
         const empCode = sanitize(data.empCode);
 
-        // Look up user by empCode only
-        const user = await prisma.user.findUnique({
+        // Look up user by empCode only (retry on transient connection errors)
+        const user = await withDbRetry(() => prisma.user.findUnique({
             where: { empCode },
             select: {
                 id: true, empCode: true, name: true,
                 password: true, role: true, departmentId: true, designation: true,
             },
-        });
+        }));
 
         const ip = getClientIp(request);
 
@@ -55,10 +59,10 @@ export async function POST(request) {
         }
 
         // ── Build roles list from DepartmentRoleMapping table ──
-        const deptRoleMappings = await prisma.departmentRoleMapping.findMany({
+        const deptRoleMappings = await withDbRetry(() => prisma.departmentRoleMapping.findMany({
             where: { userId: user.id },
             select: { role: true, departmentId: true },
-        });
+        }));
 
         // Collect unique roles: primary role + all department roles
         // Only include EMPLOYEE role if user actually has a department (not a pure evaluator)
@@ -163,7 +167,17 @@ export async function POST(request) {
 
         return response;
     } catch (err) {
-        console.error("[LOGIN] Error:", err.message, err.stack);
+        console.error("[LOGIN] Error:", err?.code, err?.message, err?.stack);
+        // Detect DB connection errors that slipped through retries so the
+        // client sees a clear 503 "try again" instead of a generic 500.
+        const code = err?.code || "";
+        const msg = String(err?.message || "");
+        const isConnection =
+            code === "P1001" || code === "P1002" || code === "P1008" || code === "P1017" || code === "P2024" ||
+            /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|Connection terminated|Connection closed|Closed the connection/i.test(msg);
+        if (isConnection) {
+            return fail("Service is starting up. Please try again in a moment.", 503);
+        }
         return serverError();
     }
 }

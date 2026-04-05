@@ -4,7 +4,7 @@ export const runtime = 'nodejs'
 import prisma from "../../../../lib/prisma";
 import { ok, serverError } from "../../../../lib/api-response";
 import { getTokenExpiry } from "../../../../lib/auth";
-import { getClientIp } from "../../../../lib/rate-limit";
+import { getClientIp } from "../../../../lib/http";
 
 /**
  * POST /api/auth/logout
