@@ -94,10 +94,16 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
             });
             const expectedCount = evaluatorPool.length * shortlistCount;
 
+            // ── Freeze check: if a BestEmployee already exists for this dept,
+            // do not overwrite it.
+            const existingBest = await tx.bestEmployee.count({
+                where: { quarterId: activeQuarter.id, departmentId: employee.departmentId },
+            });
+
             let bestEmployeeSelected = false;
             let bestEmployeeData = null;
 
-            if (shortlistCount > 0 && evaluatorPool.length > 0 && totalEvalCount >= expectedCount) {
+            if (existingBest === 0 && shortlistCount > 0 && evaluatorPool.length > 0 && totalEvalCount >= expectedCount) {
                 const allEvals = await tx.clusterManagerEvaluation.findMany({
                     where: { quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId }, employeeId: { in: shortlistIds } },
                     select: { employeeId: true, cmNormalized: true },

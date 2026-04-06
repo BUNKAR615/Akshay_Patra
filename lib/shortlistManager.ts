@@ -1,10 +1,34 @@
 import { prisma } from './prisma'
 
+/**
+ * Recompute Stage 1 shortlist (top N employees by self-assessment score)
+ * for a given department + quarter.
+ *
+ * FREEZE RULE: Once any supervisor evaluation exists for this department
+ * + quarter, the Stage 1 shortlist is frozen. New self-assessment submissions
+ * still record their scores, but the shortlist is not recalculated.
+ * This prevents employees from being removed mid-evaluation when a
+ * later-submitting employee scores higher.
+ */
 export async function updateStage1Shortlist(
   tx: any,
   departmentId: string,
   quarterId: string
 ) {
+  // ── Freeze check: if a supervisor has started evaluating, lock the list ──
+  const supervisorEvalsExist = await tx.supervisorEvaluation.count({
+    where: {
+      quarterId,
+      employee: { departmentId }
+    }
+  })
+  if (supervisorEvalsExist > 0) {
+    // Shortlist is frozen — supervisor round is in progress.
+    // The self-assessment score is still saved (by the caller), but
+    // the ranking won't change until next quarter.
+    return
+  }
+
   // Count total employees in department
   const totalEmployees = await tx.user.count({
     where: { departmentId, role: 'EMPLOYEE' }

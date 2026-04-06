@@ -97,8 +97,14 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
             });
             const expectedCount = evaluatorPool.length * shortlistCount;
 
+            // ── Freeze check: if a CM has already started evaluating this dept,
+            // Stage 3 is locked — do not overwrite it.
+            const cmEvalsExist = await tx.clusterManagerEvaluation.count({
+                where: { quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId } },
+            });
+
             let stage3Created = false;
-            if (shortlistCount > 0 && evaluatorPool.length > 0 && totalEvalCount >= expectedCount) {
+            if (cmEvalsExist === 0 && shortlistCount > 0 && evaluatorPool.length > 0 && totalEvalCount >= expectedCount) {
                 const allEvals = await tx.branchManagerEvaluation.findMany({
                     where: { quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId }, employeeId: { in: shortlistIds } },
                     select: { employeeId: true, bmNormalized: true },

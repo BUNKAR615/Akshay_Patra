@@ -116,8 +116,14 @@ export const POST = withRole(["SUPERVISOR"], async (request, { user }) => {
             });
             const expectedCount = evaluatorPool.length * shortlistCount;
 
+            // ── Freeze check: if a BM has already started evaluating this dept,
+            // Stage 2 is locked — do not overwrite it.
+            const bmEvalsExist = await tx.branchManagerEvaluation.count({
+                where: { quarterId: activeQuarter.id, employee: { departmentId: evaluatingDeptId } },
+            });
+
             let stage2Created = false;
-            if (shortlistCount > 0 && evaluatorPool.length > 0 && totalEvalCount >= expectedCount) {
+            if (bmEvalsExist === 0 && shortlistCount > 0 && evaluatorPool.length > 0 && totalEvalCount >= expectedCount) {
                 // Aggregate: average each employee's supervisor score across all evaluators
                 const allEvals = await tx.supervisorEvaluation.findMany({
                     where: { quarterId: activeQuarter.id, employee: { departmentId: evaluatingDeptId }, employeeId: { in: shortlistIds } },
