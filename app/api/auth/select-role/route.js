@@ -34,11 +34,12 @@ export async function POST(request) {
             return fail("You do not have the selected role", 403);
         }
 
-        // Issue new JWT with the selected role
+        // Issue new JWT with the selected role (preserve roles for switch-role)
         const newPayload = {
             userId: decoded.userId,
             empCode: decoded.empCode,
             role: data.role,
+            roles: availableRoles,
             departmentIds: decoded.departmentIds || [],
         };
 

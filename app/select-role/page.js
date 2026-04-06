@@ -64,19 +64,33 @@ export default function SelectRolePage() {
     const [userName, setUserName] = useState("");
 
     useEffect(() => {
-        try {
-            const stored = sessionStorage.getItem("availableRoles");
-            const name = sessionStorage.getItem("userName");
-            if (stored) {
-                setRoles(JSON.parse(stored));
-            } else {
-                // No roles stored — redirect back to login
+        const loadRoles = async () => {
+            try {
+                // First try sessionStorage (from login flow)
+                const stored = sessionStorage.getItem("availableRoles");
+                const name = sessionStorage.getItem("userName");
+                if (stored) {
+                    setRoles(JSON.parse(stored));
+                    if (name) setUserName(name);
+                    return;
+                }
+
+                // No sessionStorage — try API (switch-role flow, user already authenticated)
+                const res = await fetch("/api/auth/available-roles");
+                const json = await res.json();
+                if (res.ok && json.success && json.data?.roles?.length > 1) {
+                    setRoles(json.data.roles);
+                    if (json.data.userName) setUserName(json.data.userName);
+                    return;
+                }
+
+                // Single role or no roles — redirect back to login
+                window.location.href = "/login";
+            } catch {
                 window.location.href = "/login";
             }
-            if (name) setUserName(name);
-        } catch {
-            window.location.href = "/login";
-        }
+        };
+        loadRoles();
     }, []);
 
     const handleSelectRole = async (role) => {
@@ -100,9 +114,11 @@ export default function SelectRolePage() {
                 return;
             }
 
-            // Clear sessionStorage
-            sessionStorage.removeItem("availableRoles");
-            sessionStorage.removeItem("userName");
+            // Clear sessionStorage (may not exist in switch-role flow)
+            try {
+                sessionStorage.removeItem("availableRoles");
+                sessionStorage.removeItem("userName");
+            } catch { }
 
             // Redirect to role dashboard
             const redirectPath = ROLE_REDIRECTS[role] || "/dashboard/employee";

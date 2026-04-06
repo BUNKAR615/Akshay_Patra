@@ -23,6 +23,14 @@ const ROLE_COLORS = {
 export default function DashboardShell({ user, currentQuarter, title, children }) {
     const router = useRouter();
 
+    // Detect if user has multiple roles (primary role + any different DRM roles)
+    const allRoles = user ? [...new Set([user.role, ...(user.departmentRoles || []).map(dr => dr.role)])] : [];
+    const isMultiRole = allRoles.length > 1;
+
+    const handleSwitchRole = () => {
+        window.location.href = "/select-role";
+    };
+
     const handleLogout = async () => {
         await fetch("/api/auth/logout", { method: "POST" });
         window.location.replace("/login");
@@ -57,6 +65,16 @@ export default function DashboardShell({ user, currentQuarter, title, children }
                             </div>
                         )}
                         <NotificationBell />
+                        {isMultiRole && (
+                            <button
+                                onClick={handleSwitchRole}
+                                className="text-[11px] sm:text-[13px] font-bold text-white min-h-[36px] sm:min-h-[44px] px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg hover:bg-white/20 transition-colors cursor-pointer border border-white/30 hover:border-white/50 flex items-center justify-center gap-1.5"
+                                title="Switch to another role"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                                <span className="hidden sm:inline">Switch Role</span>
+                            </button>
+                        )}
                         <button
                             onClick={handleLogout}
                             className="text-[12px] sm:text-[14px] font-bold text-white min-h-[36px] sm:min-h-[44px] px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-white/20 transition-colors cursor-pointer border border-transparent hover:border-white/30 flex items-center justify-center"
