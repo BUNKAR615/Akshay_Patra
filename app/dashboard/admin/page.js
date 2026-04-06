@@ -64,8 +64,17 @@ export default function AdminDashboard() {
     const [empLoading, setEmpLoading] = useState(false);
     const [empFilter, setEmpFilter] = useState({ search: "", department: "", role: "" });
 
-    // Employee management link for admin (Rishpal only)
-    const canManageEmployees = user && user.empCode === "1800349";
+    // Employee management — add / remove (inline in admin dashboard)
+    // Add employee state
+    const [showAddEmp, setShowAddEmp] = useState(false);
+    const [addForm, setAddForm] = useState({ name: "", mobile: "", departmentName: "", joiningDate: "", reason: "", empCode: "", designation: "" });
+    const [addMsg, setAddMsg] = useState({ type: "", text: "" });
+    const [addLoading, setAddLoading] = useState(false);
+
+    // Remove employee state
+    const [removeId, setRemoveId] = useState(null);
+    const [removeReason, setRemoveReason] = useState("");
+    const [removeLoading, setRemoveLoading] = useState(false);
 
     // Edit employee modal state (admin only)
     const [editEmp, setEditEmp] = useState(null);           // employee being edited
@@ -139,6 +148,46 @@ export default function AdminDashboard() {
             setEditConfirm(false);
         }
         setEditLoading(false);
+    };
+
+    // Add employee handler
+    const handleAddEmployee = async () => {
+        setAddLoading(true);
+        setAddMsg({ type: "", text: "" });
+        try {
+            const d = await api("/api/admin/employees", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(addForm),
+            });
+            setAddMsg({ type: "success", text: `${d.employee.name} added successfully. Default password: ${d.defaultPassword}` });
+            setAddForm({ name: "", mobile: "", departmentName: "", joiningDate: "", reason: "", empCode: "", designation: "" });
+            fetchEmployees(1);
+            if (orgStructure.length > 0) fetchOrg();
+        } catch (err) {
+            setAddMsg({ type: "error", text: err.message || "Failed to add employee" });
+        }
+        setAddLoading(false);
+    };
+
+    // Remove employee handler
+    const handleRemoveEmployee = async () => {
+        if (!removeId || !removeReason) return;
+        setRemoveLoading(true);
+        try {
+            await api(`/api/admin/employees/${removeId}`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reasonLeaving: removeReason }),
+            });
+            setRemoveId(null);
+            setRemoveReason("");
+            fetchEmployees(1);
+            if (orgStructure.length > 0) fetchOrg();
+        } catch (err) {
+            alert(err.message || "Failed to remove employee");
+        }
+        setRemoveLoading(false);
     };
 
     // Org Structure — expandable departments and person detail modal
@@ -903,7 +952,13 @@ export default function AdminDashboard() {
 
                                             {/* Employee List */}
                                             <div>
-                                                <p className="text-xs font-bold text-[#333333] mb-2 uppercase tracking-wider">All Employees ({dept.employees?.length || 0})</p>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <p className="text-xs font-bold text-[#333333] uppercase tracking-wider">All Employees ({dept.employees?.length || 0})</p>
+                                                    <button onClick={() => { setShowAddEmp(true); setAddForm({ ...addForm, departmentName: dept.name }); setAddMsg({ type: "", text: "" }); setTab("employees"); }} className="text-[10px] px-2.5 py-1 rounded bg-[#00843D] text-white font-bold hover:bg-[#006B32] transition-colors cursor-pointer flex items-center gap-1">
+                                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                                        Add Employee
+                                                    </button>
+                                                </div>
                                                 {dept.employees?.length > 0 ? (
                                                     <div className="border border-[#E0E0E0] rounded-lg overflow-hidden">
                                                         <div className="overflow-x-auto">
@@ -915,6 +970,7 @@ export default function AdminDashboard() {
                                                                         <th className="px-3 py-2 text-[10px] font-bold text-[#666666] uppercase">Designation</th>
                                                                         <th className="px-3 py-2 text-[10px] font-bold text-[#666666] uppercase">Mobile</th>
                                                                         <th className="px-3 py-2 text-[10px] font-bold text-[#666666] uppercase">Roles</th>
+                                                                        <th className="px-3 py-2 text-[10px] font-bold text-[#666666] uppercase">Action</th>
                                                                     </tr>
                                                                 </thead>
                                                                 <tbody className="divide-y divide-[#E0E0E0]">
@@ -932,6 +988,11 @@ export default function AdminDashboard() {
                                                                                         <span key={r} className={`text-[9px] px-1.5 py-0.5 rounded-full border font-bold uppercase ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-600 border-gray-200" : r === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace(/_/g, " ")}</span>
                                                                                     ))}
                                                                                 </div>
+                                                                            </td>
+                                                                            <td className="px-3 py-2">
+                                                                                {!(emp.roles || [emp.role]).includes("ADMIN") && (
+                                                                                    <button onClick={() => setRemoveId(emp.id)} className="text-[10px] px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded-full font-bold hover:bg-red-100 cursor-pointer">Remove</button>
+                                                                                )}
                                                                             </td>
                                                                         </tr>
                                                                     ))}
@@ -1112,21 +1173,6 @@ export default function AdminDashboard() {
             {/* ═══════ EMPLOYEES TAB ═══════ */}
             {tab === "employees" && (
                 <div className="space-y-6">
-                    {/* HR Management link for authorized users */}
-                    {canManageEmployees && (
-                        <a href="/dashboard/hr" className="block bg-[#FFF3E0] border border-[#FFB74D] rounded-xl p-4 shadow-sm hover:bg-[#FFE0B2] transition-colors">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center border border-[#FFB74D] text-[#F57C00]">
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                                </div>
-                                <div>
-                                    <p className="text-sm font-bold text-[#E65100]">HR Employee Management</p>
-                                    <p className="text-xs text-[#F57C00]">Add or remove employees, view removed history</p>
-                                </div>
-                            </div>
-                        </a>
-                    )}
-
                     <div className="bg-white border rounded-xl p-3 sm:p-5 shadow-sm border-[#E0E0E0] space-y-3 sm:space-y-0 sm:flex sm:flex-row sm:gap-4 sm:justify-between sm:items-center">
                         <div className="relative w-full sm:flex-1 sm:max-w-xs">
                             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#999999]"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></span>
@@ -1145,12 +1191,62 @@ export default function AdminDashboard() {
                                 <option value="CLUSTER_MANAGER">Cluster Manager</option>
                                 <option value="ADMIN">Admin</option>
                             </select>
-                            <button onClick={downloadExcel} disabled={excelLoading} className="col-span-2 sm:col-span-1 h-10 px-4 bg-[#00843D] hover:bg-[#006B32] text-white text-xs sm:text-sm font-bold rounded-lg flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-60">
+                            <button onClick={() => { setShowAddEmp(!showAddEmp); setAddMsg({ type: "", text: "" }); }} className="col-span-1 h-10 px-3 sm:px-4 bg-[#00843D] hover:bg-[#006B32] text-white text-xs sm:text-sm font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
+                                {showAddEmp ? "Cancel" : "Add / Remove"}
+                            </button>
+                            <button onClick={downloadExcel} disabled={excelLoading} className="col-span-1 h-10 px-3 sm:px-4 bg-[#00843D] hover:bg-[#006B32] text-white text-xs sm:text-sm font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-60">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                {excelLoading ? "Exporting..." : "Download Excel"}
+                                {excelLoading ? "Exporting..." : "Excel"}
                             </button>
                         </div>
                     </div>
+
+                    {/* Add Employee Form (collapsible) */}
+                    {showAddEmp && (
+                        <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 shadow-sm space-y-4">
+                            <h3 className="text-lg font-bold text-[#003087]">Add New Employee</h3>
+                            {addMsg.text && (
+                                <div className={`p-3 rounded-lg text-sm font-medium ${addMsg.type === "success" ? "bg-green-50 text-green-800 border border-green-200" : "bg-red-50 text-red-800 border border-red-200"}`}>{addMsg.text}</div>
+                            )}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1">Name *</label>
+                                    <input type="text" value={addForm.name} onChange={(e) => setAddForm({ ...addForm, name: e.target.value })} placeholder="Full name" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1">Employee Code</label>
+                                    <input type="text" value={addForm.empCode} onChange={(e) => setAddForm({ ...addForm, empCode: e.target.value })} placeholder="e.g. 5100030" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1">Mobile Number</label>
+                                    <input type="text" value={addForm.mobile} onChange={(e) => setAddForm({ ...addForm, mobile: e.target.value })} placeholder="Phone number" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1">Department *</label>
+                                    <select value={addForm.departmentName} onChange={(e) => setAddForm({ ...addForm, departmentName: e.target.value })} className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm">
+                                        <option value="">Select Department</option>
+                                        {empDepartments.map(d => <option key={d} value={d}>{d}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1">Designation</label>
+                                    <input type="text" value={addForm.designation} onChange={(e) => setAddForm({ ...addForm, designation: e.target.value })} placeholder="e.g. Executive" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1">Joining Date</label>
+                                    <input type="date" value={addForm.joiningDate} onChange={(e) => setAddForm({ ...addForm, joiningDate: e.target.value })} className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
+                                </div>
+                                <div className="sm:col-span-2 lg:col-span-3">
+                                    <label className="block text-xs font-bold text-[#666666] mb-1">Reason for Joining</label>
+                                    <input type="text" value={addForm.reason} onChange={(e) => setAddForm({ ...addForm, reason: e.target.value })} placeholder="e.g. New hire, Transfer from another branch" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
+                                </div>
+                            </div>
+                            <button onClick={handleAddEmployee} disabled={addLoading || !addForm.name || !addForm.departmentName} className="px-6 py-2 bg-[#003087] text-white rounded-lg text-sm font-bold hover:bg-[#002266] transition-colors cursor-pointer disabled:opacity-50">
+                                {addLoading ? "Adding..." : "Add Employee"}
+                            </button>
+                        </div>
+                    )}
                     <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm">
                         <div className="overflow-x-auto">
                             <table className="w-full text-left border-collapse">
@@ -1178,7 +1274,7 @@ export default function AdminDashboard() {
                                             <td className="px-5 py-3 text-sm text-[#666666]">{e.designation}</td>
                                             <td className="px-5 py-3 text-sm text-[#666666]">{e.mobile ? <a href={`tel:${e.mobile}`} className="text-[#003087] hover:underline">{e.mobile}</a> : <span className="text-[#BBBBBB] italic text-xs">Not provided</span>}</td>
                                             <td className="px-5 py-3"><div className="flex flex-wrap gap-1">{roles.map(r => <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-700 border-gray-200" : r === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace("_", " ")}</span>)}</div></td>
-                                            {user?.role === "ADMIN" && <td className="px-5 py-3"><button onClick={() => openEditModal(e)} className="text-xs px-3 py-1.5 bg-[#003087] hover:bg-[#00843D] text-white rounded-lg font-semibold transition-colors cursor-pointer">Edit</button></td>}
+                                            {user?.role === "ADMIN" && <td className="px-5 py-3"><div className="flex gap-1.5"><button onClick={() => openEditModal(e)} className="text-xs px-3 py-1.5 bg-[#003087] hover:bg-[#00843D] text-white rounded-lg font-semibold transition-colors cursor-pointer">Edit</button>{!roles.includes("ADMIN") && <button onClick={() => setRemoveId(e.id)} className="text-xs px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg font-semibold hover:bg-red-100 cursor-pointer">Remove</button>}</div></td>}
                                         </tr>
                                         );
                                     })}
@@ -1194,6 +1290,26 @@ export default function AdminDashboard() {
                                 </div>
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* ═══════ REMOVE EMPLOYEE MODAL ═══════ */}
+            {removeId && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl space-y-4">
+                        <h3 className="text-lg font-bold text-red-700">Remove Employee</h3>
+                        <p className="text-sm text-[#666666]">This will archive the employee and remove them from all active lists, evaluations, and department mappings. This cannot be undone.</p>
+                        <div>
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Reason for Leaving *</label>
+                            <textarea value={removeReason} onChange={(e) => setRemoveReason(e.target.value)} placeholder="e.g. Resignation, Termination, Transfer" rows={3} className="w-full px-3 py-2 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm resize-none" />
+                        </div>
+                        <div className="flex gap-3 justify-end">
+                            <button onClick={() => { setRemoveId(null); setRemoveReason(""); }} className="px-4 py-2 border border-[#E0E0E0] rounded-lg text-sm font-bold text-[#333333] cursor-pointer">Cancel</button>
+                            <button onClick={handleRemoveEmployee} disabled={removeLoading || !removeReason} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 cursor-pointer disabled:opacity-50">
+                                {removeLoading ? "Removing..." : "Confirm Remove"}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
