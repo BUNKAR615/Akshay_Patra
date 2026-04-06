@@ -27,15 +27,19 @@ export const POST = withRole(["SUPERVISOR"], async (request, { user }) => {
         const employee = await prisma.user.findUnique({ where: { id: data.employeeId }, select: { id: true, departmentId: true } });
         if (!employee) return notFound("Employee not found");
 
-        // Guard: supervisor is assigned to the employee's department (via departmentRoleMapping or primary dept)
+        // Guard: supervisor must be assigned to the employee's department via DRM
         const deptMapping = await prisma.departmentRoleMapping.findFirst({
             where: { userId: user.userId, departmentId: employee.departmentId, role: "SUPERVISOR" },
         });
-        const supervisor = await prisma.user.findUnique({ where: { id: user.userId }, select: { departmentId: true } });
-        const isSupervisorForDept = !!deptMapping || (supervisor && supervisor.departmentId === employee.departmentId);
-
-        if (!isSupervisorForDept) {
-            return fail("You are not assigned as supervisor to this employee's department", 403);
+        if (!deptMapping) {
+            // Legacy fallback: allow if user's primary department matches AND role is SUPERVISOR
+            const supervisor = await prisma.user.findUnique({
+                where: { id: user.userId },
+                select: { departmentId: true, role: true },
+            });
+            if (!(supervisor && supervisor.role === "SUPERVISOR" && supervisor.departmentId === employee.departmentId)) {
+                return fail("You are not assigned as supervisor to this employee's department", 403);
+            }
         }
 
         const evaluatingDeptId = employee.departmentId;

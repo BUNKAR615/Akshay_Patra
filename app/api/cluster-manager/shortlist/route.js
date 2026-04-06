@@ -24,17 +24,12 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         const { searchParams } = new URL(request.url);
         const requestedDeptId = searchParams.get("departmentId");
 
-        const manager = await prisma.user.findUnique({
-            where: { id: user.userId },
-            select: { departmentId: true, department: { select: { name: true } } },
-        });
-        if (!manager) return notFound("User not found");
+        // Resolve target department from param or first mapped department (DRM only)
+        let deptId = null;
+        let deptName = null;
 
-        let deptId = manager.departmentId;
-        let deptName = manager.department.name;
-
-        // If a department is requested, verify CM is assigned to it
         if (requestedDeptId) {
+            // Verify CM is assigned to the requested department
             const deptRole = await prisma.departmentRoleMapping.findFirst({
                 where: { userId: user.userId, departmentId: requestedDeptId, role: "CLUSTER_MANAGER" },
                 include: { department: { select: { name: true } } },
@@ -42,6 +37,16 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
             if (!deptRole) return fail("You are not assigned to this department", 403);
             deptId = requestedDeptId;
             deptName = deptRole.department.name;
+        } else {
+            // No param — use first assigned department from DRM
+            const firstMapping = await prisma.departmentRoleMapping.findFirst({
+                where: { userId: user.userId, role: "CLUSTER_MANAGER" },
+                include: { department: { select: { name: true } } },
+                orderBy: { department: { name: "asc" } },
+            });
+            if (!firstMapping) return fail("You are not assigned to any department. Contact admin.", 403);
+            deptId = firstMapping.departmentId;
+            deptName = firstMapping.department.name;
         }
 
         const activeQuarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" }, select: { id: true, name: true } });

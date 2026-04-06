@@ -24,14 +24,12 @@ export const GET = withRole(["SUPERVISOR"], async (request, { user }) => {
         const { searchParams } = new URL(request.url);
         const requestedDeptId = searchParams.get("departmentId");
 
-        const supervisor = await prisma.user.findUnique({ where: { id: user.userId }, select: { departmentId: true, department: { select: { name: true } } } });
-        if (!supervisor) return notFound("Supervisor account not found");
+        // Resolve target department from param or first mapped department (DRM first, primary-dept fallback)
+        let deptId = null;
+        let deptName = null;
 
-        let deptId = supervisor.departmentId;
-        let deptName = supervisor.department?.name;
-
-        // If a department is requested, verify supervisor is assigned to it
         if (requestedDeptId) {
+            // Verify supervisor is assigned to the requested department
             const deptRole = await prisma.departmentRoleMapping.findFirst({
                 where: { userId: user.userId, departmentId: requestedDeptId, role: "SUPERVISOR" },
                 include: { department: { select: { name: true } } },
@@ -39,6 +37,26 @@ export const GET = withRole(["SUPERVISOR"], async (request, { user }) => {
             if (!deptRole) return fail("You are not assigned as supervisor to this department", 403);
             deptId = requestedDeptId;
             deptName = deptRole.department.name;
+        } else {
+            // No param — use first DRM mapping, or fall back to primary department
+            const firstMapping = await prisma.departmentRoleMapping.findFirst({
+                where: { userId: user.userId, role: "SUPERVISOR" },
+                include: { department: { select: { name: true } } },
+                orderBy: { department: { name: "asc" } },
+            });
+            if (firstMapping) {
+                deptId = firstMapping.departmentId;
+                deptName = firstMapping.department.name;
+            } else {
+                // Legacy fallback: primary department
+                const supervisor = await prisma.user.findUnique({
+                    where: { id: user.userId },
+                    select: { departmentId: true, department: { select: { name: true } } },
+                });
+                if (!supervisor?.departmentId) return fail("You are not assigned to any department. Contact admin.", 403);
+                deptId = supervisor.departmentId;
+                deptName = supervisor.department?.name;
+            }
         }
 
         const activeQuarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" }, select: { id: true, name: true } });

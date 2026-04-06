@@ -27,17 +27,8 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
             orderBy: { department: { name: "asc" } },
         });
 
-        // Fallback: if no mappings, use user's primary department
-        if (deptMappings.length === 0) {
-            const bmUser = await prisma.user.findUnique({
-                where: { id: user.userId },
-                select: { departmentId: true, department: true },
-            });
-            if (bmUser?.department) {
-                deptMappings.push({ departmentId: bmUser.departmentId, department: bmUser.department });
-            }
-        }
-
+        // No fallback — BM must be assigned via DRM.
+        // If no mappings, return empty so the frontend shows a clear message.
         const assignedDepts = deptMappings.map(m => m.department);
 
         // For each assigned department, find number of S2 shortlists and how many evaluated by this BM

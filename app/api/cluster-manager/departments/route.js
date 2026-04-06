@@ -27,17 +27,8 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
             orderBy: { department: { name: "asc" } },
         });
 
-        // Fallback: if no mappings, use user's primary department
-        if (deptMappings.length === 0) {
-            const cmUser = await prisma.user.findUnique({
-                where: { id: user.userId },
-                select: { departmentId: true, department: true },
-            });
-            if (cmUser?.department) {
-                deptMappings.push({ departmentId: cmUser.departmentId, department: cmUser.department });
-            }
-        }
-
+        // No fallback — CM must be assigned via DRM.
+        // If no mappings, return empty so the frontend shows a clear message.
         const assignedDepts = deptMappings.map(m => m.department);
 
         const departmentsData = await Promise.all(assignedDepts.map(async (dept) => {

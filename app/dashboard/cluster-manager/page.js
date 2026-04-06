@@ -34,6 +34,7 @@ export default function ClusterManagerDashboard() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
+    const [isMultiDept, setIsMultiDept] = useState(false);
 
     const fetchData = async () => {
         try {
@@ -47,6 +48,7 @@ export default function ClusterManagerDashboard() {
             setCurrentQuarterName(meData.currentQuarter || deptsData.quarter?.name);
             setDepartmentsData(deptsData.departments);
             setQuestions(qData.questions);
+            setIsMultiDept(deptsData.departments.length > 1);
 
             if (deptsData.departments && deptsData.departments.length > 0) {
                 // Try to find the first incomplete department
@@ -128,10 +130,14 @@ export default function ClusterManagerDashboard() {
             {user && (
                 <UserProfileCard
                     user={user}
-                    extraInfo={{ label: "Scope", value: "All Departments", color: "text-[#F57C00]" }}
+                    extraInfo={{
+                        label: "Evaluating",
+                        value: isMultiDept ? `${departmentsData.length} departments` : (currentDept?.name || ""),
+                        color: "text-[#F57C00]"
+                    }}
                 />
             )}
-            
+
             <div className="bg-[#FFF8E1] border-l-4 border-[#F57C00] p-4 mb-6 rounded-r-lg shadow-sm">
                 <p className="text-[#F57C00] font-bold text-sm">
                     You are evaluating the final shortlisted employees. Evaluate each person based on your observation.
@@ -139,51 +145,52 @@ export default function ClusterManagerDashboard() {
                 </p>
             </div>
 
-            {/* Department selector */}
-            <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-xl p-5 mb-6 shadow-sm">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center border border-[#FFE082] shrink-0 text-[#F57C00] shadow-sm">
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
-                        </div>
-                        <div>
-                            <p className="text-[13px] text-[#F57C00] font-bold uppercase tracking-wider mb-0.5">Global Cluster Manager</p>
-                            <p className="text-[20px] font-black text-[#F57C00] leading-tight">Jaipur Branch</p>
-                            {user?.designation && <p className="text-[14px] text-[#F57C00]/80 font-medium mt-1">{user.designation}</p>}
+            {/* Department selector — shown only if CM has multiple departments */}
+            {isMultiDept && (
+                <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-xl p-5 mb-6 shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center border border-[#FFE082] shrink-0 text-[#F57C00] shadow-sm">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                            </div>
+                            <div>
+                                <p className="text-[13px] text-[#F57C00] font-bold uppercase tracking-wider mb-0.5">Multi-Department Cluster Manager</p>
+                                <p className="text-[20px] font-black text-[#F57C00] leading-tight">Assigned to {departmentsData.length} Departments</p>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div className="bg-white rounded-lg p-3 border border-[#FFE082] flex flex-col sm:flex-row items-center gap-3">
-                    <label className="text-[14px] font-bold text-[#F57C00] uppercase tracking-wider whitespace-nowrap">Select Department:</label>
-                    <div className="relative w-full">
-                        <select
-                            value={selectedDeptId}
-                            onChange={(e) => handleSelectDept(e.target.value)}
-                            className="w-full px-4 py-2 bg-[#FFF8E1] border border-[#FFE082] rounded-lg text-[#1A1A2E] font-bold focus:outline-none focus:ring-2 focus:ring-[#F57C00] appearance-none cursor-pointer"
-                        >
-                            {departmentsData.map(dept => (
-                                <option key={dept.id} value={dept.id}>
-                                    {dept.name} — {dept.completed ? "✅ Completed" : `⏳ ${dept.evaluated}/${dept.totalToEvaluate} Evaluated`}
-                                </option>
-                            ))}
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-[#F57C00]">
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                            </svg>
+                    <div className="bg-white rounded-lg p-3 border border-[#FFE082] flex flex-col sm:flex-row items-center gap-3">
+                        <label className="text-[14px] font-bold text-[#F57C00] uppercase tracking-wider whitespace-nowrap">Select Department:</label>
+                        <div className="relative w-full">
+                            <select
+                                value={selectedDeptId}
+                                onChange={(e) => handleSelectDept(e.target.value)}
+                                className="w-full px-4 py-2 bg-[#FFF8E1] border border-[#FFE082] rounded-lg text-[#1A1A2E] font-bold focus:outline-none focus:ring-2 focus:ring-[#F57C00] appearance-none cursor-pointer"
+                            >
+                                {departmentsData.map(dept => (
+                                    <option key={dept.id} value={dept.id}>
+                                        {dept.name} — {dept.completed ? "Completed" : `${dept.evaluated}/${dept.totalToEvaluate} Evaluated`}
+                                    </option>
+                                ))}
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-[#F57C00]">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
 
             <div className="bg-white border border-[#E0E0E0] rounded-xl p-6 mb-8 shadow-sm">
                 <div className="flex justify-between items-end mb-3">
                     <div>
                         <span className="text-[14px] text-[#666666] font-bold uppercase tracking-wider block mb-1">
-                            {currentDept?.name} Evaluation Progress
+                            {isMultiDept ? `${currentDept?.name} — ` : ''}Evaluation Progress
                         </span>
-                        <span className="text-[15px] font-medium text-[#333333]">{progress.evaluated} of {progress.total} employees evaluated</span>
+                        <span className="text-[15px] font-medium text-[#333333]">{progress.evaluated} of {progress.total} employees evaluated{isMultiDept ? ' in this department' : ''}</span>
                     </div>
                     <span className="text-[24px] font-black text-[#003087] leading-none">{progress.evaluated}/{progress.total}</span>
                 </div>
@@ -193,6 +200,14 @@ export default function ClusterManagerDashboard() {
                     </div>
                 </div>
             </div>
+
+            {departmentsData.length === 0 && !error && (
+                <div className="bg-white border-2 border-[#E0E0E0] border-dashed rounded-2xl p-12 text-center shadow-sm mb-8">
+                    <span className="text-5xl block mb-4 opacity-50">🔒</span>
+                    <h3 className="text-[20px] font-bold text-[#333333] mb-2">No Departments Assigned</h3>
+                    <p className="text-[#666666] text-[16px] max-w-md mx-auto">You are not assigned to any department for evaluation. Please contact the Admin to get department assignments.</p>
+                </div>
+            )}
 
             {error && <div className="mb-6 p-4 bg-[#FFEBEE] border-l-4 border-[#D32F2F] rounded-r-lg text-[#D32F2F] text-[15px] font-bold shadow-sm">{error}</div>}
             {success && <div className="mb-6 p-5 bg-[#E8F5E9] border-l-4 border-[#00843D] rounded-r-lg text-[#1B5E20] text-[15px] font-bold shadow-sm flex gap-3 items-center">
@@ -209,7 +224,7 @@ export default function ClusterManagerDashboard() {
 
                     <div className="bg-[#E3F2FD] border border-[#90CAF9] rounded-xl p-6 mb-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
-                            <p className="text-[13px] text-[#003087]/80 font-bold uppercase tracking-wider mb-1">Final Evaluation For ({currentDept?.name})</p>
+                            <p className="text-[13px] text-[#003087]/80 font-bold uppercase tracking-wider mb-1">Final Evaluation{isMultiDept ? ` For (${currentDept?.name})` : ''}</p>
                             <p className="text-[#003087] font-black text-[22px] leading-tight">{selectedEmployee.name}</p>
                         </div>
                     </div>
@@ -224,7 +239,9 @@ export default function ClusterManagerDashboard() {
             ) : (
                 <div className="space-y-4">
                     <div className="flex items-center justify-between mb-4">
-                        <p className="text-[#1A1A2E] font-bold text-[18px]">Employees to Evaluate ({currentDept?.name})</p>
+                        <p className="text-[#1A1A2E] font-bold text-[18px]">
+                            {isMultiDept ? `Employees to Evaluate (${currentDept?.name})` : 'Shortlisted Employees'}
+                        </p>
                         <span className="text-[13px] text-[#666666] font-medium bg-[#F5F5F5] px-3 py-1 rounded-full border border-[#E0E0E0] hidden sm:block">Blind evaluation — previous scores hidden</span>
                     </div>
 
@@ -232,7 +249,7 @@ export default function ClusterManagerDashboard() {
                         <div className="bg-white border-2 border-[#E0E0E0] border-dashed rounded-2xl p-12 text-center shadow-sm">
                             <span className="text-5xl block mb-4 opacity-50">📋</span>
                             <h3 className="text-[20px] font-bold text-[#333333] mb-2">No Evaluations Pending</h3>
-                            <p className="text-[#666666] text-[16px] max-w-md mx-auto">There are no employees waiting for your evaluation at this time in {currentDept?.name}. This may be because Stage 3 has not concluded yet.</p>
+                            <p className="text-[#666666] text-[16px] max-w-md mx-auto">There are no employees waiting for your evaluation at this time{isMultiDept ? ` in ${currentDept?.name}` : ''}. This may be because Stage 3 has not concluded yet.</p>
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 gap-4">
