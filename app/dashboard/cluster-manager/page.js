@@ -130,11 +130,18 @@ export default function ClusterManagerDashboard() {
             {user && (
                 <UserProfileCard
                     user={user}
-                    extraInfo={{
-                        label: "Evaluating",
-                        value: isMultiDept ? `${departmentsData.length} departments` : (currentDept?.name || ""),
-                        color: "text-[#F57C00]"
-                    }}
+                    extraInfo={[
+                        {
+                            label: "Evaluating",
+                            value: isMultiDept ? `${departmentsData.length} departments` : (currentDept?.name || ""),
+                            color: "text-[#F57C00]"
+                        },
+                        ...(user.branchName ? [{
+                            label: "Branch",
+                            value: user.branchName,
+                            color: "text-[#003087]"
+                        }] : [])
+                    ]}
                 />
             )}
 
@@ -245,6 +252,17 @@ export default function ClusterManagerDashboard() {
                         <span className="text-[13px] text-[#666666] font-medium bg-[#F5F5F5] px-3 py-1 rounded-full border border-[#E0E0E0] hidden sm:block">Blind evaluation — previous scores hidden</span>
                     </div>
 
+                    {shortlist.length > 0 && currentDept?.collarType && (
+                        <div className="bg-[#E3F2FD] border border-[#90CAF9] rounded-lg px-4 py-2.5 mb-2 flex items-center gap-2">
+                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${currentDept.collarType === "WHITE_COLLAR" ? "bg-[#E3F2FD] text-[#003087] border-[#90CAF9]" : "bg-[#FFF8E1] text-[#F57C00] border-[#FFE082]"}`}>
+                                {currentDept.collarType === "WHITE_COLLAR" ? "WC" : "BC"}
+                            </span>
+                            <span className="text-[13px] font-bold text-[#003087]">
+                                Showing {currentDept.collarType === "WHITE_COLLAR" ? "White Collar" : "Blue Collar"} track employees for {currentDept.name}
+                            </span>
+                        </div>
+                    )}
+
                     {shortlist.length === 0 ? (
                         <div className="bg-white border-2 border-[#E0E0E0] border-dashed rounded-2xl p-12 text-center shadow-sm">
                             <span className="text-5xl block mb-4 opacity-50">📋</span>
@@ -260,7 +278,15 @@ export default function ClusterManagerDashboard() {
                                             {entry.name.charAt(0)}
                                         </div>
                                         <div>
-                                            <p className="text-[18px] font-bold text-[#003087] leading-tight mb-1">{entry.name}</p>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <p className="text-[18px] font-bold text-[#003087] leading-tight">{entry.name}</p>
+                                                {entry.collarType === "WHITE_COLLAR" && (
+                                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border bg-[#E3F2FD] text-[#003087] border-[#90CAF9]">WC</span>
+                                                )}
+                                                {entry.collarType === "BLUE_COLLAR" && (
+                                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border bg-[#FFF8E1] text-[#F57C00] border-[#FFE082]">BC</span>
+                                                )}
+                                            </div>
                                             <p className="text-[#666666] text-[14px] font-medium">{entry.designation} | {entry.empCode}</p>
                                         </div>
                                     </div>

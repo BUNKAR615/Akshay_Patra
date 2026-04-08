@@ -129,17 +129,17 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         const bmQuestions = await prisma.question.findMany({ where: { level: "BRANCH_MANAGER", isActive: true } });
         const cmQuestions = await prisma.question.findMany({ where: { level: "CLUSTER_MANAGER", isActive: true } });
 
+        // ── NEW: Also fetch HOD questions ──
+        const hodQuestions = await prisma.question.findMany({ where: { level: "HOD", isActive: true } });
+
         const selfCount = data.questionCount; // strictly admin-set
-        const supCount = 5;
-        const bmCount = 4;
+        const bmCount = data.bmQuestionCount || 4;
+        const hodCount = data.hodQuestionCount || 4;
         const cmCount = 3;
 
         // Validate sufficient questions
         if (selfQuestions.length < selfCount) {
             return fail(`Not enough active SELF questions. Need ${selfCount}, found ${selfQuestions.length}. Add more questions.`);
-        }
-        if (supQuestions.length < supCount) {
-            return fail(`Not enough active SUPERVISOR questions. Need ${supCount}, found ${supQuestions.length}. Add more questions.`);
         }
         if (bmQuestions.length < bmCount) {
             return fail(`Not enough active BRANCH_MANAGER questions. Need ${bmCount}, found ${bmQuestions.length}. Add more questions.`);
@@ -147,23 +147,28 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         if (cmQuestions.length < cmCount) {
             return fail(`Not enough active CLUSTER_MANAGER questions. Need ${cmCount}, found ${cmQuestions.length}. Add more questions.`);
         }
+        // HOD questions only required if there are big branches
+        const bigBranches = await prisma.branch.findMany({ where: { branchType: "BIG" } });
+        if (bigBranches.length > 0 && hodQuestions.length < hodCount) {
+            return fail(`Not enough active HOD questions. Need ${hodCount}, found ${hodQuestions.length}. Add more questions (big branches require HOD questions).`);
+        }
 
         // ── Select random questions per level ──
         const selectedSelf = selectSelfQuestions(selfQuestions, selfCount);
-        const selectedSup = selectSupervisorQuestions(supQuestions, supCount);
         const selectedBm = selectSimple(bmQuestions, bmCount);
         const selectedCm = selectSimple(cmQuestions, cmCount);
+        const selectedHod = hodQuestions.length >= hodCount ? selectSimple(hodQuestions, hodCount) : [];
 
         const allSelectedIds = [
             ...selectedSelf.map(q => q.id),
-            ...selectedSup.map(q => q.id),
             ...selectedBm.map(q => q.id),
             ...selectedCm.map(q => q.id),
+            ...selectedHod.map(q => q.id),
         ];
 
         const { quarter, assignmentStats } = await prisma.$transaction(async (tx) => {
             const q = await tx.quarter.create({
-                data: { name: data.quarterName, status: "ACTIVE", startDate: start, endDate: end, questionCount: data.questionCount },
+                data: { name: data.quarterName, status: "ACTIVE", startDate: start, endDate: end, questionCount: data.questionCount, bmQuestionCount: bmCount, hodQuestionCount: hodCount },
             });
             await tx.quarterQuestion.createMany({
                 data: allSelectedIds.map((questionId) => ({ quarterId: q.id, questionId })),
@@ -255,7 +260,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         }
 
         const responseData = {
-            message: `Quarter "${data.quarterName}" started with ${allSelectedIds.length} questions locked (${selectedSelf.length} SELF, ${selectedSup.length} SUP, ${selectedBm.length} BM, ${selectedCm.length} CM). ${assignmentStats.totalEmployees} employees assigned unique question sets.${warningMsg}`,
+            message: `Quarter "${data.quarterName}" started with ${allSelectedIds.length} questions locked (${selectedSelf.length} SELF, ${selectedBm.length} BM, ${selectedHod.length} HOD, ${selectedCm.length} CM). ${assignmentStats.totalEmployees} employees assigned unique question sets.${warningMsg}`,
             quarter: result,
             assignmentStats,
         };

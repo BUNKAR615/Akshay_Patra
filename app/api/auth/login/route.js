@@ -40,6 +40,14 @@ export async function POST(request) {
             select: {
                 id: true, empCode: true, name: true,
                 password: true, role: true, departmentId: true, designation: true,
+                collarType: true,
+                department: {
+                    select: {
+                        id: true,
+                        branchId: true,
+                        branch: { select: { id: true, name: true, branchType: true } }
+                    }
+                }
             },
         }));
 
@@ -91,7 +99,12 @@ export async function POST(request) {
             },
         }).catch((e) => { console.error("Audit log failed:", e); });
 
-        const { password: _, ...safeUser } = user;
+        // Resolve branch info from user's department
+        const branchId = user.department?.branchId || "";
+        const branchType = user.department?.branch?.branchType || "";
+        const branchName = user.department?.branch?.name || "";
+
+        const { password: _, department: _dept, ...safeUser } = user;
 
         // ── Multi-role vs single-role ──
         if (allRoles.length > 1) {
@@ -102,13 +115,15 @@ export async function POST(request) {
                 role: null,
                 roles: allRoles,
                 departmentIds,
+                branchId,
+                branchType,
             };
             const token = await signToken(tokenPayload);
             const refreshToken = await signRefreshToken(tokenPayload);
 
             const response = ok({
                 token,
-                user: { ...safeUser, roles: allRoles },
+                user: { ...safeUser, roles: allRoles, branchId, branchType, branchName },
                 requiresRoleSelection: true,
                 availableRoles: allRoles,
             });
@@ -141,11 +156,13 @@ export async function POST(request) {
             empCode: user.empCode,
             role: resolvedRole,
             departmentIds,
+            branchId,
+            branchType,
         };
         const token = await signToken(tokenPayload);
         const refreshToken = await signRefreshToken(tokenPayload);
 
-        const response = ok({ token, user: { ...safeUser, role: resolvedRole } });
+        const response = ok({ token, user: { ...safeUser, role: resolvedRole, branchId, branchType, branchName } });
 
         // Access token cookie — 8 hours
         response.cookies.set("token", token, {

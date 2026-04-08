@@ -1,5 +1,6 @@
 import { prisma } from './prisma'
 import { getDepartmentSize } from './department-rules'
+import { getStage1CutoffPct } from './branchRules'
 
 /**
  * Recompute Stage 1 shortlist (top N employees by self-assessment score)
@@ -70,6 +71,82 @@ export async function updateStage1Shortlist(
         userId: a.userId,
         quarterId,
         departmentId,
+        selfScore: a.normalizedScore,
+        rank: i + 1
+      }
+    })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  NEW — Branch-level Stage 1 shortlist (top 50% of all branch employees)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Recompute branch-level Stage 1 shortlist (top 50% by self-assessment score).
+ *
+ * FREEZE RULE: Once any BM evaluation exists for this branch + quarter,
+ * the shortlist is frozen.
+ */
+export async function updateBranchStage1Shortlist(
+  tx: any,
+  branchId: string,
+  quarterId: string
+) {
+  // Freeze check: if BM has started evaluating, lock the list
+  const bmEvalsExist = await tx.branchManagerEvaluation.count({
+    where: {
+      quarterId,
+      employee: { department: { branchId } }
+    }
+  })
+  // Also check HOD evaluations for big branches
+  const hodEvalsExist = await tx.hodEvaluation.count({
+    where: { quarterId, employee: { department: { branchId } } }
+  })
+  if (bmEvalsExist > 0 || hodEvalsExist > 0) {
+    return // Shortlist frozen
+  }
+
+  // Get cutoff percentage (default 50%)
+  const cutoffPct = await getStage1CutoffPct(branchId, quarterId)
+
+  // Get all submitted assessments for this branch, ranked by score
+  const assessments = await tx.selfAssessment.findMany({
+    where: {
+      quarterId,
+      user: { role: 'EMPLOYEE', department: { branchId } }
+    },
+    orderBy: [
+      { normalizedScore: 'desc' },
+      { completionTimeSeconds: 'asc' }
+    ],
+    select: {
+      userId: true,
+      normalizedScore: true,
+      user: { select: { collarType: true } }
+    }
+  })
+
+  // Calculate top N% cutoff
+  const totalSubmitted = assessments.length
+  const shortlistSize = Math.max(1, Math.ceil(totalSubmitted * cutoffPct))
+  const shortlisted = assessments.slice(0, shortlistSize)
+
+  // Clear existing branch shortlist for this branch+quarter
+  await tx.branchShortlistStage1.deleteMany({
+    where: { branchId, quarterId }
+  })
+
+  // Insert ranked shortlist
+  for (let i = 0; i < shortlisted.length; i++) {
+    const a = shortlisted[i]
+    await tx.branchShortlistStage1.create({
+      data: {
+        userId: a.userId,
+        quarterId,
+        branchId,
+        collarType: a.user.collarType,
         selfScore: a.normalizedScore,
         rank: i + 1
       }

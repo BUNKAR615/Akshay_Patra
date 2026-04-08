@@ -6,16 +6,22 @@ import Image from "next/image";
 const ROLE_REDIRECTS = {
     EMPLOYEE: "/dashboard/employee",
     SUPERVISOR: "/dashboard/supervisor",
+    HOD: "/dashboard/hod",
     BRANCH_MANAGER: "/dashboard/branch-manager",
     CLUSTER_MANAGER: "/dashboard/cluster-manager",
+    HR: "/dashboard/hr",
+    COMMITTEE: "/dashboard/committee",
     ADMIN: "/dashboard/admin",
 };
 
 const ROLE_LABELS = {
     EMPLOYEE: "Employee",
     SUPERVISOR: "Supervisor",
+    HOD: "Head of Department (HOD)",
     BRANCH_MANAGER: "Branch Manager",
     CLUSTER_MANAGER: "Cluster Manager",
+    HR: "HR",
+    COMMITTEE: "Committee Member",
     ADMIN: "Admin",
 };
 

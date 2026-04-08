@@ -92,7 +92,8 @@ export const GET = withRole(["ADMIN"], async (request) => {
                     role: true,
                     designation: true,
                     mobile: true,
-                    department: { select: { id: true, name: true } },
+                    collarType: true,
+                    department: { select: { id: true, name: true, branchId: true, branch: { select: { name: true, branchType: true } } } },
                     departmentRoles: {
                         select: {
                             role: true,

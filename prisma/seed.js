@@ -11,10 +11,22 @@ async function main() {
   await prisma.$executeRawUnsafe('TRUNCATE TABLE departments CASCADE');
   await prisma.$executeRawUnsafe('TRUNCATE TABLE branches CASCADE');
 
-  // Step 1: Create Branch
-  console.log('Creating Jaipur branch...');
+  // Step 1: Create Branches
+  console.log('Creating branches...');
   const branch = await prisma.branch.create({
-    data: { name: 'Jaipur', location: 'Jaipur, Rajasthan' }
+    data: { name: 'Jaipur', location: 'Jaipur, Rajasthan', branchType: 'BIG' }
+  });
+
+  const nathdwaraBranch = await prisma.branch.create({
+    data: { name: 'Nathdwara', location: 'Nathdwara, Rajasthan', branchType: 'BIG' }
+  });
+
+  // Small branches (for future use)
+  const udaipurBranch = await prisma.branch.create({
+    data: { name: 'Udaipur', location: 'Udaipur, Rajasthan', branchType: 'SMALL' }
+  });
+  const jodhpurBranch = await prisma.branch.create({
+    data: { name: 'Jodhpur', location: 'Jodhpur, Rajasthan', branchType: 'SMALL' }
   });
 
   // Step 2: Create 14 Departments
@@ -68,14 +80,11 @@ async function main() {
     });
 
     if (emp.role === 'SUPERVISOR') {
-      const existing = await prisma.departmentRole.findFirst({
-        where: { userId: user.id, departmentId: deptId, role: 'SUPERVISOR' }
+      await prisma.departmentRoleMapping.upsert({
+        where: { userId_departmentId_role: { userId: user.id, departmentId: deptId, role: 'SUPERVISOR' } },
+        update: {},
+        create: { userId: user.id, departmentId: deptId, role: 'SUPERVISOR' }
       });
-      if (!existing) {
-        await prisma.departmentRole.create({
-          data: { userId: user.id, departmentId: deptId, role: 'SUPERVISOR' }
-        });
-      }
     }
 
     count++;
@@ -196,7 +205,23 @@ async function main() {
     { text: 'This employee demonstrates the qualities of a future leader.', textHindi: 'यह कर्मचारी भविष्य के नेता के गुण प्रदर्शित करता/करती है।', category: 'INITIATIVE', level: 'CLUSTER_MANAGER', isActive: true },
     { text: 'This employee is reliable and trustworthy at the highest level.', textHindi: 'यह कर्मचारी उच्चतम स्तर पर विश्वसनीय और भरोसेमंद है।', category: 'INTEGRITY', level: 'CLUSTER_MANAGER', isActive: true },
     { text: 'This employee consistently upholds the mission of Akshaya Patra.', textHindi: 'यह कर्मचारी लगातार अक्षय पात्र के मिशन को बनाए रखता/रखती है।', category: 'INTEGRITY', level: 'CLUSTER_MANAGER', isActive: true },
-    { text: 'This employee sets a standard for others in the organization.', textHindi: 'यह कर्मचारी संगठन में दूसरों के लिए एक मानक स्थापित करता/करती है।', category: 'INITIATIVE', level: 'CLUSTER_MANAGER', isActive: true }
+    { text: 'This employee sets a standard for others in the organization.', textHindi: 'यह कर्मचारी संगठन में दूसरों के लिए एक मानक स्थापित करता/करती है।', category: 'INITIATIVE', level: 'CLUSTER_MANAGER', isActive: true },
+
+    // HOD EVALUATION (for blue-collar employees in big branches)
+    { text: 'This employee consistently performs their duties with diligence.', textHindi: 'यह कर्मचारी लगातार अपने कर्तव्यों को लगन से निभाता/निभाती है।', category: 'PRODUCTIVITY', level: 'HOD', isActive: true },
+    { text: 'This employee maintains good attendance and punctuality.', textHindi: 'यह कर्मचारी अच्छी उपस्थिति और समयनिष्ठा बनाए रखता/रखती है।', category: 'ATTENDANCE', level: 'HOD', isActive: true },
+    { text: 'This employee follows safety protocols and departmental procedures.', textHindi: 'यह कर्मचारी सुरक्षा प्रोटोकॉल और विभागीय प्रक्रियाओं का पालन करता/करती है।', category: 'DISCIPLINE', level: 'HOD', isActive: true },
+    { text: 'This employee works well with colleagues in the department.', textHindi: 'यह कर्मचारी विभाग में सहकर्मियों के साथ अच्छे से काम करता/करती है।', category: 'TEAMWORK', level: 'HOD', isActive: true },
+    { text: 'This employee takes initiative to improve work processes.', textHindi: 'यह कर्मचारी कार्य प्रक्रियाओं में सुधार के लिए पहल करता/करती है।', category: 'INITIATIVE', level: 'HOD', isActive: true },
+    { text: 'This employee handles equipment and resources responsibly.', textHindi: 'यह कर्मचारी उपकरण और संसाधनों को जिम्मेदारी से संभालता/संभालती है।', category: 'INTEGRITY', level: 'HOD', isActive: true },
+
+    // HR EVALUATION (final stage before committee)
+    { text: 'This employee has a clean disciplinary record this quarter.', textHindi: 'इस तिमाही में इस कर्मचारी का अनुशासनात्मक रिकॉर्ड स्वच्छ रहा है।', category: 'DISCIPLINE', level: 'HR', isActive: true },
+    { text: 'This employee demonstrates commitment to organizational values.', textHindi: 'यह कर्मचारी संगठनात्मक मूल्यों के प्रति प्रतिबद्धता प्रदर्शित करता/करती है।', category: 'INTEGRITY', level: 'HR', isActive: true },
+    { text: 'This employee has shown growth and development this quarter.', textHindi: 'इस तिमाही में इस कर्मचारी ने विकास और प्रगति दिखाई है।', category: 'INITIATIVE', level: 'HR', isActive: true },
+    { text: 'This employee contributes to a positive workplace culture.', textHindi: 'यह कर्मचारी सकारात्मक कार्यस्थल संस्कृति में योगदान देता/देती है।', category: 'TEAMWORK', level: 'HR', isActive: true },
+    { text: 'This employee has maintained satisfactory attendance and punctuality records.', textHindi: 'इस कर्मचारी ने संतोषजनक उपस्थिति और समयनिष्ठा रिकॉर्ड बनाए रखा है।', category: 'ATTENDANCE', level: 'HR', isActive: true },
+    { text: 'This employee deserves recognition for outstanding performance.', textHindi: 'यह कर्मचारी उत्कृष्ट प्रदर्शन के लिए मान्यता का पात्र है।', category: 'PRODUCTIVITY', level: 'HR', isActive: true }
   ];
 
   console.log('Seeding questions...');
@@ -232,6 +257,8 @@ async function main() {
   const supervisor = await prisma.question.count({ where: { level: 'SUPERVISOR' } });
   const bm = await prisma.question.count({ where: { level: 'BRANCH_MANAGER' } });
   const cm = await prisma.question.count({ where: { level: 'CLUSTER_MANAGER' } });
+  const hod = await prisma.question.count({ where: { level: 'HOD' } });
+  const hr = await prisma.question.count({ where: { level: 'HR' } });
 
   console.log('==============================');
   console.log('QUESTION BANK SUMMARY');
@@ -240,7 +267,17 @@ async function main() {
   console.log(`SUPERVISOR      : ${supervisor} questions`);
   console.log(`BRANCH MANAGER  : ${bm}  questions`);
   console.log(`CLUSTER MANAGER : ${cm}  questions`);
-  console.log(`TOTAL           : ${self+supervisor+bm+cm} questions`);
+  console.log(`HOD             : ${hod}  questions`);
+  console.log(`HR              : ${hr}  questions`);
+  console.log(`TOTAL           : ${self+supervisor+bm+cm+hod+hr} questions`);
+  console.log('==============================\n');
+
+  // Branch summary
+  const branches = await prisma.branch.findMany({ select: { name: true, branchType: true } });
+  console.log('==============================');
+  console.log('BRANCH SUMMARY');
+  console.log('==============================');
+  branches.forEach(b => console.log(`  ${b.name}: ${b.branchType}`));
   console.log('==============================\n');
 }
 

@@ -66,6 +66,10 @@ export async function middleware(request: NextRequest) {
     // Backward compat: first departmentId
     response.headers.set('x-user-department-id', String(departmentIds[0] || ''))
 
+    // Branch info for branch-level evaluation
+    response.headers.set('x-user-branch-id', String(payload.branchId || ''))
+    response.headers.set('x-user-branch-type', String(payload.branchType || ''))
+
     return response
   } catch {
     if (pathname.startsWith('/api/')) {

@@ -60,4 +60,71 @@ function calculateFinalScore(
     return { selfContribution, supervisorContribution, bmContribution, cmContribution, finalScore }
 }
 
-export { normalizeScore, calculateStage2Score, calculateStage3Score, calculateFinalScore }
+// ═══════════════════════════════════════════════════════════════
+//  NEW — Branch-level evaluation weights (60/40 → 40/30/30 → 30/25/25/20)
+// ═══════════════════════════════════════════════════════════════
+
+function calculateBranchStage2Score(
+    selfNormalized: number,
+    evaluatorNormalized: number
+): {
+    selfContribution: number
+    evaluatorContribution: number
+    combined: number
+} {
+    const selfContribution = Math.round((selfNormalized / 100) * 60 * 100) / 100
+    const evaluatorContribution = Math.round((evaluatorNormalized / 100) * 40 * 100) / 100
+    const combined = Math.round((selfContribution + evaluatorContribution) * 100) / 100
+    return { selfContribution, evaluatorContribution, combined }
+}
+
+function calculateBranchStage3Score(
+    selfNormalized: number,
+    evaluatorNormalized: number,
+    cmNormalized: number
+): {
+    selfContribution: number
+    evaluatorContribution: number
+    cmContribution: number
+    combined: number
+} {
+    const selfContribution = Math.round((selfNormalized / 100) * 40 * 100) / 100
+    const evaluatorContribution = Math.round((evaluatorNormalized / 100) * 30 * 100) / 100
+    const cmContribution = Math.round((cmNormalized / 100) * 30 * 100) / 100
+    const combined = Math.round(
+        (selfContribution + evaluatorContribution + cmContribution) * 100
+    ) / 100
+    return { selfContribution, evaluatorContribution, cmContribution, combined }
+}
+
+function calculateBranchFinalScore(
+    selfNormalized: number,
+    evaluatorNormalized: number,
+    cmNormalized: number,
+    hrNormalized: number
+): {
+    selfContribution: number
+    evaluatorContribution: number
+    cmContribution: number
+    hrContribution: number
+    finalScore: number
+} {
+    const selfContribution = Math.round((selfNormalized / 100) * 30 * 100) / 100
+    const evaluatorContribution = Math.round((evaluatorNormalized / 100) * 25 * 100) / 100
+    const cmContribution = Math.round((cmNormalized / 100) * 25 * 100) / 100
+    const hrContribution = Math.round((hrNormalized / 100) * 20 * 100) / 100
+    const finalScore = Math.round(
+        (selfContribution + evaluatorContribution + cmContribution + hrContribution) * 100
+    ) / 100
+    return { selfContribution, evaluatorContribution, cmContribution, hrContribution, finalScore }
+}
+
+export {
+    normalizeScore,
+    calculateStage2Score,
+    calculateStage3Score,
+    calculateFinalScore,
+    calculateBranchStage2Score,
+    calculateBranchStage3Score,
+    calculateBranchFinalScore
+}

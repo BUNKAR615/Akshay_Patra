@@ -41,6 +41,8 @@ export async function POST(request) {
             role: data.role,
             roles: availableRoles,
             departmentIds: decoded.departmentIds || [],
+            branchId: decoded.branchId || "",
+            branchType: decoded.branchType || "",
         };
 
         const newToken = await signToken(newPayload);

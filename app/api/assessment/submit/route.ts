@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import prisma from "../../../../lib/prisma"
-import { updateStage1Shortlist } from "../../../../lib/shortlistManager"
+import { updateStage1Shortlist, updateBranchStage1Shortlist } from "../../../../lib/shortlistManager"
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -100,10 +100,10 @@ export async function POST(request: Request) {
       (rawScore / maxScore) * 100 * 100
     ) / 100
 
-    // Get employee department
+    // Get employee department + branch info
     const empUser = await prisma.user.findUnique({
       where: { id: userId },
-      select: { departmentId: true }
+      select: { departmentId: true, department: { select: { branchId: true } } }
     })
 
     // Save in transaction
@@ -122,11 +122,20 @@ export async function POST(request: Request) {
         }
       })
 
-      // Update stage 1 ranking for this department
+      // Update branch-level stage 1 ranking
+      if (empUser?.department?.branchId) {
+        await updateBranchStage1Shortlist(
+          tx,
+          empUser.department.branchId,
+          quarter.id
+        )
+      }
+
+      // Also update legacy department-level shortlist for backward compatibility
       if (empUser?.departmentId) {
         await updateStage1Shortlist(
-          tx, 
-          empUser.departmentId, 
+          tx,
+          empUser.departmentId,
           quarter.id
         )
       }

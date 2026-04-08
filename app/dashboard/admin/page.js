@@ -545,8 +545,51 @@ export default function AdminDashboard() {
 
     useEffect(() => { if (tab === "logs") fetchLogs(); }, [tab]);
 
+    // ── Branch management state ──
+    const [branches, setBranches] = useState([]);
+    const [branchLoading, setBranchLoading] = useState(false);
+    const [branchMsg, setBranchMsg] = useState({ type: "", text: "" });
+    const [newBranch, setNewBranch] = useState({ name: "", location: "", branchType: "SMALL" });
+    const [editBranch, setEditBranch] = useState(null);
+
+    const fetchBranches = async () => {
+        setBranchLoading(true);
+        try { const data = await api("/api/admin/branches"); setBranches(data.branches || []); }
+        catch (e) { setBranchMsg({ type: "error", text: e.message }); }
+        finally { setBranchLoading(false); }
+    };
+
+    const handleCreateBranch = async () => {
+        setBranchMsg({ type: "", text: "" });
+        try {
+            await api("/api/admin/branches", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newBranch) });
+            setBranchMsg({ type: "success", text: "Branch created" });
+            setNewBranch({ name: "", location: "", branchType: "SMALL" });
+            fetchBranches();
+        } catch (e) { setBranchMsg({ type: "error", text: e.message }); }
+    };
+
+    const handleUpdateBranch = async (id, updates) => {
+        try {
+            await api("/api/admin/branches", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...updates }) });
+            setBranchMsg({ type: "success", text: "Branch updated" });
+            setEditBranch(null);
+            fetchBranches();
+        } catch (e) { setBranchMsg({ type: "error", text: e.message }); }
+    };
+
+    const handleCollarType = async (userId, collarType) => {
+        try {
+            await api("/api/admin/collar-type", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, collarType }) });
+            fetchEmployees(empPage, empFilter);
+        } catch (e) { alert(e.message); }
+    };
+
+    useEffect(() => { if (tab === "branches") fetchBranches(); }, [tab]);
+
     const TABS = [
         { id: "summary", label: "Summary" },
+        { id: "branches", label: "Branches" },
         { id: "org", label: "Org Structure" },
         { id: "quarter", label: "Quarter" },
         { id: "questions", label: "Questions" },
@@ -554,7 +597,7 @@ export default function AdminDashboard() {
         { id: "logs", label: "Audit Logs" },
     ];
     const CATEGORIES = ["ATTENDANCE", "DISCIPLINE", "PRODUCTIVITY", "TEAMWORK", "INITIATIVE", "COMMUNICATION", "INTEGRITY"];
-    const LEVELS = ["SELF", "SUPERVISOR", "BRANCH_MANAGER", "CLUSTER_MANAGER"];
+    const LEVELS = ["SELF", "SUPERVISOR", "HOD", "BRANCH_MANAGER", "CLUSTER_MANAGER", "HR"];
 
     // Filtered + grouped questions
     const filteredQuestions = questions.filter((q) => {
@@ -854,6 +897,69 @@ export default function AdminDashboard() {
                                     Check Again
                                 </button>
                             </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ═══════ BRANCHES TAB ═══════ */}
+            {tab === "branches" && (
+                <div className="space-y-6">
+                    <h2 className="text-xl font-bold text-[#003087]">Branch Management</h2>
+                    {branchMsg.text && <div className={`p-3 rounded-lg text-sm font-medium ${branchMsg.type === "error" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>{branchMsg.text}</div>}
+
+                    {/* Add Branch */}
+                    <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 space-y-3">
+                        <h3 className="font-bold text-[#003087]">Add New Branch</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                            <input value={newBranch.name} onChange={e => setNewBranch(p => ({ ...p, name: e.target.value }))} placeholder="Branch Name" className="border rounded-lg px-3 py-2 text-sm" />
+                            <input value={newBranch.location} onChange={e => setNewBranch(p => ({ ...p, location: e.target.value }))} placeholder="Location" className="border rounded-lg px-3 py-2 text-sm" />
+                            <select value={newBranch.branchType} onChange={e => setNewBranch(p => ({ ...p, branchType: e.target.value }))} className="border rounded-lg px-3 py-2 text-sm">
+                                <option value="SMALL">Small Branch</option>
+                                <option value="BIG">Big Branch</option>
+                            </select>
+                            <button onClick={handleCreateBranch} className="bg-[#003087] text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-[#002266] cursor-pointer">Create Branch</button>
+                        </div>
+                    </div>
+
+                    {/* Branch List */}
+                    {branchLoading ? <div className="text-center py-8 text-gray-500">Loading...</div> : (
+                        <div className="grid gap-4">
+                            {branches.map(branch => (
+                                <div key={branch.id} className="bg-white border border-[#E0E0E0] rounded-xl p-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-3 h-3 rounded-full ${branch.branchType === "BIG" ? "bg-orange-500" : "bg-green-500"}`} />
+                                            <div>
+                                                <h4 className="font-bold text-[#003087]">{branch.name}</h4>
+                                                <p className="text-xs text-gray-500">{branch.location} &bull; {branch.branchType} branch &bull; {branch._count?.departments || 0} departments</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`px-2 py-1 rounded text-xs font-bold ${branch.branchType === "BIG" ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}`}>{branch.branchType}</span>
+                                            {editBranch?.id === branch.id ? (
+                                                <div className="flex items-center gap-2">
+                                                    <select value={editBranch.branchType} onChange={e => setEditBranch(p => ({ ...p, branchType: e.target.value }))} className="border rounded px-2 py-1 text-xs">
+                                                        <option value="SMALL">Small</option>
+                                                        <option value="BIG">Big</option>
+                                                    </select>
+                                                    <button onClick={() => handleUpdateBranch(branch.id, { branchType: editBranch.branchType })} className="text-xs px-2 py-1 bg-blue-600 text-white rounded cursor-pointer">Save</button>
+                                                    <button onClick={() => setEditBranch(null)} className="text-xs px-2 py-1 bg-gray-300 rounded cursor-pointer">Cancel</button>
+                                                </div>
+                                            ) : (
+                                                <button onClick={() => setEditBranch({ id: branch.id, branchType: branch.branchType })} className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded cursor-pointer">Edit Type</button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {branch.departments?.length > 0 && (
+                                        <div className="mt-3 flex flex-wrap gap-1.5">
+                                            {branch.departments.map(d => (
+                                                <span key={d.id} className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] rounded-full font-medium">{d.name}</span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
                         </div>
                     )}
                 </div>
@@ -1257,6 +1363,7 @@ export default function AdminDashboard() {
                                         <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Department</th>
                                         <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Designation</th>
                                         <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Mobile</th>
+                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Collar</th>
                                         <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Roles</th>
                                         {user?.role === "ADMIN" && <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Action</th>}
                                     </tr>
@@ -1273,7 +1380,16 @@ export default function AdminDashboard() {
                                             <td className="px-5 py-3 text-sm text-[#333333]">{e.department}{e.evaluatorRoles?.length > 0 && <span className="block text-[10px] text-[#666666] mt-0.5">{e.evaluatorRoles.map(er => `${er.role.replace("_"," ")} — ${er.department}`).join(", ")}</span>}</td>
                                             <td className="px-5 py-3 text-sm text-[#666666]">{e.designation}</td>
                                             <td className="px-5 py-3 text-sm text-[#666666]">{e.mobile ? <a href={`tel:${e.mobile}`} className="text-[#003087] hover:underline">{e.mobile}</a> : <span className="text-[#BBBBBB] italic text-xs">Not provided</span>}</td>
-                                            <td className="px-5 py-3"><div className="flex flex-wrap gap-1">{roles.map(r => <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-700 border-gray-200" : r === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace("_", " ")}</span>)}</div></td>
+                                            <td className="px-5 py-3">
+                                                {e.role === "EMPLOYEE" ? (
+                                                    <select value={e.collarType || ""} onChange={ev => handleCollarType(e.id, ev.target.value)} className="text-[10px] px-2 py-1 rounded border font-bold cursor-pointer">
+                                                        <option value="">Not Set</option>
+                                                        <option value="WHITE_COLLAR">White Collar</option>
+                                                        <option value="BLUE_COLLAR">Blue Collar</option>
+                                                    </select>
+                                                ) : <span className="text-xs text-gray-400">—</span>}
+                                            </td>
+                                            <td className="px-5 py-3"><div className="flex flex-wrap gap-1">{roles.map(r => <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-700 border-gray-200" : r === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : r === "HOD" ? "bg-purple-50 text-purple-700 border-purple-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : r === "HR" ? "bg-amber-50 text-amber-700 border-amber-200" : r === "COMMITTEE" ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace("_", " ")}</span>)}</div></td>
                                             {user?.role === "ADMIN" && <td className="px-5 py-3"><div className="flex gap-1.5"><button onClick={() => openEditModal(e)} className="text-xs px-3 py-1.5 bg-[#003087] hover:bg-[#00843D] text-white rounded-lg font-semibold transition-colors cursor-pointer">Edit</button>{!roles.includes("ADMIN") && <button onClick={() => setRemoveId(e.id)} className="text-xs px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg font-semibold hover:bg-red-100 cursor-pointer">Remove</button>}</div></td>}
                                         </tr>
                                         );

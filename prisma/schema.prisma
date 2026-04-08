@@ -13,9 +13,18 @@ model Branch {
   id          String       @id @default(cuid())
   name        String       @unique
   location    String
+  branchType  BranchType   @default(SMALL)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   departments Department[]
+
+  branchEvalConfigs  BranchEvalConfig[]
+  hodAssignments     HodAssignment[]
+  branchShortlist1   BranchShortlistStage1[]
+  branchShortlist2   BranchShortlistStage2[]
+  branchShortlist3   BranchShortlistStage3[]
+  branchShortlist4   BranchShortlistStage4[]
+  branchBestEmployees BranchBestEmployee[]
 
   @@map("branches")
 }
@@ -36,6 +45,7 @@ model Department {
   shortlistStage2 ShortlistStage2[]
   shortlistStage3 ShortlistStage3[]
   users           User[]
+  hodAssignments  HodAssignment[]
 
   @@unique([name, branchId])
   @@index([branchId])
@@ -50,6 +60,7 @@ model User {
   password              String
   role                  Role                       @default(EMPLOYEE)
   departmentId          String?
+  collarType            CollarType?
   createdAt             DateTime                   @default(now())
   updatedAt             DateTime                   @updatedAt
   designation           String?
@@ -71,6 +82,18 @@ model User {
   assignedQuestions     EmployeeQuarterQuestions[]
   department            Department?                @relation(fields: [departmentId], references: [id])
 
+  // New relations for redesign
+  hodEvaluationsGiven    HodEvaluation[]           @relation("HODGiven")
+  hodEvaluationsReceived HodEvaluation[]           @relation("EmployeeHODEval")
+  hrEvaluationsGiven     HrEvaluation[]            @relation("HRGiven")
+  hrEvaluationsReceived  HrEvaluation[]            @relation("EmployeeHREval")
+  hodAssignments         HodAssignment[]
+  branchShortlist1       BranchShortlistStage1[]
+  branchShortlist2       BranchShortlistStage2[]
+  branchShortlist3       BranchShortlistStage3[]
+  branchShortlist4       BranchShortlistStage4[]
+  branchBestEmployees    BranchBestEmployee[]
+
   @@index([departmentId])
   @@index([role])
   @@index([departmentId, role])
@@ -85,6 +108,8 @@ model Quarter {
   startDate             DateTime
   endDate               DateTime
   questionCount         Int                        @default(15)
+  bmQuestionCount       Int                        @default(4)
+  hodQuestionCount      Int                        @default(4)
   createdAt             DateTime                   @default(now())
   updatedAt             DateTime                   @updatedAt
   bestEmployees         BestEmployee[]
@@ -97,6 +122,17 @@ model Quarter {
   shortlistStage2       ShortlistStage2[]
   shortlistStage3       ShortlistStage3[]
   supervisorEvaluations SupervisorEvaluation[]
+
+  // New relations for redesign
+  hodEvaluations        HodEvaluation[]
+  hrEvaluations         HrEvaluation[]
+  branchEvalConfigs     BranchEvalConfig[]
+  hodAssignments        HodAssignment[]
+  branchShortlist1      BranchShortlistStage1[]
+  branchShortlist2      BranchShortlistStage2[]
+  branchShortlist3      BranchShortlistStage3[]
+  branchShortlist4      BranchShortlistStage4[]
+  branchBestEmployees   BranchBestEmployee[]
 
   @@index([status])
   @@map("quarters")
@@ -156,7 +192,7 @@ model SelfAssessment {
   @@map("self_assessments")
 }
 
-/// SupervisorEvaluation — supervisor evaluates an employee
+/// @deprecated — Supervisor stage removed in redesign. Kept for historical data.
 model SupervisorEvaluation {
   id                     String   @id @default(cuid())
   supervisorId           String
@@ -247,8 +283,7 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-/// ShortlistStage1 — Top 10 employees per department after self-assessment
-/// Recalculated atomically after every self-assessment submission
+/// @deprecated — Department-level shortlist. Kept for historical data.
 model ShortlistStage1 {
   id           String     @id @default(cuid())
   userId       String
@@ -269,8 +304,7 @@ model ShortlistStage1 {
   @@map("shortlist_stage1")
 }
 
-/// ShortlistStage2 — Top 5 employees per department after supervisor evaluation
-/// Auto-populated when supervisor completes all 10 evaluations
+/// @deprecated — Department-level shortlist. Kept for historical data.
 model ShortlistStage2 {
   id              String     @id @default(cuid())
   userId          String
@@ -293,8 +327,7 @@ model ShortlistStage2 {
   @@map("shortlist_stage2")
 }
 
-/// ShortlistStage3 — Top 3 employees per department after branch manager evaluation
-/// Auto-populated when BM completes all 5 evaluations
+/// @deprecated — Department-level shortlist. Kept for historical data.
 model ShortlistStage3 {
   id              String     @id @default(cuid())
   userId          String
@@ -318,8 +351,7 @@ model ShortlistStage3 {
   @@map("shortlist_stage3")
 }
 
-/// BestEmployee — winner of "Best Employee of the Quarter"
-/// Determined by highest finalScore after all 4 evaluation stages
+/// @deprecated — Department-level best employee. Kept for historical data.
 model BestEmployee {
   id              String     @id @default(cuid())
   userId          String
@@ -419,12 +451,236 @@ model ArchivedEmployee {
   @@map("archived_employees")
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  NEW MODELS — Branch-Level Evaluation Redesign
+// ═══════════════════════════════════════════════════════════════
+
+/// BranchEvalConfig — per-branch per-quarter evaluation settings
+model BranchEvalConfig {
+  id              String   @id @default(cuid())
+  branchId        String
+  quarterId       String
+  stage1CutoffPct Float    @default(0.5)   // top 50% = 0.5
+  stage2Limit     Int      @default(10)    // small: 10; big WC: 3; big BC: 10
+  stage3Limit     Int      @default(5)     // small: 5; big WC: 2; big BC: 5
+  stage4Limit     Int      @default(3)     // small: 3; big WC: 1; big BC: 3
+  createdAt       DateTime @default(now())
+  branch          Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  quarter         Quarter  @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, quarterId])
+  @@map("branch_eval_configs")
+}
+
+/// HodAssignment — BM assigns HOD to department for a quarter (big branches)
+model HodAssignment {
+  id           String     @id @default(cuid())
+  hodUserId    String
+  branchId     String
+  departmentId String
+  quarterId    String
+  assignedBy   String
+  assignedAt   DateTime   @default(now())
+  branch       Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  hod          User       @relation(fields: [hodUserId], references: [id], onDelete: Cascade)
+  quarter      Quarter    @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+
+  @@unique([hodUserId, departmentId, quarterId])
+  @@index([branchId, quarterId])
+  @@index([departmentId, quarterId])
+  @@map("hod_assignments")
+}
+
+/// HodEvaluation — HOD evaluates blue collar employees (big branch Stage 2)
+model HodEvaluation {
+  id                  String   @id @default(cuid())
+  hodId               String
+  employeeId          String
+  quarterId           String
+  answers             Json
+  submittedAt         DateTime @default(now())
+  hodRawScore         Float
+  hodNormalized       Float
+  selfContribution    Float
+  hodContribution     Float
+  stage2CombinedScore Float
+  hod                 User     @relation("HODGiven", fields: [hodId], references: [id], onDelete: Cascade)
+  employee            User     @relation("EmployeeHODEval", fields: [employeeId], references: [id], onDelete: Cascade)
+  quarter             Quarter  @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+
+  @@unique([hodId, employeeId, quarterId])
+  @@index([employeeId, quarterId])
+  @@map("hod_evaluations")
+}
+
+/// HrEvaluation — HR evaluates Stage 4 candidates with PDF uploads
+model HrEvaluation {
+  id                  String   @id @default(cuid())
+  hrUserId            String
+  employeeId          String
+  quarterId           String
+  attendancePdfUrl    String?
+  punctualityPdfUrl   String?
+  attendancePdfSize   Int?
+  punctualityPdfSize  Int?
+  notes               String?
+  hrScore             Float    @default(0)
+  submittedAt         DateTime @default(now())
+  selfContribution    Float    @default(0)
+  evaluatorContribution Float  @default(0)
+  cmContribution      Float    @default(0)
+  hrContribution      Float    @default(0)
+  stage4CombinedScore Float    @default(0)
+  hr                  User     @relation("HRGiven", fields: [hrUserId], references: [id], onDelete: Cascade)
+  employee            User     @relation("EmployeeHREval", fields: [employeeId], references: [id], onDelete: Cascade)
+  quarter             Quarter  @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+
+  @@unique([hrUserId, employeeId, quarterId])
+  @@index([employeeId, quarterId])
+  @@map("hr_evaluations")
+}
+
+/// BranchShortlistStage1 — Top 50% of branch employees after self-assessment
+model BranchShortlistStage1 {
+  id           String      @id @default(cuid())
+  userId       String
+  quarterId    String
+  branchId     String
+  collarType   CollarType?
+  selfScore    Float
+  rank         Int
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  branch       Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  quarter      Quarter     @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, quarterId])
+  @@unique([branchId, quarterId, rank])
+  @@index([branchId, quarterId])
+  @@map("branch_shortlist_stage1")
+}
+
+/// BranchShortlistStage2 — After BM/HOD evaluation
+model BranchShortlistStage2 {
+  id              String     @id @default(cuid())
+  userId          String
+  quarterId       String
+  branchId        String
+  collarType      CollarType
+  selfScore       Float
+  evaluatorScore  Float
+  combinedScore   Float
+  rank            Int
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  branch          Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  quarter         Quarter    @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, quarterId])
+  @@index([branchId, quarterId, collarType])
+  @@map("branch_shortlist_stage2")
+}
+
+/// BranchShortlistStage3 — After CM evaluation
+model BranchShortlistStage3 {
+  id              String     @id @default(cuid())
+  userId          String
+  quarterId       String
+  branchId        String
+  collarType      CollarType
+  selfScore       Float
+  evaluatorScore  Float
+  cmScore         Float
+  combinedScore   Float
+  rank            Int
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  branch          Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  quarter         Quarter    @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, quarterId])
+  @@index([branchId, quarterId, collarType])
+  @@map("branch_shortlist_stage3")
+}
+
+/// BranchShortlistStage4 — After HR evaluation (final shortlist before committee)
+model BranchShortlistStage4 {
+  id                  String     @id @default(cuid())
+  userId              String
+  quarterId           String
+  branchId            String
+  collarType          CollarType
+  selfScore           Float
+  evaluatorScore      Float
+  cmScore             Float
+  hrScore             Float
+  attendancePdfUrl    String?
+  punctualityPdfUrl   String?
+  combinedScore       Float
+  rank                Int
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  branch              Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  quarter             Quarter    @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  user                User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, quarterId])
+  @@index([branchId, quarterId, collarType])
+  @@map("branch_shortlist_stage4")
+}
+
+/// BranchBestEmployee — Final best employees per branch per collar type
+model BranchBestEmployee {
+  id              String     @id @default(cuid())
+  userId          String
+  quarterId       String
+  branchId        String
+  collarType      CollarType
+  selfScore       Float
+  evaluatorScore  Float
+  cmScore         Float
+  hrScore         Float
+  finalScore      Float
+  attendancePdfUrl  String?
+  punctualityPdfUrl String?
+  createdAt       DateTime   @default(now())
+  branch          Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  quarter         Quarter    @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, quarterId])
+  @@index([branchId, quarterId, collarType])
+  @@index([userId])
+  @@map("branch_best_employees")
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ENUMS
+// ═══════════════════════════════════════════════════════════════
+
 enum Role {
   EMPLOYEE
   SUPERVISOR
+  HOD
   BRANCH_MANAGER
   CLUSTER_MANAGER
+  HR
+  COMMITTEE
   ADMIN
+}
+
+enum BranchType {
+  SMALL
+  BIG
+}
+
+enum CollarType {
+  WHITE_COLLAR
+  BLUE_COLLAR
 }
 
 enum QuarterStatus {
@@ -445,6 +701,8 @@ enum QuestionCategory {
 enum EvaluationLevel {
   SELF
   SUPERVISOR
+  HOD
   BRANCH_MANAGER
   CLUSTER_MANAGER
+  HR
 }

@@ -7,8 +7,9 @@ import { created, fail, notFound, conflict, serverError, validateBody } from "..
 import { evaluateSchema } from "../../../../lib/validators";
 import { createNotification } from "../../../../lib/notifications";
 import { getDepartmentSize, logSmallDepartmentRule } from "../../../../lib/department-rules";
-import { normalizeScore, calculateStage3Score } from "../../../../lib/scoreCalculator";
+import { normalizeScore, calculateStage3Score, calculateBranchStage2Score } from "../../../../lib/scoreCalculator";
 import { getEvaluatorPool } from "../../../../lib/evaluatorPool";
+import { getBigBranchCollarLimits } from "../../../../lib/branchRules";
 
 /**
  * POST /api/branch-manager/evaluate
@@ -23,8 +24,116 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         const activeQuarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
         if (!activeQuarter) return notFound("No active quarter. Evaluations are closed.");
 
-        const employee = await prisma.user.findUnique({ where: { id: data.employeeId }, select: { id: true, departmentId: true } });
+        const employee = await prisma.user.findUnique({
+            where: { id: data.employeeId },
+            select: { id: true, departmentId: true, collarType: true, department: { select: { branchId: true, branch: { select: { branchType: true } } } } }
+        });
         if (!employee) return notFound("Employee not found");
+
+        const branchId = employee.department?.branchId;
+        const branchType = employee.department?.branch?.branchType;
+
+        // ── NEW: Branch-level BM evaluation flow ──
+        const branchStage1Entry = await prisma.branchShortlistStage1.findUnique({
+            where: { userId_quarterId: { userId: data.employeeId, quarterId: activeQuarter.id } }
+        });
+
+        if (branchStage1Entry && branchId) {
+            // Branch-level flow: BM evaluates Stage 1 shortlisted employees
+            // For big branches, BM only evaluates white collar employees
+            if (branchType === "BIG" && employee.collarType === "BLUE_COLLAR") {
+                return fail("Blue collar employees in big branches must be evaluated by their HOD, not by Branch Manager. Please assign an HOD for their department.");
+            }
+
+            // Check duplicate
+            const existingBranch = await prisma.branchManagerEvaluation.findUnique({
+                where: { managerId_employeeId_quarterId: { managerId: user.userId, employeeId: data.employeeId, quarterId: activeQuarter.id } },
+            });
+            if (existingBranch) return conflict(`Already evaluated this employee`);
+
+            // Validate answers
+            const locked = await prisma.quarterQuestion.findMany({
+                where: { quarterId: activeQuarter.id, question: { level: "BRANCH_MANAGER" } }, select: { questionId: true },
+            });
+            const lockedIds = new Set(locked.map(q => q.questionId));
+            if (data.answers.length !== lockedIds.size) return fail(`Must answer all ${lockedIds.size} questions`);
+            for (const a of data.answers) {
+                if (!lockedIds.has(a.questionId)) return fail(`Invalid question: ${a.questionId}`);
+            }
+
+            const bmRawScore = data.answers.reduce((s, a) => s + a.score, 0);
+            const bmNormalized = normalizeScore(bmRawScore, lockedIds.size);
+            const selfNorm = branchStage1Entry.selfScore;
+
+            const { selfContribution, evaluatorContribution, combined } = calculateBranchStage2Score(selfNorm, bmNormalized);
+
+            const evaluation = await prisma.branchManagerEvaluation.create({
+                data: {
+                    managerId: user.userId, employeeId: data.employeeId, quarterId: activeQuarter.id,
+                    answers: data.answers, bmRawScore, bmNormalized,
+                    selfContribution, supervisorContribution: 0, bmContribution: evaluatorContribution,
+                    stage3CombinedScore: combined
+                }
+            });
+
+            // Check if BM has evaluated all relevant Stage 1 employees for this branch
+            const stage1Employees = await prisma.branchShortlistStage1.findMany({
+                where: { branchId, quarterId: activeQuarter.id }
+            });
+
+            // For big branches, only count WC employees that BM should evaluate
+            const bmTargets = branchType === "BIG"
+                ? stage1Employees.filter(s => s.collarType === "WHITE_COLLAR")
+                : stage1Employees;
+
+            const bmEvalCount = await prisma.branchManagerEvaluation.count({
+                where: { managerId: user.userId, quarterId: activeQuarter.id, employeeId: { in: bmTargets.map(s => s.userId) } }
+            });
+
+            let stage2Generated = false;
+            if (bmEvalCount >= bmTargets.length && bmTargets.length > 0) {
+                stage2Generated = true;
+                // Generate Stage 2 shortlist
+                const allBmEvals = await prisma.branchManagerEvaluation.findMany({
+                    where: { quarterId: activeQuarter.id, employeeId: { in: bmTargets.map(s => s.userId) } },
+                    orderBy: { stage3CombinedScore: "desc" }
+                });
+
+                let limit;
+                if (branchType === "BIG") {
+                    const collarLimits = getBigBranchCollarLimits("WHITE_COLLAR");
+                    limit = collarLimits.stage2Limit; // 3
+                } else {
+                    limit = 10; // Small branch: top 10
+                }
+
+                const topN = allBmEvals.slice(0, limit);
+                for (let i = 0; i < topN.length; i++) {
+                    const ev = topN[i];
+                    const collarType = branchType === "BIG" ? "WHITE_COLLAR" : (stage1Employees.find(s => s.userId === ev.employeeId)?.collarType || "BLUE_COLLAR");
+                    await prisma.branchShortlistStage2.upsert({
+                        where: { userId_quarterId: { userId: ev.employeeId, quarterId: activeQuarter.id } },
+                        update: { selfScore: ev.selfContribution, evaluatorScore: ev.bmContribution, combinedScore: ev.stage3CombinedScore, rank: i + 1 },
+                        create: { userId: ev.employeeId, quarterId: activeQuarter.id, branchId, collarType, selfScore: ev.selfContribution, evaluatorScore: ev.bmContribution, combinedScore: ev.stage3CombinedScore, rank: i + 1 }
+                    });
+                }
+
+                for (const ev of topN) {
+                    await createNotification(ev.employeeId, "You have been shortlisted to Stage 2! Cluster Manager will evaluate next.").catch(() => {});
+                }
+            }
+
+            await prisma.auditLog.create({
+                data: { userId: user.userId, action: "BM_BRANCH_EVAL", details: { employeeId: data.employeeId, quarterId: activeQuarter.id, bmNormalized, combined, stage2Generated } }
+            }).catch(() => {});
+
+            return created({
+                message: "Evaluation submitted successfully",
+                evaluation: { id: evaluation.id, employeeId: data.employeeId, evaluated: true },
+                progress: { evaluated: bmEvalCount, total: bmTargets.length },
+                stage2Generated
+            });
+        }
 
         const hasAccess = await prisma.departmentRoleMapping.findFirst({
             where: { userId: user.userId, departmentId: employee.departmentId, role: "BRANCH_MANAGER" }

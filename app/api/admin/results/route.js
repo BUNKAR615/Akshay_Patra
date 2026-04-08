@@ -97,13 +97,42 @@ export const GET = withRole(["ADMIN"], async () => {
         // Filter out departments with no evaluated employees
         const activeResults = results.filter(d => d.employees.length > 0);
 
+        // ── NEW: Branch-level results ──
+        const branchBestEmployees = await prisma.branchBestEmployee.findMany({
+            where: { quarterId: qId },
+            include: {
+                user: { select: { id: true, name: true, empCode: true, designation: true, collarType: true, department: { select: { name: true } } } },
+                branch: { select: { id: true, name: true, branchType: true } }
+            },
+            orderBy: [{ branch: { name: "asc" } }, { finalScore: "desc" }]
+        });
+
+        const branchResults = branchBestEmployees.map(be => ({
+            userId: be.user.id,
+            name: be.user.name,
+            empCode: be.user.empCode,
+            designation: be.user.designation,
+            collarType: be.collarType,
+            department: be.user.department?.name,
+            branch: be.branch.name,
+            branchType: be.branch.branchType,
+            selfScore: be.selfScore,
+            evaluatorScore: be.evaluatorScore,
+            cmScore: be.cmScore,
+            hrScore: be.hrScore,
+            finalScore: be.finalScore,
+            attendancePdfUrl: be.attendancePdfUrl,
+            punctualityPdfUrl: be.punctualityPdfUrl,
+        }));
+
         return ok({
             quarter: {
                 id: quarter.id,
                 name: quarter.name,
                 status: quarter.status
             },
-            departments: activeResults
+            departments: activeResults,
+            branchResults
         });
 
     } catch (err) {

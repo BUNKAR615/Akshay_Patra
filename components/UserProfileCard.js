@@ -90,12 +90,12 @@ export default function UserProfileCard({ user, extraInfo, roles }) {
                                 <p className="text-[14px] font-bold text-[#333333]">{user.mobile}</p>
                             </div>
                         )}
-                        {extraInfo && (
-                            <div>
-                                <p className="text-[11px] text-[#999999] font-bold uppercase tracking-wider">{extraInfo.label}</p>
-                                <p className={`text-[14px] font-bold ${extraInfo.color || "text-[#333333]"}`}>{extraInfo.value}</p>
+                        {extraInfo && (Array.isArray(extraInfo) ? extraInfo : [extraInfo]).map((info, idx) => (
+                            <div key={idx}>
+                                <p className="text-[11px] text-[#999999] font-bold uppercase tracking-wider">{info.label}</p>
+                                <p className={`text-[14px] font-bold ${info.color || "text-[#333333]"}`}>{info.value}</p>
                             </div>
-                        )}
+                        ))}
                     </div>
                 </div>
             </div>

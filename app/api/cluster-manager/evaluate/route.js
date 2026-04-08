@@ -6,13 +6,15 @@ import { withRole } from "../../../../lib/withRole";
 import { created, fail, notFound, conflict, serverError, validateBody } from "../../../../lib/api-response";
 import { evaluateSchema } from "../../../../lib/validators";
 import { createNotification } from "../../../../lib/notifications";
-import { normalizeScore, calculateFinalScore } from "../../../../lib/scoreCalculator";
+import { normalizeScore, calculateFinalScore, calculateBranchStage3Score } from "../../../../lib/scoreCalculator";
 import { getEvaluatorPool } from "../../../../lib/evaluatorPool";
+import { getBigBranchCollarLimits } from "../../../../lib/branchRules";
 
 /**
  * POST /api/cluster-manager/evaluate
- * Guards: no active quarter, employee not in Stage 3,
- * duplicate evaluation, shortlist not ready, missing prior scores.
+ * CM evaluates Stage 2 shortlisted employees (branch-level).
+ * After CM completes, Stage 3 shortlist is generated → forwards to HR.
+ * Also maintains legacy department-level flow for backward compatibility.
  */
 export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
     try {
@@ -22,21 +24,30 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         const activeQuarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
         if (!activeQuarter) return notFound("No active quarter. Evaluations are closed.");
 
-        const employee = await prisma.user.findUnique({ where: { id: data.employeeId }, select: { id: true, departmentId: true } });
+        const employee = await prisma.user.findUnique({
+            where: { id: data.employeeId },
+            select: { id: true, departmentId: true, collarType: true, department: { select: { branchId: true, branch: { select: { branchType: true } } } } }
+        });
         if (!employee) return notFound("Employee not found");
 
-        const hasAccess = await prisma.departmentRoleMapping.findFirst({
-            where: { userId: user.userId, departmentId: employee.departmentId, role: "CLUSTER_MANAGER" }
-        });
-        if (!hasAccess) return fail("You are not assigned to evaluate this department.");
+        const branchId = employee.department?.branchId;
+        const branchType = employee.department?.branch?.branchType;
 
-        // Guard: employee in Stage 3 shortlist
-        const shortlistEntry = await prisma.shortlistStage3.findFirst({
+        // Check if employee is in branch Stage 2 shortlist (new flow)
+        const branchStage2Entry = await prisma.branchShortlistStage2.findUnique({
+            where: { userId_quarterId: { userId: data.employeeId, quarterId: activeQuarter.id } }
+        });
+
+        // Also check legacy Stage 3 shortlist
+        const legacyShortlistEntry = await prisma.shortlistStage3.findFirst({
             where: { userId: data.employeeId, quarterId: activeQuarter.id, departmentId: employee.departmentId },
         });
-        if (!shortlistEntry) return fail("Employee is not in the Stage 3 shortlist. Branch Manager evaluations may not be complete.");
 
-        // Guard: duplicate
+        if (!branchStage2Entry && !legacyShortlistEntry) {
+            return fail("Employee is not in Stage 2/3 shortlist. Previous evaluations may not be complete.");
+        }
+
+        // Duplicate check
         const existing = await prisma.clusterManagerEvaluation.findUnique({
             where: { clusterId_employeeId_quarterId: { clusterId: user.userId, employeeId: data.employeeId, quarterId: activeQuarter.id } },
         });
@@ -44,162 +55,240 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
 
         // Validate answers
         const locked = await prisma.quarterQuestion.findMany({
-            where: { quarterId: activeQuarter.id, question: { level: "CLUSTER_MANAGER" } }, select: { questionId: true },
+            where: { quarterId: activeQuarter.id, question: { level: "CLUSTER_MANAGER" } },
+            select: { questionId: true },
         });
         const lockedIds = new Set(locked.map((q) => q.questionId));
         if (data.answers.length !== lockedIds.size) return fail(`Must answer all ${lockedIds.size} questions. Received ${data.answers.length}.`);
-        const seen = new Set();
         for (const a of data.answers) {
-            if (seen.has(a.questionId)) return fail(`Duplicate answer for question ${a.questionId}`);
             if (!lockedIds.has(a.questionId)) return fail(`Question "${a.questionId}" is not part of this quarter's CM questions`);
-            seen.add(a.questionId);
         }
 
         const cmRawScore = data.answers.reduce((s, a) => s + a.score, 0);
         const cmNormalized = normalizeScore(cmRawScore, lockedIds.size);
 
-        // Prior scores come from ShortlistStage3 (multi-evaluator-safe averages).
-        if (!shortlistEntry) return fail("Employee's prior evaluation scores not found. Earlier stages may be incomplete.");
+        // ── Branch-level flow (new) ──
+        if (branchStage2Entry && branchId) {
+            const selfNorm = branchStage2Entry.selfScore;
+            const evaluatorNorm = branchStage2Entry.evaluatorScore;
 
-        const { selfContribution, supervisorContribution, bmContribution, cmContribution, finalScore } = calculateFinalScore(
-            shortlistEntry.selfScore,
-            shortlistEntry.supervisorScore,
-            shortlistEntry.bmScore,
-            cmNormalized
-        );
+            const { selfContribution, evaluatorContribution, cmContribution, combined } =
+                calculateBranchStage3Score(selfNorm, evaluatorNorm, cmNormalized);
 
-        const result = await prisma.$transaction(async (tx) => {
-            const evaluation = await tx.clusterManagerEvaluation.create({
-                data: { clusterId: user.userId, employeeId: data.employeeId, quarterId: activeQuarter.id, answers: data.answers, cmRawScore, cmNormalized, selfContribution, supervisorContribution, bmContribution, cmContribution, finalScore },
+            const evaluation = await prisma.clusterManagerEvaluation.create({
+                data: {
+                    clusterId: user.userId,
+                    employeeId: data.employeeId,
+                    quarterId: activeQuarter.id,
+                    answers: data.answers,
+                    cmRawScore,
+                    cmNormalized,
+                    selfContribution,
+                    supervisorContribution: evaluatorContribution,
+                    bmContribution: 0,
+                    cmContribution,
+                    finalScore: combined
+                },
             });
 
-            // ── Multi-evaluator safe Best Employee selection ──
-            // Winner is chosen only when EVERY mapped CM has evaluated EVERY
-            // Stage 3 shortlisted employee. CM scores are averaged across CMs.
-            const evaluatorPool = await getEvaluatorPool(tx, employee.departmentId, "CLUSTER_MANAGER");
-            const stage3List = await tx.shortlistStage3.findMany({
-                where: { departmentId: employee.departmentId, quarterId: activeQuarter.id },
-                select: { userId: true, selfScore: true, supervisorScore: true, bmScore: true },
+            // Check if CM has evaluated ALL branch Stage 2 employees
+            const allStage2 = await prisma.branchShortlistStage2.findMany({
+                where: { branchId, quarterId: activeQuarter.id }
             });
-            const shortlistCount = stage3List.length;
-            const shortlistIds = stage3List.map((s) => s.userId);
-            const stage3ByUser = new Map(stage3List.map((s) => [s.userId, s]));
-
-            const myEvaluatedCount = await tx.clusterManagerEvaluation.count({
-                where: { clusterId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId } },
-            });
-
-            const totalEvalCount = await tx.clusterManagerEvaluation.count({
-                where: { quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId }, employeeId: { in: shortlistIds } },
-            });
-            const expectedCount = evaluatorPool.length * shortlistCount;
-
-            // ── Freeze check: if a BestEmployee already exists for this dept,
-            // do not overwrite it.
-            const existingBest = await tx.bestEmployee.count({
-                where: { quarterId: activeQuarter.id, departmentId: employee.departmentId },
-            });
-
-            let bestEmployeeSelected = false;
-            let bestEmployeeData = null;
-
-            if (existingBest === 0 && shortlistCount > 0 && evaluatorPool.length > 0 && totalEvalCount >= expectedCount) {
-                const allEvals = await tx.clusterManagerEvaluation.findMany({
-                    where: { quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId }, employeeId: { in: shortlistIds } },
-                    select: { employeeId: true, cmNormalized: true },
-                });
-                const perEmployee = new Map();
-                for (const ev of allEvals) {
-                    const acc = perEmployee.get(ev.employeeId) || { sum: 0, n: 0 };
-                    acc.sum += ev.cmNormalized;
-                    acc.n += 1;
-                    perEmployee.set(ev.employeeId, acc);
+            const cmEvalCount = await prisma.clusterManagerEvaluation.count({
+                where: {
+                    clusterId: user.userId,
+                    quarterId: activeQuarter.id,
+                    employeeId: { in: allStage2.map(s => s.userId) }
                 }
+            });
 
-                const selfAssessments = await tx.selfAssessment.findMany({
-                    where: { quarterId: activeQuarter.id, userId: { in: shortlistIds } },
-                    select: { userId: true, completionTimeSeconds: true },
-                });
-                const timeByUser = new Map(selfAssessments.map((s) => [s.userId, s.completionTimeSeconds || 0]));
-
-                const ranked = shortlistIds.map((empId) => {
-                    const agg = perEmployee.get(empId) || { sum: 0, n: 0 };
-                    const avgCmNormalized = agg.n > 0 ? Math.round((agg.sum / agg.n) * 100) / 100 : 0;
-                    const s3 = stage3ByUser.get(empId);
-                    const { finalScore: combinedFinal } = calculateFinalScore(
-                        s3?.selfScore || 0,
-                        s3?.supervisorScore || 0,
-                        s3?.bmScore || 0,
-                        avgCmNormalized
-                    );
-                    return {
-                        employeeId: empId,
-                        selfScore: s3?.selfScore || 0,
-                        supervisorScore: s3?.supervisorScore || 0,
-                        bmScore: s3?.bmScore || 0,
-                        cmScore: avgCmNormalized,
-                        finalScore: combinedFinal,
-                        completionTime: timeByUser.get(empId) || 0,
-                    };
-                }).sort((a, b) => {
-                    if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore;
-                    return a.completionTime - b.completionTime;
-                });
-
-                if (ranked.length > 0) {
-                    const winner = ranked[0];
-                    await tx.bestEmployee.deleteMany({ where: { quarterId: activeQuarter.id, departmentId: employee.departmentId } });
-
-                    bestEmployeeData = await tx.bestEmployee.create({
-                        data: {
-                            userId: winner.employeeId, quarterId: activeQuarter.id, departmentId: employee.departmentId,
-                            selfScore: winner.selfScore, supervisorScore: winner.supervisorScore, bmScore: winner.bmScore,
-                            cmScore: winner.cmScore, finalScore: winner.finalScore,
-                        },
-                        include: { user: { select: { id: true, name: true } } },
-                    });
-                    bestEmployeeSelected = true;
-                }
+            let stage3Generated = false;
+            if (cmEvalCount >= allStage2.length && allStage2.length > 0) {
+                stage3Generated = true;
+                await generateBranchStage3(branchId, branchType, activeQuarter.id);
             }
 
-            return { evaluation, bestEmployeeSelected, bestEmployeeData, evaluatedCount: myEvaluatedCount, shortlistCount };
-        });
+            await prisma.auditLog.create({
+                data: {
+                    userId: user.userId,
+                    action: stage3Generated ? "BRANCH_STAGE3_GENERATED" : "CM_EVALUATION_SUBMITTED",
+                    details: { employeeId: data.employeeId, quarterId: activeQuarter.id, cmNormalized, combined }
+                }
+            }).catch(() => {});
 
-        await prisma.auditLog.create({
-            data: {
-                userId: user.userId,
-                action: result.bestEmployeeSelected ? "BEST_EMPLOYEE_SELECTED" : "CM_EVALUATION_SUBMITTED",
-                details: {
-                    evaluationId: result.evaluation.id, employeeId: data.employeeId, quarterId: activeQuarter.id,
-                    cmScore: cmNormalized, finalScore, progress: `${result.evaluatedCount}/${result.shortlistCount}`,
-                    bestEmployee: result.bestEmployeeData ? { userId: result.bestEmployeeData.userId, finalScore: result.bestEmployeeData.finalScore } : null,
-                },
-            },
-        });
-
-        const response = {
-            message: "Evaluation submitted successfully",
-            evaluation: { id: result.evaluation.id, employeeId: data.employeeId, submittedAt: result.evaluation.submittedAt, evaluated: true },
-            progress: { evaluated: result.evaluatedCount, total: result.shortlistCount, remaining: result.shortlistCount - result.evaluatedCount },
-        };
-
-        if (result.bestEmployeeSelected) {
-            // BLIND SCORING: Only expose winner identity, no scores
-            response.bestEmployee = { 
-                message: "🏆 Best Employee of the Quarter has been determined for the department!", 
-                winner: { userId: result.bestEmployeeData.userId, name: result.bestEmployeeData.user.name } 
-            };
-
-            // Notify the winner
-            await createNotification(
-                result.bestEmployeeData.userId,
-                `🏆 Congratulations! You are the Best Employee of ${activeQuarter.name} from your department!`
-            );
+            return created({
+                message: "Evaluation submitted successfully",
+                evaluation: { id: evaluation.id, employeeId: data.employeeId, evaluated: true },
+                progress: { evaluated: cmEvalCount, total: allStage2.length },
+                stage3Generated
+            });
         }
 
-        return created(response);
+        // ── Legacy department-level flow ──
+        if (legacyShortlistEntry) {
+            const { selfContribution, supervisorContribution, bmContribution, cmContribution, finalScore } = calculateFinalScore(
+                legacyShortlistEntry.selfScore,
+                legacyShortlistEntry.supervisorScore,
+                legacyShortlistEntry.bmScore,
+                cmNormalized
+            );
+
+            const result = await prisma.$transaction(async (tx) => {
+                const evaluation = await tx.clusterManagerEvaluation.create({
+                    data: { clusterId: user.userId, employeeId: data.employeeId, quarterId: activeQuarter.id, answers: data.answers, cmRawScore, cmNormalized, selfContribution, supervisorContribution, bmContribution, cmContribution, finalScore },
+                });
+
+                const evaluatorPool = await getEvaluatorPool(tx, employee.departmentId, "CLUSTER_MANAGER");
+                const stage3List = await tx.shortlistStage3.findMany({
+                    where: { departmentId: employee.departmentId, quarterId: activeQuarter.id },
+                    select: { userId: true, selfScore: true, supervisorScore: true, bmScore: true },
+                });
+                const shortlistIds = stage3List.map((s) => s.userId);
+                const stage3ByUser = new Map(stage3List.map((s) => [s.userId, s]));
+
+                const myEvaluatedCount = await tx.clusterManagerEvaluation.count({
+                    where: { clusterId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId } },
+                });
+                const totalEvalCount = await tx.clusterManagerEvaluation.count({
+                    where: { quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId }, employeeId: { in: shortlistIds } },
+                });
+
+                const existingBest = await tx.bestEmployee.count({
+                    where: { quarterId: activeQuarter.id, departmentId: employee.departmentId },
+                });
+
+                let bestEmployeeSelected = false;
+                let bestEmployeeData = null;
+                if (existingBest === 0 && stage3List.length > 0 && evaluatorPool.length > 0 && totalEvalCount >= evaluatorPool.length * stage3List.length) {
+                    const allEvals = await tx.clusterManagerEvaluation.findMany({
+                        where: { quarterId: activeQuarter.id, employee: { departmentId: employee.departmentId }, employeeId: { in: shortlistIds } },
+                        select: { employeeId: true, cmNormalized: true },
+                    });
+                    const perEmployee = new Map();
+                    for (const ev of allEvals) {
+                        const acc = perEmployee.get(ev.employeeId) || { sum: 0, n: 0 };
+                        acc.sum += ev.cmNormalized; acc.n += 1;
+                        perEmployee.set(ev.employeeId, acc);
+                    }
+                    const ranked = shortlistIds.map(empId => {
+                        const agg = perEmployee.get(empId) || { sum: 0, n: 0 };
+                        const avgCm = agg.n > 0 ? Math.round((agg.sum / agg.n) * 100) / 100 : 0;
+                        const s3 = stage3ByUser.get(empId);
+                        const { finalScore: f } = calculateFinalScore(s3?.selfScore || 0, s3?.supervisorScore || 0, s3?.bmScore || 0, avgCm);
+                        return { employeeId: empId, selfScore: s3?.selfScore || 0, supervisorScore: s3?.supervisorScore || 0, bmScore: s3?.bmScore || 0, cmScore: avgCm, finalScore: f };
+                    }).sort((a, b) => b.finalScore - a.finalScore);
+
+                    if (ranked.length > 0) {
+                        const w = ranked[0];
+                        await tx.bestEmployee.deleteMany({ where: { quarterId: activeQuarter.id, departmentId: employee.departmentId } });
+                        bestEmployeeData = await tx.bestEmployee.create({
+                            data: { userId: w.employeeId, quarterId: activeQuarter.id, departmentId: employee.departmentId, selfScore: w.selfScore, supervisorScore: w.supervisorScore, bmScore: w.bmScore, cmScore: w.cmScore, finalScore: w.finalScore },
+                            include: { user: { select: { id: true, name: true } } },
+                        });
+                        bestEmployeeSelected = true;
+                    }
+                }
+
+                return { evaluation, bestEmployeeSelected, bestEmployeeData, evaluatedCount: myEvaluatedCount, shortlistCount: stage3List.length };
+            });
+
+            if (result.bestEmployeeSelected) {
+                await createNotification(result.bestEmployeeData.userId, `Congratulations! You are the Best Employee of ${activeQuarter.name}!`);
+            }
+
+            return created({
+                message: "Evaluation submitted successfully",
+                evaluation: { id: result.evaluation.id, employeeId: data.employeeId, evaluated: true },
+                progress: { evaluated: result.evaluatedCount, total: result.shortlistCount },
+                bestEmployee: result.bestEmployeeSelected ? { userId: result.bestEmployeeData.userId, name: result.bestEmployeeData.user.name } : null
+            });
+        }
+
+        return fail("Could not determine evaluation flow for this employee");
     } catch (err) {
         console.error("CM evaluate error:", err);
         return serverError();
     }
 });
+
+/**
+ * Generate branch-level Stage 3 shortlist after CM completes evaluations.
+ * Forwards top N to HR (not to BestEmployee).
+ */
+async function generateBranchStage3(branchId, branchType, quarterId) {
+    // Get all CM evaluations for branch Stage 2 employees
+    const stage2Entries = await prisma.branchShortlistStage2.findMany({
+        where: { branchId, quarterId }
+    });
+    const stage2UserIds = stage2Entries.map(s => s.userId);
+
+    const cmEvals = await prisma.clusterManagerEvaluation.findMany({
+        where: { quarterId, employeeId: { in: stage2UserIds } },
+        include: { employee: { select: { collarType: true } } }
+    });
+
+    // Map evaluations by employee
+    const evalsByEmployee = new Map();
+    for (const ev of cmEvals) {
+        if (!evalsByEmployee.has(ev.employeeId)) evalsByEmployee.set(ev.employeeId, []);
+        evalsByEmployee.get(ev.employeeId).push(ev);
+    }
+
+    // Merge with Stage 2 data and calculate Stage 3 scores
+    const candidates = stage2Entries.map(s2 => {
+        const evals = evalsByEmployee.get(s2.userId) || [];
+        const avgCmNorm = evals.length > 0
+            ? evals.reduce((sum, e) => sum + e.cmNormalized, 0) / evals.length
+            : 0;
+        return {
+            userId: s2.userId,
+            collarType: s2.collarType,
+            selfScore: s2.selfScore,
+            evaluatorScore: s2.evaluatorScore,
+            cmScore: avgCmNorm,
+            combinedScore: s2.selfScore + s2.evaluatorScore + Math.round((avgCmNorm / 100) * 30 * 100) / 100
+        };
+    });
+
+    if (branchType === "BIG") {
+        // Separate WC and BC tracks
+        const wc = candidates.filter(c => c.collarType === "WHITE_COLLAR").sort((a, b) => b.combinedScore - a.combinedScore);
+        const bc = candidates.filter(c => c.collarType === "BLUE_COLLAR").sort((a, b) => b.combinedScore - a.combinedScore);
+
+        const wcLimits = getBigBranchCollarLimits("WHITE_COLLAR");
+        const bcLimits = getBigBranchCollarLimits("BLUE_COLLAR");
+
+        const wcTop = wc.slice(0, wcLimits.stage3Limit); // top 2
+        const bcTop = bc.slice(0, bcLimits.stage3Limit); // top 5
+
+        const allTop = [...wcTop, ...bcTop];
+        for (let i = 0; i < allTop.length; i++) {
+            const c = allTop[i];
+            await prisma.branchShortlistStage3.upsert({
+                where: { userId_quarterId: { userId: c.userId, quarterId } },
+                update: { selfScore: c.selfScore, evaluatorScore: c.evaluatorScore, cmScore: c.cmScore, combinedScore: c.combinedScore, rank: i + 1 },
+                create: { userId: c.userId, quarterId, branchId, collarType: c.collarType, selfScore: c.selfScore, evaluatorScore: c.evaluatorScore, cmScore: c.cmScore, combinedScore: c.combinedScore, rank: i + 1 }
+            });
+        }
+    } else {
+        // Small branch: top 5 overall
+        const sorted = candidates.sort((a, b) => b.combinedScore - a.combinedScore);
+        const top5 = sorted.slice(0, 5);
+
+        for (let i = 0; i < top5.length; i++) {
+            const c = top5[i];
+            await prisma.branchShortlistStage3.upsert({
+                where: { userId_quarterId: { userId: c.userId, quarterId } },
+                update: { selfScore: c.selfScore, evaluatorScore: c.evaluatorScore, cmScore: c.cmScore, combinedScore: c.combinedScore, rank: i + 1 },
+                create: { userId: c.userId, quarterId, branchId, collarType: c.collarType || "BLUE_COLLAR", selfScore: c.selfScore, evaluatorScore: c.evaluatorScore, cmScore: c.cmScore, combinedScore: c.combinedScore, rank: i + 1 }
+            });
+        }
+    }
+
+    // Notify shortlisted employees
+    const stage3List = await prisma.branchShortlistStage3.findMany({ where: { branchId, quarterId }, select: { userId: true } });
+    for (const s of stage3List) {
+        await createNotification(s.userId, "You have advanced to Stage 3! HR will evaluate next.").catch(() => {});
+    }
+}

@@ -35,6 +35,24 @@ export default function BranchManagerDashboard() {
     const [success, setSuccess] = useState("");
     const [isMultiDept, setIsMultiDept] = useState(false);
 
+    // HOD assignment state (BIG branches only)
+    const [hodAssignments, setHodAssignments] = useState([]);
+    const [hodDeptId, setHodDeptId] = useState("");
+    const [hodEmpCode, setHodEmpCode] = useState("");
+    const [hodLoading, setHodLoading] = useState(false);
+    const [hodSuccess, setHodSuccess] = useState("");
+    const [hodError, setHodError] = useState("");
+
+    const fetchHodAssignments = async () => {
+        try {
+            const data = await api("/api/branch-manager/hod/list");
+            setHodAssignments(data.assignments || []);
+        } catch (e) {
+            // Non-critical — don't block the page
+            console.error("Failed to fetch HOD assignments:", e.message);
+        }
+    };
+
     const fetchData = async () => {
         try {
             const [meData, deptsData, qData] = await Promise.all([
@@ -47,6 +65,11 @@ export default function BranchManagerDashboard() {
             setDepartmentsData(deptsData.departments);
             setQuestions(qData.questions);
             setIsMultiDept(deptsData.departments.length > 1);
+
+            // Fetch HOD assignments for BIG branches
+            if (meData.user?.branchType === "BIG") {
+                fetchHodAssignments();
+            }
 
             if (deptsData.departments && deptsData.departments.length > 0) {
                 // Try to find the first incomplete department
@@ -76,6 +99,31 @@ export default function BranchManagerDashboard() {
 
     useEffect(() => { fetchData(); }, []);
 
+    const handleAssignHod = async () => {
+        setHodError("");
+        setHodSuccess("");
+        if (!hodDeptId || !hodEmpCode.trim()) {
+            setHodError("Please select a department and enter the employee code.");
+            return;
+        }
+        setHodLoading(true);
+        try {
+            await api("/api/branch-manager/hod/assign", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ hodUserId: hodEmpCode.trim(), departmentId: hodDeptId }),
+            });
+            setHodSuccess(`HOD assigned successfully for the selected department.`);
+            setHodEmpCode("");
+            setHodDeptId("");
+            fetchHodAssignments();
+        } catch (e) {
+            setHodError(e.message);
+        } finally {
+            setHodLoading(false);
+        }
+    };
+
     const handleEvaluate = async (answers) => {
         setError(""); setSuccess("");
         try {
@@ -83,7 +131,7 @@ export default function BranchManagerDashboard() {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ employeeId: selectedEmployee.userId, answers }),
             });
-            setSuccess(`✓ Evaluation submitted for ${selectedEmployee.name}`);
+            setSuccess(`Evaluation submitted for ${selectedEmployee.name}`);
             setSelectedEmployee(null);
             window.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -118,6 +166,8 @@ export default function BranchManagerDashboard() {
         );
     }
 
+    const isBigBranch = user?.branchType === "BIG";
+
     return (
         <DashboardShell user={user} currentQuarter={currentQuarterName} title="Branch Manager Evaluation">
             {/* Profile Card */}
@@ -125,11 +175,123 @@ export default function BranchManagerDashboard() {
                 <UserProfileCard
                     user={user}
                     extraInfo={{
-                        label: "Evaluating",
-                        value: isMultiDept ? `${departmentsData.length} departments` : (currentDept?.name || ""),
+                        label: user.branchName ? `Branch: ${user.branchName}` : "Evaluating",
+                        value: user.branchName
+                            ? `${user.branchType || "STANDARD"} branch — ${isMultiDept ? `${departmentsData.length} departments` : (currentDept?.name || "")}`
+                            : isMultiDept ? `${departmentsData.length} departments` : (currentDept?.name || ""),
                         color: "text-[#00843D]"
                     }}
                 />
+            )}
+
+            {/* Big Branch Info Banner */}
+            {isBigBranch && (
+                <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-xl p-5 mb-8 shadow-sm">
+                    <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-full bg-[#F7941D]/10 flex items-center justify-center shrink-0 border border-[#FFE082]">
+                            <svg className="w-5 h-5 text-[#F7941D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <p className="text-[15px] font-bold text-[#333333] mb-1">Big Branch Evaluation Process</p>
+                            <p className="text-[14px] text-[#666666] leading-relaxed">
+                                <span className="font-bold text-[#003087]">White-collar</span> employees are evaluated by you (Branch Manager) directly.{" "}
+                                <span className="font-bold text-[#00843D]">Blue-collar</span> employees require an HOD to be assigned first
+                                — the HOD will handle their evaluations. Use the HOD Assignment panel below to assign HODs to departments.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* HOD Assignment Panel — BIG branches only */}
+            {isBigBranch && (
+                <div className="bg-white border border-[#E0E0E0] rounded-xl p-6 mb-8 shadow-sm">
+                    <div className="flex items-center gap-3 mb-5">
+                        <div className="w-10 h-10 rounded-full bg-[#003087]/10 flex items-center justify-center shrink-0">
+                            <svg className="w-5 h-5 text-[#003087]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <p className="text-[13px] text-[#666666] font-bold uppercase tracking-wider">HOD Assignment</p>
+                            <p className="text-[18px] font-bold text-[#333333] leading-tight">Assign Heads of Department</p>
+                        </div>
+                    </div>
+
+                    {/* Current HOD assignments */}
+                    {hodAssignments.length > 0 && (
+                        <div className="mb-5">
+                            <p className="text-[13px] text-[#666666] font-bold uppercase tracking-wider mb-2">Current Assignments</p>
+                            <div className="space-y-2">
+                                {hodAssignments.map((a, idx) => (
+                                    <div key={idx} className="flex items-center gap-3 bg-[#F5F5F5] rounded-lg px-4 py-3 border border-[#E0E0E0]">
+                                        <div className="w-8 h-8 rounded-full bg-[#00843D]/10 flex items-center justify-center text-[#00843D] font-bold text-[13px] shrink-0">
+                                            {a.hodUser?.name?.charAt(0) || "H"}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[14px] font-bold text-[#333333] truncate">{a.hodUser?.name || "Unknown"} <span className="text-[#666666] font-medium">({a.hodUser?.empCode})</span></p>
+                                            <p className="text-[13px] text-[#666666]">{a.department?.name || "Department"}</p>
+                                        </div>
+                                        <span className="text-[12px] font-bold text-[#00843D] bg-[#E8F5E9] px-2 py-1 rounded border border-[#A5D6A7] shrink-0">Active</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Assign new HOD form */}
+                    <div className="bg-[#FAFAFA] rounded-lg p-4 border border-[#E0E0E0]">
+                        <p className="text-[14px] font-bold text-[#333333] mb-3">Assign New HOD</p>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <div className="flex-1">
+                                <label className="text-[12px] text-[#666666] font-bold uppercase tracking-wider block mb-1">Department</label>
+                                <div className="relative">
+                                    <select
+                                        value={hodDeptId}
+                                        onChange={(e) => setHodDeptId(e.target.value)}
+                                        className="w-full px-3 py-2.5 bg-white border border-[#E0E0E0] rounded-lg text-[14px] text-[#333333] font-medium focus:outline-none focus:ring-2 focus:ring-[#003087] appearance-none cursor-pointer"
+                                    >
+                                        <option value="">Select department...</option>
+                                        {departmentsData.map(dept => (
+                                            <option key={dept.id} value={dept.id}>{dept.name}</option>
+                                        ))}
+                                    </select>
+                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-[#666666]">
+                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex-1">
+                                <label className="text-[12px] text-[#666666] font-bold uppercase tracking-wider block mb-1">Employee Code (HOD)</label>
+                                <input
+                                    type="text"
+                                    value={hodEmpCode}
+                                    onChange={(e) => setHodEmpCode(e.target.value)}
+                                    placeholder="e.g. EMP001"
+                                    className="w-full px-3 py-2.5 bg-white border border-[#E0E0E0] rounded-lg text-[14px] text-[#333333] font-medium focus:outline-none focus:ring-2 focus:ring-[#003087] placeholder:text-[#AAAAAA]"
+                                />
+                            </div>
+                            <div className="flex items-end">
+                                <button
+                                    onClick={handleAssignHod}
+                                    disabled={hodLoading}
+                                    className="min-h-[44px] px-6 py-2.5 bg-[#003087] text-white rounded-lg hover:bg-[#00843D] transition-colors cursor-pointer font-bold text-[14px] shadow disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                >
+                                    {hodLoading ? "Assigning..." : "Assign HOD"}
+                                </button>
+                            </div>
+                        </div>
+                        <p className="text-[12px] text-[#999999] mt-2">
+                            Enter the employee code of the person you want to assign as HOD for the selected department. Blue-collar employees in that department will be evaluated by the HOD.
+                        </p>
+                        {hodError && <p className="text-[13px] text-[#D32F2F] font-bold mt-2">{hodError}</p>}
+                        {hodSuccess && <p className="text-[13px] text-[#2E7D32] font-bold mt-2">{hodSuccess}</p>}
+                    </div>
+                </div>
             )}
 
             {/* Department Selector — shown only if BM has multiple departments */}
@@ -247,7 +409,14 @@ export default function BranchManagerDashboard() {
                                             {entry.name.charAt(0)}
                                         </div>
                                         <div>
-                                            <p className="text-[18px] font-bold text-[#003087] leading-tight mb-1">{entry.name}</p>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <p className="text-[18px] font-bold text-[#003087] leading-tight">{entry.name}</p>
+                                                {entry.collarType && (
+                                                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${entry.collarType === "WHITE_COLLAR" ? "bg-[#F5F5F5] text-[#666666] border-[#E0E0E0]" : "bg-[#E3F2FD] text-[#003087] border-[#90CAF9]"}`}>
+                                                        {entry.collarType === "WHITE_COLLAR" ? "White Collar" : "Blue Collar"}
+                                                    </span>
+                                                )}
+                                            </div>
                                             <p className="text-[#666666] text-[14px] font-medium">{entry.designation} | {entry.empCode}</p>
                                         </div>
                                     </div>
@@ -255,7 +424,7 @@ export default function BranchManagerDashboard() {
                                         {entry.alreadyEvaluated ? (
                                             <span className="min-h-[44px] text-[14px] px-6 py-2.5 rounded-lg bg-white text-[#2E7D32] border border-[#A5D6A7] font-bold shadow-sm flex items-center gap-2 justify-center w-full sm:w-auto">
                                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                                                ✓ Done
+                                                Done
                                             </span>
                                         ) : (
                                             <button onClick={() => setSelectedEmployee(entry)} className="min-h-[44px] min-w-[120px] text-[15px] px-6 py-3 bg-[#003087] text-white rounded-lg hover:bg-[#00843D] transition-colors cursor-pointer font-bold shadow flex items-center gap-2 justify-center w-full sm:w-auto">

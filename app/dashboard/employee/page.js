@@ -172,14 +172,30 @@ export default function EmployeeDashboard() {
         <DashboardShell user={user} currentQuarter={currentQuarterName} title="Employee Dashboard">
             {/* Profile Card */}
             {user && (
-                <UserProfileCard
-                    user={user}
-                    extraInfo={{
-                        label: "Assessment",
-                        value: (status?.selfAssessment || status?.assessment?.submitted) ? "Submitted ✓" : "Pending",
-                        color: (status?.selfAssessment || status?.assessment?.submitted) ? "text-[#00843D]" : "text-[#F7941D]"
-                    }}
-                />
+                <>
+                    <UserProfileCard
+                        user={user}
+                        extraInfo={{
+                            label: "Assessment",
+                            value: (status?.selfAssessment || status?.assessment?.submitted) ? "Submitted ✓" : "Pending",
+                            color: (status?.selfAssessment || status?.assessment?.submitted) ? "text-[#00843D]" : "text-[#F7941D]"
+                        }}
+                    />
+                    {(user.branchName || user.collarType) && (
+                        <div className="flex flex-wrap items-center gap-3 -mt-4 mb-6 px-1">
+                            {user.branchName && (
+                                <span className="text-[13px] text-[#666666] font-medium">
+                                    Branch: <span className="font-bold text-[#003087]">{user.branchName}</span>
+                                </span>
+                            )}
+                            {user.collarType && (
+                                <span className={`text-[12px] px-3 py-1 rounded-full font-bold ${user.collarType === "WHITE" ? "bg-[#E3F2FD] text-[#003087] border border-[#90CAF9]" : "bg-[#FFF3E0] text-[#E65100] border border-[#FFCC80]"}`}>
+                                    Category: {user.collarType === "WHITE" ? "White Collar" : "Blue Collar"}
+                                </span>
+                            )}
+                        </div>
+                    )}
+                </>
             )}
 
             {/* Tab Switcher */}
@@ -215,7 +231,12 @@ export default function EmployeeDashboard() {
                         <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-5 flex items-center justify-between">
                             <div>
                                 <p className="text-[13px] text-[#666666] font-bold uppercase tracking-wider">Current Quarter</p>
-                                <p className="text-[20px] font-bold text-[#003087]">{status.quarter.name}</p>
+                                <p className="text-[20px] font-bold text-[#003087]">
+                                    {status.quarter.name}
+                                    {user?.branchName && (
+                                        <span className="text-[14px] font-medium text-[#666666] ml-2">— {user.branchName}</span>
+                                    )}
+                                </p>
                             </div>
                             <span className={`text-[13px] px-4 py-1.5 rounded-full border font-bold ${status.quarter.status === "ACTIVE" ? "bg-[#E8F5E9] text-[#1B5E20] border-[#A5D6A7]" : "bg-[#F5F5F5] text-[#666666] border-[#CCCCCC]"}`}>
                                 {status.quarter.status}
