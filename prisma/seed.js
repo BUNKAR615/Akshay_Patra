@@ -91,6 +91,25 @@ async function main() {
     if (count % 50 === 0) console.log(`  ${count}/${allEmployees.length} users created...`);
   }
 
+  // ─────────────────────────────────────
+  // ASSIGN SANT KUMAR SHARMA AS BM FOR ALL JAIPUR DEPARTMENTS
+  // ─────────────────────────────────────
+  console.log('Assigning Sant Kumar Sharma as Branch Manager for all Jaipur departments...');
+  const santKumar = await prisma.user.findUnique({ where: { empCode: '1800011' } });
+  if (santKumar) {
+    const jaipurDepts = await prisma.department.findMany({ where: { branchId: branch.id } });
+    for (const dept of jaipurDepts) {
+      await prisma.departmentRoleMapping.upsert({
+        where: { userId_departmentId_role: { userId: santKumar.id, departmentId: dept.id, role: 'BRANCH_MANAGER' } },
+        update: {},
+        create: { userId: santKumar.id, departmentId: dept.id, role: 'BRANCH_MANAGER' }
+      });
+    }
+    console.log(`  ✓ Sant Kumar Sharma assigned as BM for ${jaipurDepts.length} Jaipur departments`);
+  } else {
+    console.log('  ⚠ Sant Kumar Sharma (1800011) not found — skipping BM assignment');
+  }
+
   // Verification summary
   const total = await prisma.user.count();
   const byRole = await prisma.user.groupBy({
