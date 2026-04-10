@@ -52,12 +52,13 @@ export default function HRDashboard() {
     const [evalError, setEvalError] = useState("");
 
     // Per-employee UI state keyed by employeeId
-    const [hrScores, setHrScores] = useState({});       // { [empId]: number }
-    const [hrNotes, setHrNotes] = useState({});          // { [empId]: string }
-    const [uploads, setUploads] = useState({});           // { [empId_pdfType]: { name, size, status, error } }
-    const [evalSubmitting, setEvalSubmitting] = useState({}); // { [empId]: bool }
-    const [evalDone, setEvalDone] = useState({});         // { [empId]: bool }
-    const [evalMessages, setEvalMessages] = useState({}); // { [empId]: { type, text } }
+    const [attendancePcts, setAttendancePcts] = useState({}); // { [empId]: number }
+    const [workingHoursMap, setWorkingHoursMap] = useState({}); // { [empId]: number }
+    const [refSheetUrls, setRefSheetUrls] = useState({});     // { [empId]: string }
+    const [hrNotes, setHrNotes] = useState({});                // { [empId]: string }
+    const [evalSubmitting, setEvalSubmitting] = useState({});  // { [empId]: bool }
+    const [evalDone, setEvalDone] = useState({});              // { [empId]: bool }
+    const [evalMessages, setEvalMessages] = useState({});      // { [empId]: { type, text } }
 
     const fileRefs = useRef({});
 
@@ -113,47 +114,26 @@ export default function HRDashboard() {
         if (authorized && mainTab === "evaluate") fetchShortlist();
     }, [authorized, mainTab]);
 
-    const handlePdfUpload = async (employeeId, pdfType, file) => {
-        const key = `${employeeId}_${pdfType}`;
-
-        // Validate type
-        if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-            setUploads(prev => ({ ...prev, [key]: { name: file.name, size: file.size, status: "error", error: "Only PDF files are accepted" } }));
-            return;
-        }
-        // Validate size 50KB - 300KB
-        if (file.size < 50 * 1024) {
-            setUploads(prev => ({ ...prev, [key]: { name: file.name, size: file.size, status: "error", error: "File too small (min 50 KB)" } }));
-            return;
-        }
-        if (file.size > 300 * 1024) {
-            setUploads(prev => ({ ...prev, [key]: { name: file.name, size: file.size, status: "error", error: "File too large (max 300 KB)" } }));
-            return;
-        }
-
-        setUploads(prev => ({ ...prev, [key]: { name: file.name, size: file.size, status: "uploading", error: "" } }));
-
-        try {
-            const fd = new FormData();
-            fd.append("file", file);
-            fd.append("employeeId", employeeId);
-            fd.append("pdfType", pdfType);
-            await api("/api/hr/upload-pdf", { method: "POST", body: fd });
-            setUploads(prev => ({ ...prev, [key]: { name: file.name, size: file.size, status: "done", error: "" } }));
-        } catch (err) {
-            setUploads(prev => ({ ...prev, [key]: { name: file.name, size: file.size, status: "error", error: err.message || "Upload failed" } }));
-        }
-    };
-
     const handleEvalSubmit = async (employeeId) => {
-        const score = hrScores[employeeId];
-        if (score === undefined || score === "") {
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Please enter an HR score (0-100)" } }));
+        const att = attendancePcts[employeeId];
+        const hrs = workingHoursMap[employeeId];
+        if (att === undefined || att === "" || hrs === undefined || hrs === "") {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Please enter attendance % and total working hours" } }));
             return;
         }
-        const numScore = Number(score);
-        if (isNaN(numScore) || numScore < 0 || numScore > 100) {
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "HR score must be between 0 and 100" } }));
+        const numAtt = Number(att);
+        const numHrs = Number(hrs);
+        if (isNaN(numAtt) || numAtt < 0 || numAtt > 100) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Attendance % must be between 0 and 100" } }));
+            return;
+        }
+        if (isNaN(numHrs) || numHrs < 0) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Working hours must be a positive number" } }));
+            return;
+        }
+        const ref = (refSheetUrls[employeeId] || "").trim();
+        if (ref && !/^https?:\/\//i.test(ref)) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Reference sheet must be a valid URL (http:// or https://)" } }));
             return;
         }
 
@@ -164,7 +144,13 @@ export default function HRDashboard() {
             await api("/api/hr/evaluate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ employeeId, hrScore: numScore, notes: hrNotes[employeeId] || "" }),
+                body: JSON.stringify({
+                    employeeId,
+                    attendancePct: numAtt,
+                    workingHours: numHrs,
+                    referenceSheetUrl: ref,
+                    notes: hrNotes[employeeId] || "",
+                }),
             });
             setEvalDone(prev => ({ ...prev, [employeeId]: true }));
             setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "success", text: "Evaluation submitted successfully" } }));
@@ -314,12 +300,6 @@ export default function HRDashboard() {
             {/* Employee evaluation cards */}
             {shortlist.map((emp) => {
                 const isAlreadyDone = emp.hrEvaluated || evalDone[emp.id];
-                const attKey = `${emp.id}_attendance`;
-                const puncKey = `${emp.id}_punctuality`;
-                const attUpload = uploads[attKey];
-                const puncUpload = uploads[puncKey];
-                const attAlready = emp.attendancePdf;
-                const puncAlready = emp.punctualityPdf;
                 const msg = evalMessages[emp.id];
 
                 return (
@@ -347,105 +327,47 @@ export default function HRDashboard() {
 
                         {/* Body */}
                         <div className="px-5 py-4 space-y-4">
-                            {/* PDF uploads row */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {/* Attendance PDF */}
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Attendance PDF</label>
-                                    {attAlready && !attUpload ? (
-                                        <div className="flex items-center gap-2 text-sm text-[#00843D] font-medium bg-[#E8F5E9] rounded-lg px-3 py-2">
-                                            <CheckIcon />
-                                            <span>Already uploaded</span>
-                                        </div>
-                                    ) : attUpload?.status === "done" ? (
-                                        <div className="flex items-center gap-2 text-sm text-[#00843D] font-medium bg-[#E8F5E9] rounded-lg px-3 py-2">
-                                            <CheckIcon />
-                                            <span className="truncate">{attUpload.name}</span>
-                                            <span className="text-xs text-[#666666] shrink-0">({formatBytes(attUpload.size)})</span>
-                                        </div>
-                                    ) : (
-                                        <div>
-                                            <input
-                                                ref={el => { fileRefs.current[attKey] = el; }}
-                                                type="file"
-                                                accept=".pdf"
-                                                className="hidden"
-                                                onChange={(e) => { if (e.target.files[0]) handlePdfUpload(emp.id, "attendance", e.target.files[0]); }}
-                                                disabled={isAlreadyDone}
-                                            />
-                                            <button
-                                                onClick={() => fileRefs.current[attKey]?.click()}
-                                                disabled={isAlreadyDone || attUpload?.status === "uploading"}
-                                                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed border-[#CCCCCC] rounded-lg text-sm text-[#666666] font-medium hover:border-[#F57C00] hover:text-[#F57C00] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                {attUpload?.status === "uploading" ? (
-                                                    <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#F57C00]" /> Uploading...</>
-                                                ) : (
-                                                    <><UploadIcon /> Upload Attendance PDF</>
-                                                )}
-                                            </button>
-                                            {attUpload?.status === "error" && (
-                                                <p className="text-xs text-red-600 mt-1 font-medium">{attUpload.error}</p>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Punctuality PDF */}
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Punctuality PDF</label>
-                                    {puncAlready && !puncUpload ? (
-                                        <div className="flex items-center gap-2 text-sm text-[#00843D] font-medium bg-[#E8F5E9] rounded-lg px-3 py-2">
-                                            <CheckIcon />
-                                            <span>Already uploaded</span>
-                                        </div>
-                                    ) : puncUpload?.status === "done" ? (
-                                        <div className="flex items-center gap-2 text-sm text-[#00843D] font-medium bg-[#E8F5E9] rounded-lg px-3 py-2">
-                                            <CheckIcon />
-                                            <span className="truncate">{puncUpload.name}</span>
-                                            <span className="text-xs text-[#666666] shrink-0">({formatBytes(puncUpload.size)})</span>
-                                        </div>
-                                    ) : (
-                                        <div>
-                                            <input
-                                                ref={el => { fileRefs.current[puncKey] = el; }}
-                                                type="file"
-                                                accept=".pdf"
-                                                className="hidden"
-                                                onChange={(e) => { if (e.target.files[0]) handlePdfUpload(emp.id, "punctuality", e.target.files[0]); }}
-                                                disabled={isAlreadyDone}
-                                            />
-                                            <button
-                                                onClick={() => fileRefs.current[puncKey]?.click()}
-                                                disabled={isAlreadyDone || puncUpload?.status === "uploading"}
-                                                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed border-[#CCCCCC] rounded-lg text-sm text-[#666666] font-medium hover:border-[#F57C00] hover:text-[#F57C00] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                {puncUpload?.status === "uploading" ? (
-                                                    <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#F57C00]" /> Uploading...</>
-                                                ) : (
-                                                    <><UploadIcon /> Upload Punctuality PDF</>
-                                                )}
-                                            </button>
-                                            {puncUpload?.status === "error" && (
-                                                <p className="text-xs text-red-600 mt-1 font-medium">{puncUpload.error}</p>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* HR Score + Notes */}
+                            {/* Attendance % + Working Hours */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">HR Score (0 - 100)</label>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Total Attendance % (0 - 100)</label>
                                     <input
                                         type="number"
                                         min={0}
                                         max={100}
-                                        value={hrScores[emp.id] ?? (emp.hrScore ?? "")}
-                                        onChange={(e) => setHrScores(prev => ({ ...prev, [emp.id]: e.target.value }))}
+                                        step="0.01"
+                                        value={attendancePcts[emp.id] ?? (emp.attendancePct ?? "")}
+                                        onChange={(e) => setAttendancePcts(prev => ({ ...prev, [emp.id]: e.target.value }))}
                                         disabled={isAlreadyDone}
-                                        placeholder="Enter score"
+                                        placeholder="e.g. 92.5"
+                                        className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Total Working Hours</label>
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        step="0.01"
+                                        value={workingHoursMap[emp.id] ?? (emp.workingHours ?? "")}
+                                        onChange={(e) => setWorkingHoursMap(prev => ({ ...prev, [emp.id]: e.target.value }))}
+                                        disabled={isAlreadyDone}
+                                        placeholder="e.g. 480"
+                                        className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Reference Sheet URL + Notes */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Reference Sheet Link (optional)</label>
+                                    <input
+                                        type="url"
+                                        value={refSheetUrls[emp.id] ?? (emp.referenceSheetUrl ?? "")}
+                                        onChange={(e) => setRefSheetUrls(prev => ({ ...prev, [emp.id]: e.target.value }))}
+                                        disabled={isAlreadyDone}
+                                        placeholder="https://..."
                                         className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
                                     />
                                 </div>

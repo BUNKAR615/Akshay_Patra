@@ -41,6 +41,7 @@ export const GET = withRole(["COMMITTEE", "ADMIN"], async (request, { user }) =>
         const where = { quarterId: quarter.id };
         if (targetBranchId) where.branchId = targetBranchId;
 
+        // Only the top winner per branch (highest finalScore)
         const bestEmployees = await prisma.branchBestEmployee.findMany({
             where,
             include: {
@@ -53,12 +54,19 @@ export const GET = withRole(["COMMITTEE", "ADMIN"], async (request, { user }) =>
                 },
                 branch: { select: { id: true, name: true, branchType: true } }
             },
-            orderBy: [{ branch: { name: "asc" } }, { collarType: "asc" }, { finalScore: "desc" }]
+            orderBy: [{ branch: { name: "asc" } }, { finalScore: "desc" }]
         });
 
-        // Format results based on branch type
-        const results = bestEmployees.map(be => {
-            const base = {
+        // Keep only the top winner per branch
+        const topPerBranch = new Map();
+        for (const be of bestEmployees) {
+            if (!topPerBranch.has(be.branchId)) topPerBranch.set(be.branchId, be);
+        }
+
+        // Build per-stage breakdown for each top winner
+        const results = [];
+        for (const be of topPerBranch.values()) {
+            results.push({
                 name: be.user.name,
                 empCode: be.user.empCode,
                 designation: be.user.designation,
@@ -66,36 +74,22 @@ export const GET = withRole(["COMMITTEE", "ADMIN"], async (request, { user }) =>
                 collarType: be.collarType,
                 branch: be.branch.name,
                 branchType: be.branch.branchType,
-                attendancePdfUrl: be.attendancePdfUrl,
-                punctualityPdfUrl: be.punctualityPdfUrl,
-            };
-
-            if (be.branch.branchType === "SMALL") {
-                // Small branch: committee sees scores + PDFs
-                return {
-                    ...base,
-                    selfAssessmentScore: be.selfScore,
-                    branchManagerScore: be.evaluatorScore,
-                    clusterManagerScore: be.cmScore,
-                    finalScore: be.finalScore,
-                };
-            } else {
-                // Big branch: committee sees only PDFs, not scores
-                return base;
-            }
-        });
-
-        // Group by branch
-        const byBranch = {};
-        for (const r of results) {
-            if (!byBranch[r.branch]) byBranch[r.branch] = [];
-            byBranch[r.branch].push(r);
+                stages: [
+                    { stage: 1, name: "Self Assessment", score: be.selfScore, weightPct: 30 },
+                    { stage: 2, name: "BM / HOD Evaluation", score: be.evaluatorScore, weightPct: 25 },
+                    { stage: 3, name: "Cluster Manager", score: be.cmScore, weightPct: 25 },
+                    { stage: 4, name: "HR Evaluation", score: be.hrScore, weightPct: 20 },
+                ],
+                attendancePct: be.attendancePct,
+                workingHours: be.workingHours,
+                referenceSheetUrl: be.referenceSheetUrl,
+                finalScore: be.finalScore,
+            });
         }
 
         return ok({
             quarter: { id: quarter.id, name: quarter.name, status: quarter.status },
             results,
-            byBranch,
             total: results.length
         });
     } catch (err) {

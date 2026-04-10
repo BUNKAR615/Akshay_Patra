@@ -40,21 +40,27 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
 
             const evaluated = await prisma.branchManagerEvaluation.findMany({
                 where: { managerId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: dept.id } },
-                select: { employeeId: true }
+                select: { employeeId: true, bmNormalized: true, bmRawScore: true }
             });
 
+            const evalMap = new Map(evaluated.map(e => [e.employeeId, e]));
             const evaluatedSet = new Set(evaluated.map(e => e.employeeId));
 
-            const shuffledEmployees = shuffleArray(shortlists.map(s => ({
-                id: s.user.id,
-                userId: s.userId,
-                name: s.user.name,
-                empCode: s.user.empCode,
-                designation: s.user.designation || '',
-                isEvaluated: evaluatedSet.has(s.userId),
-                alreadyEvaluated: evaluatedSet.has(s.userId), // keeping for backwards compat in UI during transition
-                user: s.user // keeping for backwards compat
-            })));
+            const shuffledEmployees = shuffleArray(shortlists.map(s => {
+                const ev = evalMap.get(s.userId);
+                return {
+                    id: s.user.id,
+                    userId: s.userId,
+                    name: s.user.name,
+                    empCode: s.user.empCode,
+                    designation: s.user.designation || '',
+                    isEvaluated: !!ev,
+                    alreadyEvaluated: !!ev, // keeping for backwards compat in UI during transition
+                    mySubmittedScore: ev ? ev.bmNormalized : null,
+                    mySubmittedRawScore: ev ? ev.bmRawScore : null,
+                    user: s.user // keeping for backwards compat
+                };
+            }));
 
             return {
                 id: dept.id,

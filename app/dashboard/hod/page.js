@@ -357,12 +357,19 @@ export default function HodDashboard() {
                                     </div>
                                     <div className="mt-2 sm:mt-0">
                                         {entry.isEvaluated ? (
-                                            <span className="text-[13px] px-4 py-2 rounded-lg bg-white text-[#2E7D32] border border-[#A5D6A7] font-bold shadow-sm flex items-center gap-2 justify-center w-full sm:w-auto">
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                                </svg>
-                                                Evaluated
-                                            </span>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <span className="text-[13px] px-4 py-2 rounded-lg bg-white text-[#2E7D32] border border-[#A5D6A7] font-bold shadow-sm flex items-center gap-2 justify-center w-full sm:w-auto">
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                    Evaluated
+                                                </span>
+                                                {entry.mySubmittedScore != null && (
+                                                    <span className="text-[12px] font-bold text-[#2E7D32] mt-1">
+                                                        Your score: {Number(entry.mySubmittedScore).toFixed(2)}
+                                                    </span>
+                                                )}
+                                            </div>
                                         ) : (
                                             <button
                                                 onClick={() => setSelectedEmployee(entry)}

@@ -133,9 +133,9 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         const hodQuestions = await prisma.question.findMany({ where: { level: "HOD", isActive: true } });
 
         const selfCount = data.questionCount; // strictly admin-set
-        const bmCount = data.bmQuestionCount || 4;
-        const hodCount = data.hodQuestionCount || 4;
-        const cmCount = 3;
+        const bmCount = data.bmQuestionCount || 15;
+        const hodCount = data.hodQuestionCount || 15;
+        const cmCount = data.cmQuestionCount || 5;
 
         // Validate sufficient questions
         if (selfQuestions.length < selfCount) {
@@ -168,7 +168,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
 
         const { quarter, assignmentStats } = await prisma.$transaction(async (tx) => {
             const q = await tx.quarter.create({
-                data: { name: data.quarterName, status: "ACTIVE", startDate: start, endDate: end, questionCount: data.questionCount, bmQuestionCount: bmCount, hodQuestionCount: hodCount },
+                data: { name: data.quarterName, status: "ACTIVE", startDate: start, endDate: end, questionCount: data.questionCount, bmQuestionCount: bmCount, hodQuestionCount: hodCount, cmQuestionCount: cmCount },
             });
             await tx.quarterQuestion.createMany({
                 data: allSelectedIds.map((questionId) => ({ quarterId: q.id, questionId })),
@@ -183,7 +183,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         console.log("Saved to DB (Quarter):", quarter);
 
         await prisma.auditLog.create({
-            data: { userId: user.userId, action: "QUARTER_STARTED", details: { quarterId: quarter.id, name: quarter.name, questionCount: data.questionCount, totalLocked: allSelectedIds.length, selfCount: selectedSelf.length, supCount: selectedSup.length, bmCount: selectedBm.length, cmCount: selectedCm.length } },
+            data: { userId: user.userId, action: "QUARTER_STARTED", details: { quarterId: quarter.id, name: quarter.name, questionCount: data.questionCount, totalLocked: allSelectedIds.length, selfCount: selectedSelf.length, bmCount: selectedBm.length, hodCount: selectedHod.length, cmCount: selectedCm.length } },
         });
 
         // Notify all employees

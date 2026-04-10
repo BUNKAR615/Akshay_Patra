@@ -49,21 +49,27 @@ export const GET = withRole(["HR", "ADMIN"], async (request, { user }) => {
         // Check which employees HR has already evaluated
         const evaluations = await prisma.hrEvaluation.findMany({
             where: { hrUserId: user.userId, quarterId: quarter.id },
-            select: { employeeId: true, attendancePdfUrl: true, punctualityPdfUrl: true, hrScore: true }
+            select: { employeeId: true, attendancePct: true, workingHours: true, referenceSheetUrl: true, hrScore: true, notes: true }
         });
         const evalMap = new Map(evaluations.map(e => [e.employeeId, e]));
 
-        const employees = shortlisted.map(s => ({
-            ...s.user,
-            collarType: s.collarType,
-            selfScore: s.selfScore,
-            evaluatorScore: s.evaluatorScore,
-            cmScore: s.cmScore,
-            combinedScore: s.combinedScore,
-            rank: s.rank,
-            evaluated: evalMap.has(s.user.id),
-            hrData: evalMap.get(s.user.id) || null
-        }));
+        const employees = shortlisted.map(s => {
+            const ev = evalMap.get(s.user.id);
+            return {
+                ...s.user,
+                collarType: s.collarType,
+                selfScore: s.selfScore,
+                evaluatorScore: s.evaluatorScore,
+                cmScore: s.cmScore,
+                combinedScore: s.combinedScore,
+                rank: s.rank,
+                hrEvaluated: !!ev,
+                attendancePct: ev?.attendancePct ?? null,
+                workingHours: ev?.workingHours ?? null,
+                referenceSheetUrl: ev?.referenceSheetUrl ?? null,
+                hrNotes: ev?.notes ?? null,
+            };
+        });
 
         return ok({
             employees,

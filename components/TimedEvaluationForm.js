@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import ConfirmDialog from "./ConfirmDialog";
 
 const CATEGORY_COLORS = {
     ATTENDANCE: "bg-sky-500/10 text-sky-400 border-sky-500/20",
@@ -28,12 +27,16 @@ export default function TimedEvaluationForm({
     questions,
     onSubmit,
     submitLabel = "Submit Assessment",
-    confirmMessage = "Are you sure you want to submit this assessment? This action cannot be undone.",
+    startTitle = "Self Assessment",
+    startDescription = "You will be shown one question at a time. Each question has a 30-second timer. Once answered, you cannot return to previous questions.",
 }) {
+    // Start screen state
+    const [started, setStarted] = useState(false);
+
     // 1-by-1 Flow State
     const [currentIndex, setCurrentIndex] = useState(0);
     const [answers, setAnswers] = useState([]);
-    
+
     // Timer State
     const [timeLeft, setTimeLeft] = useState(TIME_LIMIT_SECONDS);
     const [totalTimeTaken, setTotalTimeTaken] = useState(0);
@@ -41,7 +44,6 @@ export default function TimedEvaluationForm({
     const [submitting, setSubmitting] = useState(false);
     const [langMode, setLangMode] = useState("Both");
     const [topError, setTopError] = useState("");
-    const [confirmOpen, setConfirmOpen] = useState(false);
 
     // Refs for timer management
     const timerRef = useRef(null);
@@ -52,7 +54,7 @@ export default function TimedEvaluationForm({
 
     // Start/Manage the per-question timer
     useEffect(() => {
-        if (isFinished || submitting) {
+        if (!started || isFinished || submitting) {
             clearInterval(timerRef.current);
             return;
         }
@@ -74,7 +76,7 @@ export default function TimedEvaluationForm({
         }, 1000);
 
         return () => clearInterval(timerRef.current);
-    }, [currentIndex, isFinished, submitting]);
+    }, [started, currentIndex, isFinished, submitting]);
 
     // Page refresh protection
     useEffect(() => {
@@ -117,13 +119,8 @@ export default function TimedEvaluationForm({
         setCurrentIndex((prev) => prev + 1);
     };
 
-    const handleInitialSubmitClick = () => {
+    const handleSubmit = async () => {
         if (submitting) return;
-        setConfirmOpen(true);
-    };
-
-    const handleConfirmedSubmit = async () => {
-        setConfirmOpen(false);
         setSubmitting(true);
         setTopError("");
 
@@ -137,6 +134,29 @@ export default function TimedEvaluationForm({
             setSubmitting(false);
         }
     };
+
+    // Start screen — shown before assessment begins
+    if (!started) {
+        return (
+            <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-8 text-center space-y-6">
+                <span className="text-5xl block">📝</span>
+                <div>
+                    <h3 className="text-[24px] font-black text-[#003087] mb-3">{startTitle}</h3>
+                    <p className="text-[#666666] text-[15px] leading-relaxed max-w-lg mx-auto">{startDescription}</p>
+                </div>
+                <div className="bg-[#F5F7FA] border border-[#E0E0E0] rounded-lg p-4 max-w-md mx-auto text-left">
+                    <p className="text-[13px] text-[#666666]"><span className="font-bold text-[#003087]">Total Questions:</span> {questions.length}</p>
+                    <p className="text-[13px] text-[#666666] mt-1"><span className="font-bold text-[#003087]">Time per question:</span> {TIME_LIMIT_SECONDS} seconds</p>
+                </div>
+                <button
+                    onClick={() => setStarted(true)}
+                    className="min-h-[52px] min-w-[200px] px-8 py-3 bg-[#00843D] text-white text-[16px] font-bold rounded-xl transition-all shadow-md hover:bg-[#00843D]/90 cursor-pointer mx-auto block"
+                >
+                    Start Assessment
+                </button>
+            </div>
+        );
+    }
 
     // Rendering Summary if finished
     if (isFinished) {
@@ -156,24 +176,12 @@ export default function TimedEvaluationForm({
                 )}
                 
                 <button
-                    onClick={handleInitialSubmitClick}
+                    onClick={handleSubmit}
                     disabled={submitting}
-                    className="min-h-[52px] min-w-[200px] px-8 py-3 bg-[#00843D] text-white text-[16px] font-bold rounded-xl transition-all shadow-md hover:bg-[#00843D]/90 disabled:!bg-[#CCCCCC] disabled:!text-[#666666] disabled:cursor-not-allowed mx-auto block"
+                    className="min-h-[52px] min-w-[200px] px-8 py-3 bg-[#00843D] text-white text-[16px] font-bold rounded-xl transition-all shadow-md hover:bg-[#00843D]/90 disabled:!bg-[#CCCCCC] disabled:!text-[#666666] disabled:cursor-not-allowed mx-auto block cursor-pointer"
                 >
                     {submitting ? "Submitting..." : submitLabel}
                 </button>
-
-                <ConfirmDialog
-                    open={confirmOpen}
-                    title="Submit Evaluation?"
-                    message={confirmMessage}
-                    confirmLabel="Yes, Submit"
-                    cancelLabel="No, Go Back"
-                    variant="warning"
-                    loading={submitting}
-                    onConfirm={handleConfirmedSubmit}
-                    onCancel={() => setConfirmOpen(false)}
-                />
             </div>
         );
     }

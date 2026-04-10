@@ -29,22 +29,42 @@ async function main() {
     data: { name: 'Jodhpur', location: 'Jodhpur, Rajasthan', branchType: 'SMALL' }
   });
 
-  // Step 2: Create 14 Departments
-  const deptNames = [
-    'Administration', 'Distribution', 'Finance',
-    'Human Resources', 'India One Marketing',
-    'Information Technology', 'Maintenance', 'Operations',
-    'Process Excellence and CI', 'Procurement',
-    'Production', 'Quality', 'Security', 'Stores'
+  // Step 2: Create Jaipur Departments with collar type
+  // Existing employee data references: Administration, Distribution, Finance,
+  // Human Resources, India One Marketing, Information Technology, Maintenance,
+  // Operations, Process Excellence and CI, Procurement, Production, Quality,
+  // Security, Stores. We keep those, mark collar types, and add new WC-specific
+  // departments for Distribution/Production (where BC employees stay in the base
+  // dept and WC employees can be moved to the new WC variant by admin).
+  const jaipurDepts = [
+    // WHITE COLLAR
+    { name: 'Administration',          collarType: 'WHITE_COLLAR' },
+    { name: 'Human Resources',         collarType: 'WHITE_COLLAR' },
+    { name: 'Information Technology',  collarType: 'WHITE_COLLAR' },
+    { name: 'Procurement',             collarType: 'WHITE_COLLAR' },
+    { name: 'Quality',                 collarType: 'WHITE_COLLAR' },
+    { name: 'Stores',                  collarType: 'WHITE_COLLAR' },
+    { name: 'Distribution White Collar', collarType: 'WHITE_COLLAR' },
+    { name: 'Production White Collar',   collarType: 'WHITE_COLLAR' },
+
+    // BLUE COLLAR (including the base Distribution/Production where existing employees live)
+    { name: 'Distribution',            collarType: 'BLUE_COLLAR' },
+    { name: 'Production',              collarType: 'BLUE_COLLAR' },
+    { name: 'Finance',                 collarType: 'BLUE_COLLAR' },
+    { name: 'India One Marketing',     collarType: 'BLUE_COLLAR' },
+    { name: 'Maintenance',             collarType: 'BLUE_COLLAR' },
+    { name: 'Operations',              collarType: 'BLUE_COLLAR' },
+    { name: 'Process Excellence and CI', collarType: 'BLUE_COLLAR' },
+    { name: 'Security',                collarType: 'BLUE_COLLAR' },
   ];
 
-  console.log('Creating 14 departments...');
+  console.log(`Creating ${jaipurDepts.length} Jaipur departments...`);
   const deptMap = {};
-  for (const name of deptNames) {
+  for (const d of jaipurDepts) {
     const dept = await prisma.department.create({
-      data: { name, branchId: branch.id }
+      data: { name: d.name, branchId: branch.id, collarType: d.collarType }
     });
-    deptMap[name] = dept.id;
+    deptMap[d.name] = dept.id;
   }
 
   // Step 3: Seed all employees using upsert (idempotent)
@@ -218,6 +238,15 @@ async function main() {
     { text: 'This employee handles pressure situations with maturity.', textHindi: 'यह कर्मचारी दबाव की स्थितियों को परिपक्वता से संभालता/संभालती है।', category: 'DISCIPLINE', level: 'BRANCH_MANAGER', isActive: true },
     { text: 'This employee\'s presence positively impacts team morale.', textHindi: 'इस कर्मचारी की उपस्थिति टीम के मनोबल पर सकारात्मक प्रभाव डालती है।', category: 'TEAMWORK', level: 'BRANCH_MANAGER', isActive: true },
     { text: 'This employee represents the values of Akshaya Patra well.', textHindi: 'यह कर्मचारी अक्षय पात्र के मूल्यों का अच्छे से प्रतिनिधित्व करता/करती है।', category: 'INTEGRITY', level: 'BRANCH_MANAGER', isActive: true },
+    { text: 'This employee maintains consistent attendance across the quarter.', textHindi: 'यह कर्मचारी पूरी तिमाही में लगातार उपस्थिति बनाए रखता/रखती है।', category: 'ATTENDANCE', level: 'BRANCH_MANAGER', isActive: true },
+    { text: 'This employee shows punctuality and respects work timings.', textHindi: 'यह कर्मचारी समयनिष्ठा दिखाता/दिखाती है और काम के समय का सम्मान करता/करती है।', category: 'ATTENDANCE', level: 'BRANCH_MANAGER', isActive: true },
+    { text: 'This employee adheres to workplace discipline consistently.', textHindi: 'यह कर्मचारी लगातार कार्यस्थल अनुशासन का पालन करता/करती है।', category: 'DISCIPLINE', level: 'BRANCH_MANAGER', isActive: true },
+    { text: 'This employee delivers assigned tasks with minimal supervision.', textHindi: 'यह कर्मचारी न्यूनतम निगरानी के साथ सौंपे गए कार्यों को पूरा करता/करती है।', category: 'PRODUCTIVITY', level: 'BRANCH_MANAGER', isActive: true },
+    { text: 'This employee collaborates effectively across departments.', textHindi: 'यह कर्मचारी विभागों में प्रभावी ढंग से सहयोग करता/करती है।', category: 'TEAMWORK', level: 'BRANCH_MANAGER', isActive: true },
+    { text: 'This employee communicates clearly with peers and seniors.', textHindi: 'यह कर्मचारी साथियों और वरिष्ठों के साथ स्पष्ट संवाद करता/करती है।', category: 'COMMUNICATION', level: 'BRANCH_MANAGER', isActive: true },
+    { text: 'This employee takes initiative to solve problems proactively.', textHindi: 'यह कर्मचारी सक्रिय रूप से समस्याओं को हल करने की पहल करता/करती है।', category: 'INITIATIVE', level: 'BRANCH_MANAGER', isActive: true },
+    { text: 'This employee acts with honesty and integrity at all times.', textHindi: 'यह कर्मचारी हमेशा ईमानदारी और सत्यनिष्ठा से कार्य करता/करती है।', category: 'INTEGRITY', level: 'BRANCH_MANAGER', isActive: true },
+    { text: 'This employee maintains high work standards under pressure.', textHindi: 'यह कर्मचारी दबाव में उच्च कार्य मानक बनाए रखता/रखती है।', category: 'PRODUCTIVITY', level: 'BRANCH_MANAGER', isActive: true },
 
     // CLUSTER MANAGER EVALUATION
     { text: 'This employee has made a measurable impact this quarter.', textHindi: 'इस कर्मचारी ने इस तिमाही में मापने योग्य प्रभाव डाला है।', category: 'PRODUCTIVITY', level: 'CLUSTER_MANAGER', isActive: true },
@@ -233,6 +262,15 @@ async function main() {
     { text: 'This employee works well with colleagues in the department.', textHindi: 'यह कर्मचारी विभाग में सहकर्मियों के साथ अच्छे से काम करता/करती है।', category: 'TEAMWORK', level: 'HOD', isActive: true },
     { text: 'This employee takes initiative to improve work processes.', textHindi: 'यह कर्मचारी कार्य प्रक्रियाओं में सुधार के लिए पहल करता/करती है।', category: 'INITIATIVE', level: 'HOD', isActive: true },
     { text: 'This employee handles equipment and resources responsibly.', textHindi: 'यह कर्मचारी उपकरण और संसाधनों को जिम्मेदारी से संभालता/संभालती है।', category: 'INTEGRITY', level: 'HOD', isActive: true },
+    { text: 'This employee meets daily production / task targets reliably.', textHindi: 'यह कर्मचारी दैनिक उत्पादन / कार्य लक्ष्यों को विश्वसनीय रूप से पूरा करता/करती है।', category: 'PRODUCTIVITY', level: 'HOD', isActive: true },
+    { text: 'This employee maintains good hygiene and workplace cleanliness.', textHindi: 'यह कर्मचारी अच्छी स्वच्छता और कार्यस्थल की सफाई बनाए रखता/रखती है।', category: 'DISCIPLINE', level: 'HOD', isActive: true },
+    { text: 'This employee is willing to help colleagues during busy hours.', textHindi: 'यह कर्मचारी व्यस्त घंटों के दौरान सहकर्मियों की मदद करने को तैयार है।', category: 'TEAMWORK', level: 'HOD', isActive: true },
+    { text: 'This employee reports issues promptly to the supervisor.', textHindi: 'यह कर्मचारी मुद्दों को तुरंत पर्यवेक्षक को रिपोर्ट करता/करती है।', category: 'COMMUNICATION', level: 'HOD', isActive: true },
+    { text: 'This employee avoids absenteeism and informs well in advance.', textHindi: 'यह कर्मचारी अनुपस्थिति से बचता/बचती है और पहले से सूचित करता/करती है।', category: 'ATTENDANCE', level: 'HOD', isActive: true },
+    { text: 'This employee follows instructions accurately without shortcuts.', textHindi: 'यह कर्मचारी शॉर्टकट के बिना निर्देशों का सटीक पालन करता/करती है।', category: 'DISCIPLINE', level: 'HOD', isActive: true },
+    { text: 'This employee demonstrates a positive attitude at work.', textHindi: 'यह कर्मचारी काम पर सकारात्मक दृष्टिकोण दिखाता/दिखाती है।', category: 'TEAMWORK', level: 'HOD', isActive: true },
+    { text: 'This employee has shown willingness to learn new skills.', textHindi: 'यह कर्मचारी नए कौशल सीखने की इच्छा दिखाता/दिखाती है।', category: 'INITIATIVE', level: 'HOD', isActive: true },
+    { text: 'This employee is honest and trustworthy in daily work.', textHindi: 'यह कर्मचारी दैनिक कार्य में ईमानदार और भरोसेमंद है।', category: 'INTEGRITY', level: 'HOD', isActive: true },
 
     // HR EVALUATION (final stage before committee)
     { text: 'This employee has a clean disciplinary record this quarter.', textHindi: 'इस तिमाही में इस कर्मचारी का अनुशासनात्मक रिकॉर्ड स्वच्छ रहा है।', category: 'DISCIPLINE', level: 'HR', isActive: true },

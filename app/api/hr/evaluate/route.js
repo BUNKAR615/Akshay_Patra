@@ -19,7 +19,9 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
         const { data, error } = await validateBody(request, hrEvaluateSchema);
         if (error) return error;
 
-        const { employeeId, hrScore, notes } = data;
+        const { employeeId, attendancePct, workingHours, referenceSheetUrl, notes } = data;
+        // HR score derived purely from attendance % (0-100 scale)
+        const hrScore = Math.max(0, Math.min(100, attendancePct));
 
         const quarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
         if (!quarter) return fail("No active quarter");
@@ -52,12 +54,6 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
         const { selfContribution, evaluatorContribution, cmContribution, hrContribution, finalScore } =
             calculateBranchFinalScore(selfNorm, evaluatorNorm, cmNorm, hrNorm);
 
-        // Check if PDFs have been uploaded for this employee
-        const existingPdfs = await prisma.hrEvaluation.findFirst({
-            where: { employeeId, quarterId: quarter.id },
-            select: { attendancePdfUrl: true, punctualityPdfUrl: true }
-        });
-
         await prisma.hrEvaluation.create({
             data: {
                 hrUserId: user.userId,
@@ -65,13 +61,14 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
                 quarterId: quarter.id,
                 hrScore,
                 notes,
+                attendancePct,
+                workingHours,
+                referenceSheetUrl: referenceSheetUrl || null,
                 selfContribution,
                 evaluatorContribution,
                 cmContribution,
                 hrContribution,
                 stage4CombinedScore: finalScore,
-                attendancePdfUrl: existingPdfs?.attendancePdfUrl || null,
-                punctualityPdfUrl: existingPdfs?.punctualityPdfUrl || null,
             }
         });
 
@@ -133,8 +130,9 @@ async function generateStage4Shortlist(branchId, quarterId) {
                     cmScore: ev.cmContribution,
                     hrScore: ev.hrContribution,
                     finalScore: ev.stage4CombinedScore,
-                    attendancePdfUrl: ev.attendancePdfUrl,
-                    punctualityPdfUrl: ev.punctualityPdfUrl,
+                    attendancePct: ev.attendancePct,
+                    workingHours: ev.workingHours,
+                    referenceSheetUrl: ev.referenceSheetUrl,
                 },
                 create: {
                     userId: ev.employeeId,
@@ -146,8 +144,9 @@ async function generateStage4Shortlist(branchId, quarterId) {
                     cmScore: ev.cmContribution,
                     hrScore: ev.hrContribution,
                     finalScore: ev.stage4CombinedScore,
-                    attendancePdfUrl: ev.attendancePdfUrl,
-                    punctualityPdfUrl: ev.punctualityPdfUrl,
+                    attendancePct: ev.attendancePct,
+                    workingHours: ev.workingHours,
+                    referenceSheetUrl: ev.referenceSheetUrl,
                 }
             });
             await createNotification(ev.employeeId, "Congratulations! You have been selected as Best Employee of the Quarter!").catch(() => {});
@@ -166,8 +165,9 @@ async function generateStage4Shortlist(branchId, quarterId) {
                     cmScore: ev.cmContribution,
                     hrScore: ev.hrContribution,
                     finalScore: ev.stage4CombinedScore,
-                    attendancePdfUrl: ev.attendancePdfUrl,
-                    punctualityPdfUrl: ev.punctualityPdfUrl,
+                    attendancePct: ev.attendancePct,
+                    workingHours: ev.workingHours,
+                    referenceSheetUrl: ev.referenceSheetUrl,
                 },
                 create: {
                     userId: ev.employeeId,
@@ -179,8 +179,9 @@ async function generateStage4Shortlist(branchId, quarterId) {
                     cmScore: ev.cmContribution,
                     hrScore: ev.hrContribution,
                     finalScore: ev.stage4CombinedScore,
-                    attendancePdfUrl: ev.attendancePdfUrl,
-                    punctualityPdfUrl: ev.punctualityPdfUrl,
+                    attendancePct: ev.attendancePct,
+                    workingHours: ev.workingHours,
+                    referenceSheetUrl: ev.referenceSheetUrl,
                 }
             });
             await createNotification(ev.employeeId, "Congratulations! You have been selected as Best Employee of the Quarter!").catch(() => {});

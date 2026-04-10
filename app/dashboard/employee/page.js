@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import DashboardShell from "../../../components/DashboardShell";
 import TimedEvaluationForm from "../../../components/TimedEvaluationForm";
-import UserProfileCard from "../../../components/UserProfileCard";
 import { PageSpinner, SkeletonCard } from "../../../components/Skeleton";
 
 async function api(url, opts) {
@@ -170,33 +169,46 @@ export default function EmployeeDashboard() {
 
     return (
         <DashboardShell user={user} currentQuarter={currentQuarterName} title="Employee Dashboard">
-            {/* Profile Card */}
-            {user && (
-                <>
-                    <UserProfileCard
-                        user={user}
-                        extraInfo={{
-                            label: "Assessment",
-                            value: (status?.selfAssessment || status?.assessment?.submitted) ? "Submitted ✓" : "Pending",
-                            color: (status?.selfAssessment || status?.assessment?.submitted) ? "text-[#00843D]" : "text-[#F7941D]"
-                        }}
-                    />
-                    {(user.branchName || user.collarType) && (
-                        <div className="flex flex-wrap items-center gap-3 -mt-4 mb-6 px-1">
-                            {user.branchName && (
-                                <span className="text-[13px] text-[#666666] font-medium">
-                                    Branch: <span className="font-bold text-[#003087]">{user.branchName}</span>
-                                </span>
-                            )}
-                            {user.collarType && (
-                                <span className={`text-[12px] px-3 py-1 rounded-full font-bold ${user.collarType === "WHITE" ? "bg-[#E3F2FD] text-[#003087] border border-[#90CAF9]" : "bg-[#FFF3E0] text-[#E65100] border border-[#FFCC80]"}`}>
-                                    Category: {user.collarType === "WHITE" ? "White Collar" : "Blue Collar"}
-                                </span>
-                            )}
+            {/* Simplified Profile Row — only name, empCode, branch, dept, collar */}
+            {user && (() => {
+                const branch = user.department?.branch?.name || user.branchName || user.branch || "—";
+                const dept = user.department?.name || user.departmentName || (user.departmentRoles?.length > 0 ? user.departmentRoles[0].department?.name : null) || "—";
+                const collarRaw = user.collarType || user.department?.collarType || (user.departmentRoles?.length > 0 ? user.departmentRoles[0].department?.collarType : null);
+                const isWhite = collarRaw === "WHITE_COLLAR" || collarRaw === "WHITE";
+                const collarLabel = collarRaw ? (isWhite ? "White Collar" : "Blue Collar") : null;
+                return (
+                    <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 mb-6 shadow-sm">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-3">
+                            <div>
+                                <p className="text-[11px] text-[#999999] font-bold uppercase tracking-wider">Name</p>
+                                <p className="text-[14px] font-bold text-[#003087]">{user.name}</p>
+                            </div>
+                            <div>
+                                <p className="text-[11px] text-[#999999] font-bold uppercase tracking-wider">Employee ID</p>
+                                <p className="text-[14px] font-bold text-[#333333]">{user.empCode || "—"}</p>
+                            </div>
+                            <div>
+                                <p className="text-[11px] text-[#999999] font-bold uppercase tracking-wider">Branch</p>
+                                <p className="text-[14px] font-bold text-[#333333]">{branch}</p>
+                            </div>
+                            <div>
+                                <p className="text-[11px] text-[#999999] font-bold uppercase tracking-wider">Department</p>
+                                <p className="text-[14px] font-bold text-[#333333]">{dept}</p>
+                            </div>
+                            <div>
+                                <p className="text-[11px] text-[#999999] font-bold uppercase tracking-wider">Collar</p>
+                                {collarLabel ? (
+                                    <span className={`text-[12px] px-2.5 py-0.5 rounded-full font-bold inline-block mt-0.5 ${isWhite ? "bg-[#E3F2FD] text-[#003087] border border-[#90CAF9]" : "bg-[#FFF3E0] text-[#E65100] border border-[#FFCC80]"}`}>
+                                        {collarLabel}
+                                    </span>
+                                ) : (
+                                    <p className="text-[14px] font-bold text-[#333333]">—</p>
+                                )}
+                            </div>
                         </div>
-                    )}
-                </>
-            )}
+                    </div>
+                );
+            })()}
 
             {/* Tab Switcher */}
             <div className="flex gap-2 bg-[#F5F5F5] rounded-xl p-1.5 mb-8 border border-[#E0E0E0] w-fit">
@@ -255,7 +267,8 @@ export default function EmployeeDashboard() {
                                 questions={questions}
                                 onSubmit={handleConfirmedSubmit}
                                 submitLabel="Submit Self Assessment"
-                                confirmMessage="Once submitted, you cannot change your answers. Are you sure you want to proceed?"
+                                startTitle="Self Assessment"
+                                startDescription="You will be shown one question at a time. Each question has a 30-second timer. Once answered, you cannot return to previous questions."
                             />
                         </>
                     )}
@@ -319,28 +332,7 @@ export default function EmployeeDashboard() {
                                 </div>
                             )}
 
-                            {/* Submitted Answers */}
-                            {status.selfAssessment.answers.length > 0 && (
-                                <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl overflow-hidden mt-8">
-                                    <div className="px-6 py-4 border-b border-[#E0E0E0] bg-[#F9FAFB]">
-                                        <h4 className="text-[16px] font-bold text-[#003087]">Your Answers Record</h4>
-                                    </div>
-                                    <div className="divide-y divide-[#E0E0E0]">
-                                        {status.selfAssessment.answers.map((a, i) => (
-                                            <div key={i} className="px-6 py-4 flex flex-col sm:flex-row sm:items-start justify-between gap-4 hover:bg-[#FAFAFA] transition-colors">
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-[15px] text-[#1A1A2E] leading-relaxed font-medium">{a.questionText}</p>
-                                                    <span className="text-[12px] px-2.5 py-1 rounded-full bg-[#E3F2FD] border border-[#90CAF9] text-[#003087] mt-3 inline-block font-bold">{a.category}</span>
-                                                </div>
-                                                <div className="bg-[#E8F5E9] border border-[#A5D6A7] rounded-lg px-4 py-2 shrink-0 text-center shadow-sm w-full sm:w-auto">
-                                                    <p className="text-[15px] font-bold text-[#1B5E20] leading-none flex items-center justify-center gap-1.5"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg> {a.answerLabel}</p>
-                                                    <p className="text-[11px] text-[#00843D] font-bold uppercase mt-1">Selected</p>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+                            {/* Answers are intentionally not shown after submission */}
 
                             {/* Current Standings (only when quarter is CLOSED) */}
                             {status.winner && (

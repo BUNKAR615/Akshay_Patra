@@ -292,10 +292,17 @@ export default function ClusterManagerDashboard() {
                                     </div>
                                     <div className="mt-3 sm:mt-0">
                                         {entry.alreadyEvaluated ? (
-                                            <span className="min-h-[44px] text-[14px] px-6 py-2.5 rounded-lg bg-white text-[#2E7D32] border border-[#A5D6A7] font-bold shadow-sm flex items-center gap-2 justify-center w-full sm:w-auto">
-                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                                                ✓ Done
-                                            </span>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <span className="min-h-[44px] text-[14px] px-6 py-2.5 rounded-lg bg-white text-[#2E7D32] border border-[#A5D6A7] font-bold shadow-sm flex items-center gap-2 justify-center w-full sm:w-auto">
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                                    ✓ Done
+                                                </span>
+                                                {entry.mySubmittedScore != null && (
+                                                    <span className="text-[12px] font-bold text-[#2E7D32] mt-1">
+                                                        Your score: {Number(entry.mySubmittedScore).toFixed(2)}
+                                                    </span>
+                                                )}
+                                            </div>
                                         ) : (
                                             <button onClick={() => setSelectedEmployee(entry)} className="min-h-[44px] min-w-[120px] text-[15px] px-6 py-3 bg-[#003087] text-white rounded-lg hover:bg-[#00843D] transition-colors cursor-pointer font-bold shadow flex items-center gap-2 justify-center w-full sm:w-auto">
                                                 Evaluate

@@ -62,7 +62,8 @@ export default function AdminDashboard() {
     const [empTotalPages, setEmpTotalPages] = useState(1);
     const [empPage, setEmpPage] = useState(1);
     const [empLoading, setEmpLoading] = useState(false);
-    const [empFilter, setEmpFilter] = useState({ search: "", department: "", role: "" });
+    const [empFilter, setEmpFilter] = useState({ search: "", department: "", role: "", branch: "" });
+    const [empBranches, setEmpBranches] = useState([]);
 
     // Employee management — add / remove (inline in admin dashboard)
     // Add employee state
@@ -75,6 +76,49 @@ export default function AdminDashboard() {
     const [removeId, setRemoveId] = useState(null);
     const [removeReason, setRemoveReason] = useState("");
     const [removeLoading, setRemoveLoading] = useState(false);
+
+    // Bulk upload state
+    const [showBulkUpload, setShowBulkUpload] = useState(false);
+    const [bulkFile, setBulkFile] = useState(null);
+    const [bulkLoading, setBulkLoading] = useState(false);
+    const [bulkResult, setBulkResult] = useState(null);
+    const [bulkMsg, setBulkMsg] = useState({ type: "", text: "" });
+
+    const handleBulkUpload = async () => {
+        if (!bulkFile) {
+            setBulkMsg({ type: "error", text: "Please select an Excel file" });
+            return;
+        }
+        setBulkLoading(true);
+        setBulkMsg({ type: "", text: "" });
+        setBulkResult(null);
+        try {
+            const fd = new FormData();
+            fd.append("file", bulkFile);
+            const res = await fetch("/api/admin/employees/bulk-upload", { method: "POST", body: fd });
+            const json = await res.json();
+            if (!res.ok || !json.success) throw new Error(json.message || "Upload failed");
+            setBulkResult(json.data);
+            setBulkMsg({ type: "success", text: `Processed ${json.data.totalRows} rows: ${json.data.createdCount} created, ${json.data.skippedCount} skipped, ${json.data.failedCount} failed.` });
+            setBulkFile(null);
+            fetchEmployees(1);
+            if (orgStructure.length > 0) fetchOrg();
+        } catch (err) {
+            setBulkMsg({ type: "error", text: err.message || "Bulk upload failed" });
+        }
+        setBulkLoading(false);
+    };
+
+    const downloadBulkTemplate = () => {
+        const sampleRows = [
+            { "Emp Code": "5100099", "Name": "Sample Name", "Department": "Production", "Branch": "Jaipur", "Designation": "Operator", "Mobile": "9876543210", "Collar Type": "BLUE_COLLAR" },
+        ];
+        const ws = XLSX.utils.json_to_sheet(sampleRows);
+        ws["!cols"] = [{ wch: 12 }, { wch: 25 }, { wch: 20 }, { wch: 15 }, { wch: 20 }, { wch: 14 }, { wch: 14 }];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Employees");
+        XLSX.writeFile(wb, "Employee_Upload_Template.xlsx");
+    };
 
     // Edit employee modal state (admin only)
     const [editEmp, setEditEmp] = useState(null);           // employee being edited
@@ -242,12 +286,14 @@ export default function AdminDashboard() {
             if (filters.search) params.set("search", filters.search);
             if (filters.department) params.set("department", filters.department);
             if (filters.role) params.set("role", filters.role);
+            if (filters.branch) params.set("branch", filters.branch);
             const d = await api(`/api/admin/employees?${params}`);
             setEmployees(d.employees);
             setEmpTotal(d.total);
             setEmpTotalPages(d.totalPages);
             setEmpPage(pg);
             if (d.departments) setEmpDepartments(d.departments);
+            if (d.branches) setEmpBranches(d.branches);
         } catch { }
         setEmpLoading(false);
     };
@@ -541,7 +587,7 @@ export default function AdminDashboard() {
     };
 
     useEffect(() => { if (tab === "employees") fetchEmployees(1); }, [tab]);
-    useEffect(() => { if (tab === "employees") { const t = setTimeout(() => fetchEmployees(1, empFilter), 300); return () => clearTimeout(t); } }, [empFilter.search, empFilter.department, empFilter.role]);
+    useEffect(() => { if (tab === "employees") { const t = setTimeout(() => fetchEmployees(1, empFilter), 300); return () => clearTimeout(t); } }, [empFilter.search, empFilter.department, empFilter.role, empFilter.branch]);
 
     useEffect(() => { if (tab === "logs") fetchLogs(); }, [tab]);
 
@@ -1285,6 +1331,10 @@ export default function AdminDashboard() {
                             <input type="text" placeholder="Search name or code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-10 pl-10 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
                         </div>
                         <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-4 sm:w-auto">
+                            <select value={empFilter.branch} onChange={(e) => setEmpFilter({ ...empFilter, branch: e.target.value, department: "" })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-40">
+                                <option value="">All Branches</option>
+                                {empBranches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                            </select>
                             <select value={empFilter.department} onChange={(e) => setEmpFilter({ ...empFilter, department: e.target.value })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-48">
                                 <option value="">All Departments</option>
                                 {empDepartments.map(d => <option key={d} value={d}>{d}</option>)}
@@ -1300,6 +1350,10 @@ export default function AdminDashboard() {
                             <button onClick={() => { setShowAddEmp(!showAddEmp); setAddMsg({ type: "", text: "" }); }} className="col-span-1 h-10 px-3 sm:px-4 bg-[#00843D] hover:bg-[#006B32] text-white text-xs sm:text-sm font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
                                 {showAddEmp ? "Cancel" : "Add / Remove"}
+                            </button>
+                            <button onClick={() => { setShowBulkUpload(!showBulkUpload); setBulkMsg({ type: "", text: "" }); setBulkResult(null); }} className="col-span-1 h-10 px-3 sm:px-4 bg-[#F7941D] hover:bg-[#D87A0A] text-white text-xs sm:text-sm font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                                {showBulkUpload ? "Cancel" : "Bulk Upload"}
                             </button>
                             <button onClick={downloadExcel} disabled={excelLoading} className="col-span-1 h-10 px-3 sm:px-4 bg-[#00843D] hover:bg-[#006B32] text-white text-xs sm:text-sm font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-60">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
@@ -1351,6 +1405,76 @@ export default function AdminDashboard() {
                             <button onClick={handleAddEmployee} disabled={addLoading || !addForm.name || !addForm.departmentName} className="px-6 py-2 bg-[#003087] text-white rounded-lg text-sm font-bold hover:bg-[#002266] transition-colors cursor-pointer disabled:opacity-50">
                                 {addLoading ? "Adding..." : "Add Employee"}
                             </button>
+                        </div>
+                    )}
+
+                    {/* Bulk Upload Panel */}
+                    {showBulkUpload && (
+                        <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 shadow-sm space-y-4">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                                <h3 className="text-lg font-bold text-[#003087]">Bulk Upload Employees (Excel)</h3>
+                                <button onClick={downloadBulkTemplate} className="text-xs px-3 py-1.5 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg font-bold text-[#333333] hover:bg-white cursor-pointer">
+                                    Download Template
+                                </button>
+                            </div>
+                            <div className="text-xs text-[#666666] bg-[#F5F5F5] border border-[#E0E0E0] rounded-lg p-3 space-y-1">
+                                <p className="font-bold text-[#003087]">Required columns: Name, Department</p>
+                                <p>Optional columns: Emp Code, Branch, Designation, Mobile, Collar Type (WHITE_COLLAR | BLUE_COLLAR)</p>
+                                <p>If a department name exists in multiple branches, the Branch column is required to disambiguate.</p>
+                                <p>Default password format: <code className="bg-white px-1 rounded">FirstName_lastTwoDigitsOfEmpCode</code></p>
+                            </div>
+                            {bulkMsg.text && (
+                                <div className={`p-3 rounded-lg text-sm font-medium ${bulkMsg.type === "success" ? "bg-green-50 text-green-800 border border-green-200" : "bg-red-50 text-red-800 border border-red-200"}`}>{bulkMsg.text}</div>
+                            )}
+                            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                                <input
+                                    type="file"
+                                    accept=".xlsx,.xls"
+                                    onChange={(e) => setBulkFile(e.target.files?.[0] || null)}
+                                    className="flex-1 text-sm file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-[#003087] file:text-white file:font-bold file:cursor-pointer hover:file:bg-[#002266]"
+                                />
+                                <button
+                                    onClick={handleBulkUpload}
+                                    disabled={bulkLoading || !bulkFile}
+                                    className="px-6 py-2 bg-[#F7941D] text-white rounded-lg text-sm font-bold hover:bg-[#D87A0A] transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                    {bulkLoading ? "Uploading..." : "Upload & Create"}
+                                </button>
+                            </div>
+                            {bulkResult && (
+                                <div className="mt-3 space-y-3">
+                                    <div className="grid grid-cols-3 gap-2 text-center">
+                                        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                            <div className="text-2xl font-bold text-green-700">{bulkResult.createdCount}</div>
+                                            <div className="text-[11px] text-green-700 font-bold uppercase tracking-wider">Created</div>
+                                        </div>
+                                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                            <div className="text-2xl font-bold text-amber-700">{bulkResult.skippedCount}</div>
+                                            <div className="text-[11px] text-amber-700 font-bold uppercase tracking-wider">Skipped</div>
+                                        </div>
+                                        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                            <div className="text-2xl font-bold text-red-700">{bulkResult.failedCount}</div>
+                                            <div className="text-[11px] text-red-700 font-bold uppercase tracking-wider">Failed</div>
+                                        </div>
+                                    </div>
+                                    {bulkResult.failed?.length > 0 && (
+                                        <div className="max-h-40 overflow-y-auto bg-red-50 border border-red-200 rounded-lg p-3">
+                                            <p className="text-xs font-bold text-red-800 mb-1">Failed rows:</p>
+                                            <ul className="text-[11px] text-red-700 space-y-0.5">
+                                                {bulkResult.failed.slice(0, 50).map((f, i) => <li key={i}>Row {f.row}: {f.reason}</li>)}
+                                            </ul>
+                                        </div>
+                                    )}
+                                    {bulkResult.skipped?.length > 0 && (
+                                        <div className="max-h-32 overflow-y-auto bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                            <p className="text-xs font-bold text-amber-800 mb-1">Skipped rows:</p>
+                                            <ul className="text-[11px] text-amber-700 space-y-0.5">
+                                                {bulkResult.skipped.slice(0, 50).map((s, i) => <li key={i}>Row {s.row}: {s.reason}</li>)}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
                     <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm">

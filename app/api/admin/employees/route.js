@@ -20,6 +20,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
         const search = searchParams.get("search") ?? "";
         const department = searchParams.get("department") ?? "";
         const role = searchParams.get("role") ?? "";
+        const branch = searchParams.get("branch") ?? "";
         const page = parseInt(searchParams.get("page") ?? "1");
         const isExport = searchParams.get("export") === "true";
         const limit = isExport ? 10000 : 50;
@@ -76,6 +77,15 @@ export const GET = withRole(["ADMIN"], async (request) => {
 
         if (department && role === "ADMIN") {
             where.role = "ADMIN";
+        }
+
+        if (branch) {
+            andConditions.push({
+                OR: [
+                    { department: { branch: { name: branch } } },
+                    { departmentRoles: { some: { department: { branch: { name: branch } } } } },
+                ],
+            });
         }
 
         if (andConditions.length > 0) {
@@ -142,14 +152,16 @@ export const GET = withRole(["ADMIN"], async (request) => {
         });
 
         // Fetch department stats and role stats
-        const [departmentsData, roleStatsRaw, evaluatorStats] = await Promise.all([
+        const [departmentsData, branchesData, roleStatsRaw, evaluatorStats] = await Promise.all([
             prisma.department.findMany({
                 select: {
                     name: true,
+                    branch: { select: { name: true } },
                     _count: { select: { users: true } },
                 },
                 orderBy: { name: "asc" },
             }),
+            prisma.branch.findMany({ select: { id: true, name: true, branchType: true }, orderBy: { name: "asc" } }),
             prisma.user.groupBy({
                 by: ["role"],
                 _count: { id: true },
@@ -189,8 +201,10 @@ export const GET = withRole(["ADMIN"], async (request) => {
                 departments: departmentsData.map((d) => d.name),
                 departmentStats: departmentsData.map((d) => ({
                     name: d.name,
+                    branch: d.branch?.name || null,
                     count: d._count.users,
                 })),
+                branches: branchesData,
                 roleStats,
             },
         });

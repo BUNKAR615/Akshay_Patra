@@ -34,6 +34,7 @@ model Department {
   id              String            @id @default(cuid())
   name            String
   branchId        String
+  collarType      CollarType        @default(BLUE_COLLAR)
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   branchManagerId String?
@@ -108,8 +109,9 @@ model Quarter {
   startDate             DateTime
   endDate               DateTime
   questionCount         Int                        @default(15)
-  bmQuestionCount       Int                        @default(4)
-  hodQuestionCount      Int                        @default(4)
+  bmQuestionCount       Int                        @default(15)
+  hodQuestionCount      Int                        @default(15)
+  cmQuestionCount       Int                        @default(5)
   createdAt             DateTime                   @default(now())
   updatedAt             DateTime                   @updatedAt
   bestEmployees         BestEmployee[]
@@ -520,6 +522,9 @@ model HrEvaluation {
   hrUserId            String
   employeeId          String
   quarterId           String
+  attendancePct       Float?
+  workingHours        Float?
+  referenceSheetUrl   String?
   attendancePdfUrl    String?
   punctualityPdfUrl   String?
   attendancePdfSize   Int?
@@ -618,6 +623,9 @@ model BranchShortlistStage4 {
   evaluatorScore      Float
   cmScore             Float
   hrScore             Float
+  attendancePct       Float?
+  workingHours        Float?
+  referenceSheetUrl   String?
   attendancePdfUrl    String?
   punctualityPdfUrl   String?
   combinedScore       Float
@@ -645,6 +653,9 @@ model BranchBestEmployee {
   cmScore         Float
   hrScore         Float
   finalScore      Float
+  attendancePct     Float?
+  workingHours      Float?
+  referenceSheetUrl String?
   attendancePdfUrl  String?
   punctualityPdfUrl String?
   createdAt       DateTime   @default(now())

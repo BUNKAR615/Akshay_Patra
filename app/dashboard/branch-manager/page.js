@@ -38,7 +38,10 @@ export default function BranchManagerDashboard() {
     // HOD assignment state (BIG branches only)
     const [hodAssignments, setHodAssignments] = useState([]);
     const [hodDeptId, setHodDeptId] = useState("");
-    const [hodEmpCode, setHodEmpCode] = useState("");
+    const [hodSearchQuery, setHodSearchQuery] = useState("");
+    const [hodCandidates, setHodCandidates] = useState([]);
+    const [hodSelected, setHodSelected] = useState(null); // { id, name, empCode, departmentName }
+    const [hodSearching, setHodSearching] = useState(false);
     const [hodLoading, setHodLoading] = useState(false);
     const [hodSuccess, setHodSuccess] = useState("");
     const [hodError, setHodError] = useState("");
@@ -99,22 +102,40 @@ export default function BranchManagerDashboard() {
 
     useEffect(() => { fetchData(); }, []);
 
+    // Debounced HOD search
+    useEffect(() => {
+        const q = hodSearchQuery.trim();
+        if (q.length === 0) { setHodCandidates([]); return; }
+        setHodSearching(true);
+        const t = setTimeout(async () => {
+            try {
+                const data = await api(`/api/branch-manager/hod/search?q=${encodeURIComponent(q)}`);
+                setHodCandidates(data.candidates || []);
+            } catch {
+                setHodCandidates([]);
+            } finally {
+                setHodSearching(false);
+            }
+        }, 300);
+        return () => clearTimeout(t);
+    }, [hodSearchQuery]);
+
     const handleAssignHod = async () => {
         setHodError("");
         setHodSuccess("");
-        if (!hodDeptId || !hodEmpCode.trim()) {
-            setHodError("Please select a department and enter the employee code.");
-            return;
-        }
+        if (!hodDeptId) { setHodError("Please select a department."); return; }
+        if (!hodSelected) { setHodError("Please search and select an employee to assign as HOD."); return; }
         setHodLoading(true);
         try {
             await api("/api/branch-manager/hod/assign", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ hodUserId: hodEmpCode.trim(), departmentId: hodDeptId }),
+                body: JSON.stringify({ hodUserId: hodSelected.id, departmentId: hodDeptId }),
             });
-            setHodSuccess(`HOD assigned successfully for the selected department.`);
-            setHodEmpCode("");
+            setHodSuccess(`${hodSelected.name} assigned as HOD successfully.`);
+            setHodSearchQuery("");
+            setHodSelected(null);
+            setHodCandidates([]);
             setHodDeptId("");
             fetchHodAssignments();
         } catch (e) {
@@ -266,27 +287,68 @@ export default function BranchManagerDashboard() {
                                 </div>
                             </div>
                             <div className="flex-1">
-                                <label className="text-[12px] text-[#666666] font-bold uppercase tracking-wider block mb-1">Employee Code (HOD)</label>
+                                <label className="text-[12px] text-[#666666] font-bold uppercase tracking-wider block mb-1">Search HOD (Emp Code, Name, Department)</label>
                                 <input
                                     type="text"
-                                    value={hodEmpCode}
-                                    onChange={(e) => setHodEmpCode(e.target.value)}
-                                    placeholder="e.g. EMP001"
+                                    value={hodSearchQuery}
+                                    onChange={(e) => { setHodSearchQuery(e.target.value); setHodSelected(null); }}
+                                    placeholder="Type employee code, name, or department..."
                                     className="w-full px-3 py-2.5 bg-white border border-[#E0E0E0] rounded-lg text-[14px] text-[#333333] font-medium focus:outline-none focus:ring-2 focus:ring-[#003087] placeholder:text-[#AAAAAA]"
                                 />
                             </div>
                             <div className="flex items-end">
                                 <button
                                     onClick={handleAssignHod}
-                                    disabled={hodLoading}
+                                    disabled={hodLoading || !hodSelected || !hodDeptId}
                                     className="min-h-[44px] px-6 py-2.5 bg-[#003087] text-white rounded-lg hover:bg-[#00843D] transition-colors cursor-pointer font-bold text-[14px] shadow disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                                 >
                                     {hodLoading ? "Assigning..." : "Assign HOD"}
                                 </button>
                             </div>
                         </div>
+
+                        {/* Search results */}
+                        {hodSearchQuery && !hodSelected && (
+                            <div className="mt-3 bg-white border border-[#E0E0E0] rounded-lg max-h-64 overflow-y-auto">
+                                {hodSearching && <p className="text-[13px] text-[#666666] p-3">Searching...</p>}
+                                {!hodSearching && hodCandidates.length === 0 && (
+                                    <p className="text-[13px] text-[#666666] p-3">No matching employees in your branch.</p>
+                                )}
+                                {!hodSearching && hodCandidates.map((c) => (
+                                    <button
+                                        key={c.id}
+                                        type="button"
+                                        onClick={() => { setHodSelected(c); setHodSearchQuery(`${c.name} (${c.empCode})`); }}
+                                        className="w-full text-left px-4 py-2.5 border-b border-[#F0F0F0] last:border-b-0 hover:bg-[#F5F7FA] cursor-pointer"
+                                    >
+                                        <p className="text-[14px] font-bold text-[#333333]">{c.name} <span className="text-[#666666] font-medium">({c.empCode})</span></p>
+                                        <p className="text-[12px] text-[#666666]">
+                                            {c.designation ? `${c.designation} · ` : ""}{c.departmentName}
+                                            {c.departmentCollar && <span className="ml-2 text-[11px] font-bold text-[#003087]">[{c.departmentCollar === "WHITE_COLLAR" ? "WC" : "BC"}]</span>}
+                                        </p>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {hodSelected && (
+                            <div className="mt-3 bg-[#E8F5E9] border border-[#A5D6A7] rounded-lg px-4 py-2.5 flex items-center justify-between">
+                                <div>
+                                    <p className="text-[13px] font-bold text-[#1B5E20]">Selected: {hodSelected.name} ({hodSelected.empCode})</p>
+                                    <p className="text-[12px] text-[#2E7D32]">{hodSelected.departmentName}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => { setHodSelected(null); setHodSearchQuery(""); }}
+                                    className="text-[12px] text-[#1B5E20] font-bold underline cursor-pointer"
+                                >
+                                    Clear
+                                </button>
+                            </div>
+                        )}
+
                         <p className="text-[12px] text-[#999999] mt-2">
-                            Enter the employee code of the person you want to assign as HOD for the selected department. Blue-collar employees in that department will be evaluated by the HOD.
+                            Search for any employee in your branch by employee code, name, or department. Blue-collar employees in the selected department will be evaluated by the chosen HOD.
                         </p>
                         {hodError && <p className="text-[13px] text-[#D32F2F] font-bold mt-2">{hodError}</p>}
                         {hodSuccess && <p className="text-[13px] text-[#2E7D32] font-bold mt-2">{hodSuccess}</p>}
@@ -422,10 +484,17 @@ export default function BranchManagerDashboard() {
                                     </div>
                                     <div className="mt-3 sm:mt-0">
                                         {entry.alreadyEvaluated ? (
-                                            <span className="min-h-[44px] text-[14px] px-6 py-2.5 rounded-lg bg-white text-[#2E7D32] border border-[#A5D6A7] font-bold shadow-sm flex items-center gap-2 justify-center w-full sm:w-auto">
-                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                                                Done
-                                            </span>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <span className="min-h-[44px] text-[14px] px-6 py-2.5 rounded-lg bg-white text-[#2E7D32] border border-[#A5D6A7] font-bold shadow-sm flex items-center gap-2 justify-center w-full sm:w-auto">
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                                    Done
+                                                </span>
+                                                {entry.mySubmittedScore != null && (
+                                                    <span className="text-[12px] font-bold text-[#2E7D32] mt-1">
+                                                        Your score: {Number(entry.mySubmittedScore).toFixed(2)}
+                                                    </span>
+                                                )}
+                                            </div>
                                         ) : (
                                             <button onClick={() => setSelectedEmployee(entry)} className="min-h-[44px] min-w-[120px] text-[15px] px-6 py-3 bg-[#003087] text-white rounded-lg hover:bg-[#00843D] transition-colors cursor-pointer font-bold shadow flex items-center gap-2 justify-center w-full sm:w-auto">
                                                 Evaluate

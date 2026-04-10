@@ -39,21 +39,28 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
 
             const evaluated = await prisma.clusterManagerEvaluation.findMany({
                 where: { clusterId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: dept.id } },
-                select: { employeeId: true }
+                select: { employeeId: true, cmNormalized: true, cmRawScore: true, finalScore: true }
             });
 
+            const evalMap = new Map(evaluated.map(e => [e.employeeId, e]));
             const evaluatedSet = new Set(evaluated.map(e => e.employeeId));
 
-            const shuffledEmployees = shuffleArray(shortlists.map(s => ({
-                id: s.user.id,
-                userId: s.userId,
-                name: s.user.name,
-                empCode: s.user.empCode,
-                designation: s.user.designation || '',
-                isEvaluated: evaluatedSet.has(s.userId),
-                alreadyEvaluated: evaluatedSet.has(s.userId),
-                user: s.user
-            })));
+            const shuffledEmployees = shuffleArray(shortlists.map(s => {
+                const ev = evalMap.get(s.userId);
+                return {
+                    id: s.user.id,
+                    userId: s.userId,
+                    name: s.user.name,
+                    empCode: s.user.empCode,
+                    designation: s.user.designation || '',
+                    isEvaluated: !!ev,
+                    alreadyEvaluated: !!ev,
+                    mySubmittedScore: ev ? ev.cmNormalized : null,
+                    mySubmittedRawScore: ev ? ev.cmRawScore : null,
+                    myFinalScore: ev ? ev.finalScore : null,
+                    user: s.user
+                };
+            }));
 
             return {
                 id: dept.id,
