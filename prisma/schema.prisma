@@ -94,6 +94,8 @@ model User {
   branchShortlist3       BranchShortlistStage3[]
   branchShortlist4       BranchShortlistStage4[]
   branchBestEmployees    BranchBestEmployee[]
+  empHodAssignmentsAsHod EmployeeHodAssignment[] @relation("HodAssigneeHod")
+  empHodAssignmentsAsEmp EmployeeHodAssignment[] @relation("HodAssigneeEmp")
 
   @@index([departmentId])
   @@index([role])
@@ -135,6 +137,7 @@ model Quarter {
   branchShortlist3      BranchShortlistStage3[]
   branchShortlist4      BranchShortlistStage4[]
   branchBestEmployees   BranchBestEmployee[]
+  empHodAssignments     EmployeeHodAssignment[]
 
   @@index([status])
   @@map("quarters")
@@ -492,6 +495,24 @@ model HodAssignment {
   @@index([branchId, quarterId])
   @@index([departmentId, quarterId])
   @@map("hod_assignments")
+}
+
+/// EmployeeHodAssignment — per-employee HOD assignment for BC Stage 2 evaluation
+/// Admin assigns specific employees to specific HODs each quarter.
+model EmployeeHodAssignment {
+  id         String   @id @default(cuid())
+  hodUserId  String
+  employeeId String
+  quarterId  String
+  assignedBy String
+  assignedAt DateTime @default(now())
+  hod        User     @relation("HodAssigneeHod", fields: [hodUserId], references: [id], onDelete: Cascade)
+  employee   User     @relation("HodAssigneeEmp", fields: [employeeId], references: [id], onDelete: Cascade)
+  quarter    Quarter  @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, quarterId])
+  @@index([hodUserId, quarterId])
+  @@map("employee_hod_assignments")
 }
 
 /// HodEvaluation — HOD evaluates blue collar employees (big branch Stage 2)

@@ -17,7 +17,8 @@ export const GET = withRole(["ADMIN"], async () => {
             select: {
                 id: true,
                 name: true,
-                branch: { select: { name: true } },
+                collarType: true,
+                branch: { select: { id: true, name: true, branchType: true } },
                 departmentRoles: {
                     include: { user: { select: { id: true, empCode: true, name: true, designation: true, mobile: true } } },
                 },
@@ -55,6 +56,10 @@ export const GET = withRole(["ADMIN"], async () => {
                     ...r.user,
                     mappedRole: "CLUSTER_MANAGER",
                 }));
+                const hods = roles.filter((r) => r.role === "HOD").map(r => ({
+                    ...r.user,
+                    mappedRole: "HOD",
+                }));
 
                 // Build employee list with their effective roles
                 const employees = dept.users.map((u) => {
@@ -84,12 +89,15 @@ export const GET = withRole(["ADMIN"], async () => {
                     id: dept.id,
                     name: dept.name,
                     branch: dept.branch.name,
+                    branchType: dept.branch.branchType,
+                    collarType: dept.collarType,
                     employeeCount: dept._count.users,
                     supervisor: supervisors[0] || null,
                     supervisors,
                     branchManager: branchManagers[0] || null,
                     branchManagers,
                     clusterManagers,
+                    hods,
                     employees,
                 };
             });

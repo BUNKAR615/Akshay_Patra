@@ -19,6 +19,17 @@ async function api(url, opts) {
     return json.data;
 }
 
+function StatBox({ label, value, color, compact }) {
+    return (
+        <div className="border border-[#E0E0E0] rounded-lg bg-[#FAFCFF] px-3 py-2.5 text-center">
+            <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-[#666666] leading-tight">{label}</p>
+            <p className={`${compact ? "text-[18px]" : "text-[22px]"} font-black mt-1`} style={{ color }}>
+                {value != null ? value : "—"}
+            </p>
+        </div>
+    );
+}
+
 export default function BranchManagerDashboard() {
     const [user, setUser] = useState(null);
     const [currentQuarterName, setCurrentQuarterName] = useState("");
@@ -45,6 +56,18 @@ export default function BranchManagerDashboard() {
     const [hodLoading, setHodLoading] = useState(false);
     const [hodSuccess, setHodSuccess] = useState("");
     const [hodError, setHodError] = useState("");
+
+    // Branch-wide stats
+    const [bmStats, setBmStats] = useState(null);
+
+    const fetchBmStats = async () => {
+        try {
+            const data = await api("/api/branch-manager/stats");
+            setBmStats(data);
+        } catch (e) {
+            console.error("Failed to fetch BM stats:", e.message);
+        }
+    };
 
     const fetchHodAssignments = async () => {
         try {
@@ -73,6 +96,7 @@ export default function BranchManagerDashboard() {
             if (meData.user?.branchType === "BIG") {
                 fetchHodAssignments();
             }
+            fetchBmStats();
 
             if (deptsData.departments && deptsData.departments.length > 0) {
                 // Try to find the first incomplete department
@@ -159,6 +183,7 @@ export default function BranchManagerDashboard() {
             // Refresh department data instead of single shortlist
             const deptsData = await api("/api/branch-manager/departments");
             setDepartmentsData(deptsData.departments);
+            fetchBmStats();
 
             // Update current department view
             const updatedDept = deptsData.departments.find(d => d.id === selectedDeptId);
@@ -203,6 +228,68 @@ export default function BranchManagerDashboard() {
                         color: "text-[#00843D]"
                     }}
                 />
+            )}
+
+            {/* Branch Stats Panel */}
+            {bmStats && (
+                <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 sm:p-5 mb-6 shadow-sm">
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                        <div>
+                            <h2 className="text-[16px] sm:text-[18px] font-bold text-[#003087]">Branch Overview · {bmStats.branchName}</h2>
+                            <p className="text-[12px] text-[#666666] font-medium">{bmStats.branchType} Branch</p>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+                        <StatBox label="Total Employees" value={bmStats.totalEmployees} color="#003087" />
+                        <StatBox label="Participated" value={bmStats.totalParticipated} color="#00843D" />
+                        <StatBox label="Stage 1 Shortlist" value={bmStats.stage1.shortlisted} color="#F7941D" />
+                        <StatBox label="Stage 2 Completed" value={bmStats.stage2.evaluationsCompleted} color="#6A1B9A" />
+                        <StatBox label="White Collar" value={bmStats.totalWhiteCollar} color="#003087" />
+                        <StatBox label="Blue Collar" value={bmStats.totalBlueCollar} color="#00843D" />
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mt-3">
+                        <StatBox label="BM Evaluated (WC)" value={bmStats.bmEvaluatedCount} color="#003087" compact />
+                        <StatBox label="Total BC Evaluated" value={bmStats.stage2.totalBcEvaluated} color="#00843D" compact />
+                        <StatBox label="Stage 2 Shortlist" value={bmStats.stage2.shortlisted} color="#F7941D" compact />
+                    </div>
+                    {bmStats.hodBreakdown && bmStats.hodBreakdown.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-[#E0E0E0]">
+                            <p className="text-[12px] font-bold uppercase tracking-wider text-[#666666] mb-2">HOD Assignments & Evaluations</p>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-[12px]">
+                                    <thead>
+                                        <tr className="text-[10px] text-[#666666] uppercase tracking-wider">
+                                            <th className="py-1.5 pr-4">HOD</th>
+                                            <th className="py-1.5 pr-4">Assigned</th>
+                                            <th className="py-1.5 pr-4">Evaluated</th>
+                                            <th className="py-1.5 pr-4">Progress</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-[#F0F0F0]">
+                                        {bmStats.hodBreakdown.map(h => {
+                                            const pct = h.assigned > 0 ? Math.round((h.evaluated / h.assigned) * 100) : 0;
+                                            return (
+                                                <tr key={h.hodUserId}>
+                                                    <td className="py-2 pr-4 font-bold text-[#1A1A2E]">{h.hodName}{h.hodEmpCode ? <span className="text-[10px] text-[#666666] font-normal ml-1">({h.hodEmpCode})</span> : null}</td>
+                                                    <td className="py-2 pr-4 font-bold text-[#003087]">{h.assigned}</td>
+                                                    <td className="py-2 pr-4 font-bold text-[#00843D]">{h.evaluated}</td>
+                                                    <td className="py-2 pr-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="flex-1 h-1.5 bg-[#F0F0F0] rounded-full overflow-hidden max-w-[100px]">
+                                                                <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: pct === 100 ? "#00843D" : "#F7941D" }} />
+                                                            </div>
+                                                            <span className="text-[11px] font-bold text-[#666666]">{pct}%</span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </div>
             )}
 
             {/* Big Branch Info Banner */}

@@ -21,102 +21,97 @@ async function api(url) {
     return json.data;
 }
 
-function WinnerCard({ winner }) {
+function WinnerRow({ winner }) {
+    const collarLabel = winner.collarType === "WHITE_COLLAR" ? "White Collar" : "Blue Collar";
+    const collarColor = winner.collarType === "WHITE_COLLAR" ? "#003087" : "#00843D";
+    const collarBg = winner.collarType === "WHITE_COLLAR" ? "#E3F2FD" : "#E8F5E9";
+    const rankIcon = winner.rank === 1 ? "🥇" : winner.rank === 2 ? "🥈" : winner.rank === 3 ? "🥉" : `#${winner.rank}`;
     return (
-        <div className="bg-white border shadow-sm rounded-xl overflow-hidden" style={{ borderColor: "#E0E0E0" }}>
-            {/* Header */}
-            <div
-                className="px-6 py-4 border-b flex items-center justify-between gap-3"
-                style={{ backgroundColor: BLUE_LIGHT, borderColor: BLUE_BORDER }}
-            >
-                <div>
-                    <p className="text-[12px] font-bold uppercase tracking-wider text-[#666666]">Branch</p>
-                    <p className="text-[17px] font-bold" style={{ color: BLUE }}>{winner.branch}</p>
-                </div>
-                <span
-                    className="text-[12px] font-bold px-3 py-1 rounded-full border"
-                    style={{
-                        backgroundColor: winner.branchType === "SMALL" ? "#FFF8E1" : "#F3E5F5",
-                        color: winner.branchType === "SMALL" ? "#F57F17" : "#6A1B9A",
-                        borderColor: winner.branchType === "SMALL" ? "#FFE082" : "#CE93D8",
-                    }}
-                >
-                    {winner.branchType} Branch
-                </span>
-            </div>
-
-            {/* Winner identity */}
-            <div className="px-6 py-5 border-b border-[#E0E0E0] flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
-                <div className="flex items-center gap-4">
-                    <span className="text-4xl">🏆</span>
+        <div className="border rounded-lg p-4 bg-white" style={{ borderColor: "#E0E0E0" }}>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+                <div className="flex items-center gap-3">
+                    <span className="text-2xl">{rankIcon}</span>
                     <div>
-                        <p className="text-[13px] font-bold uppercase tracking-wider text-[#666666]">Top Winner</p>
-                        <p className="text-[20px] font-black text-[#1A1A2E]">{winner.name}</p>
-                        <p className="text-[13px] text-[#666666] font-medium">
+                        <p className="text-[16px] font-bold text-[#1A1A2E]">{winner.name}</p>
+                        <p className="text-[12px] text-[#666666] font-medium">
                             {winner.empCode}
                             {winner.designation ? ` · ${winner.designation}` : ""}
                             {winner.department ? ` · ${winner.department}` : ""}
                         </p>
                     </div>
                 </div>
-                <div className="text-right">
-                    <p className="text-[12px] font-bold uppercase tracking-wider text-[#666666]">Final Score</p>
-                    <p className="text-[26px] font-black" style={{ color: BLUE }}>
-                        {winner.finalScore != null ? Number(winner.finalScore).toFixed(2) : "--"}
-                    </p>
+                <div className="flex items-center gap-3">
+                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-full border" style={{ backgroundColor: collarBg, color: collarColor, borderColor: collarColor }}>
+                        {collarLabel}
+                    </span>
+                    <div className="text-right">
+                        <p className="text-[10px] font-bold uppercase text-[#666666]">Final Score</p>
+                        <p className="text-[18px] font-black" style={{ color: BLUE }}>
+                            {winner.finalScore != null ? Number(winner.finalScore).toFixed(2) : "--"}
+                        </p>
+                    </div>
                 </div>
             </div>
-
-            {/* Per-stage breakdown */}
-            <div className="px-6 py-5">
-                <p className="text-[12px] font-bold uppercase tracking-wider text-[#666666] mb-3">Stage-wise Scores</p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {winner.stages.map((s) => (
-                        <div
-                            key={s.stage}
-                            className="border rounded-lg p-3 text-center"
-                            style={{ borderColor: BLUE_BORDER, backgroundColor: "#FAFCFF" }}
-                        >
-                            <p className="text-[11px] font-bold uppercase tracking-wider text-[#666666]">Stage {s.stage}</p>
-                            <p className="text-[13px] font-bold text-[#333333] mt-0.5">{s.name}</p>
-                            <p className="text-[20px] font-black mt-2" style={{ color: BLUE }}>
-                                {s.score != null ? Number(s.score).toFixed(2) : "--"}
-                            </p>
-                            <p className="text-[10px] text-[#666666] font-medium mt-0.5">Weight {s.weightPct}%</p>
-                        </div>
-                    ))}
-                </div>
-
-                {/* HR extra info */}
-                {(winner.attendancePct != null || winner.workingHours != null || winner.referenceSheetUrl) && (
-                    <div className="mt-5 pt-4 border-t border-[#E0E0E0] grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        {winner.attendancePct != null && (
-                            <div>
-                                <p className="text-[11px] font-bold uppercase tracking-wider text-[#666666]">Attendance %</p>
-                                <p className="text-[15px] font-bold text-[#1A1A2E]">{Number(winner.attendancePct).toFixed(2)}%</p>
-                            </div>
-                        )}
-                        {winner.workingHours != null && (
-                            <div>
-                                <p className="text-[11px] font-bold uppercase tracking-wider text-[#666666]">Working Hours</p>
-                                <p className="text-[15px] font-bold text-[#1A1A2E]">{Number(winner.workingHours).toFixed(2)}</p>
-                            </div>
-                        )}
-                        {winner.referenceSheetUrl && (
-                            <div>
-                                <p className="text-[11px] font-bold uppercase tracking-wider text-[#666666]">Reference Sheet</p>
-                                <a
-                                    href={winner.referenceSheetUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-[13px] font-bold underline"
-                                    style={{ color: BLUE }}
-                                >
-                                    Open link
-                                </a>
-                            </div>
-                        )}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {winner.stages.map((s) => (
+                    <div key={s.stage} className="border rounded-md p-2 text-center" style={{ borderColor: BLUE_BORDER, backgroundColor: "#FAFCFF" }}>
+                        <p className="text-[9px] font-bold uppercase text-[#666666]">Stage {s.stage}</p>
+                        <p className="text-[11px] font-bold text-[#333333] leading-tight mt-0.5">{s.name}</p>
+                        <p className="text-[15px] font-black mt-1" style={{ color: BLUE }}>
+                            {s.score != null ? Number(s.score).toFixed(2) : "--"}
+                        </p>
+                        <p className="text-[9px] text-[#666666] mt-0.5">Weight {s.weightPct}%</p>
                     </div>
+                ))}
+            </div>
+            {(winner.attendancePct != null || winner.workingHours != null || winner.referenceSheetUrl) && (
+                <div className="mt-3 pt-3 border-t border-[#E0E0E0] grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
+                    {winner.attendancePct != null && (
+                        <div><span className="font-bold text-[#666666]">Attendance:</span> <span className="font-bold text-[#1A1A2E]">{Number(winner.attendancePct).toFixed(2)}%</span></div>
+                    )}
+                    {winner.workingHours != null && (
+                        <div><span className="font-bold text-[#666666]">Hours:</span> <span className="font-bold text-[#1A1A2E]">{Number(winner.workingHours).toFixed(2)}</span></div>
+                    )}
+                    {winner.referenceSheetUrl && (
+                        <div><a href={winner.referenceSheetUrl} target="_blank" rel="noopener noreferrer" className="font-bold underline" style={{ color: BLUE }}>Reference sheet</a></div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function BranchWinnersCard({ branch }) {
+    const expected = branch.expectedCount;
+    const actual = branch.winners.length;
+    return (
+        <div className="bg-white border shadow-sm rounded-xl overflow-hidden" style={{ borderColor: "#E0E0E0" }}>
+            <div className="px-6 py-4 border-b flex items-center justify-between gap-3" style={{ backgroundColor: BLUE_LIGHT, borderColor: BLUE_BORDER }}>
+                <div>
+                    <p className="text-[12px] font-bold uppercase tracking-wider text-[#666666]">Branch</p>
+                    <p className="text-[18px] font-bold" style={{ color: BLUE }}>{branch.branchName}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="text-[12px] font-bold px-3 py-1 rounded-full border" style={{
+                        backgroundColor: branch.branchType === "SMALL" ? "#FFF8E1" : "#F3E5F5",
+                        color: branch.branchType === "SMALL" ? "#F57F17" : "#6A1B9A",
+                        borderColor: branch.branchType === "SMALL" ? "#FFE082" : "#CE93D8",
+                    }}>
+                        {branch.branchType} · {expected} winners
+                    </span>
+                </div>
+            </div>
+            <div className="p-5 space-y-3">
+                {actual === 0 && (
+                    <p className="text-center text-[#666666] text-sm py-6">No winners finalized for this branch yet.</p>
+                )}
+                {branch.winners.map((w, i) => (
+                    <WinnerRow key={i} winner={w} />
+                ))}
+                {actual > 0 && actual < expected && (
+                    <p className="text-[11px] text-[#F57F17] font-medium bg-[#FFF8E1] border border-[#FFE082] rounded-lg px-3 py-2">
+                        Showing {actual} of {expected} expected winners. Evaluation may not be fully complete.
+                    </p>
                 )}
             </div>
         </div>
@@ -127,7 +122,7 @@ export default function CommitteeDashboard() {
     const [user, setUser] = useState(null);
     const [currentQuarterName, setCurrentQuarterName] = useState("");
     const [quarter, setQuarter] = useState(null);
-    const [winners, setWinners] = useState([]);
+    const [branches, setBranches] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -145,7 +140,7 @@ export default function CommitteeDashboard() {
             if (resultsResult.status === "fulfilled") {
                 const data = resultsResult.value;
                 setQuarter(data.quarter);
-                setWinners(data.results || []);
+                setBranches(data.branches || []);
             } else {
                 setError(resultsResult.reason?.message || "Unable to load committee results.");
             }
@@ -197,17 +192,17 @@ export default function CommitteeDashboard() {
                         </div>
                     )}
 
-                    {winners.length === 0 && (
+                    {branches.length === 0 && (
                         <div className="bg-[#F5F5F5] border border-[#E0E0E0] rounded-2xl p-12 text-center">
-                            <h3 className="text-[20px] font-bold text-[#333333] mb-2">No Top Winner Yet</h3>
+                            <h3 className="text-[20px] font-bold text-[#333333] mb-2">No Winners Yet</h3>
                             <p className="text-[#666666] text-[15px] font-medium max-w-md mx-auto">
                                 Best employee nominations have not been finalized for this quarter yet.
                             </p>
                         </div>
                     )}
 
-                    {winners.map((w, i) => (
-                        <WinnerCard key={i} winner={w} />
+                    {branches.map((b) => (
+                        <BranchWinnersCard key={b.branchId} branch={b} />
                     ))}
                 </div>
             )}

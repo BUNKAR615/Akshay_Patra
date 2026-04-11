@@ -84,6 +84,63 @@ export default function AdminDashboard() {
     const [bulkResult, setBulkResult] = useState(null);
     const [bulkMsg, setBulkMsg] = useState({ type: "", text: "" });
 
+    // HOD Assignment state
+    const [hodAssignData, setHodAssignData] = useState(null);
+    const [hodAssignLoading, setHodAssignLoading] = useState(false);
+    const [hodAssignView, setHodAssignView] = useState("BLUE_COLLAR"); // WHITE_COLLAR | BLUE_COLLAR
+    const [selectedHodId, setSelectedHodId] = useState(null);
+    const [hodAssignFilter, setHodAssignFilter] = useState({ search: "", branchId: "", departmentId: "" });
+    const [hodAssignMsg, setHodAssignMsg] = useState({ type: "", text: "" });
+    const [pendingAssignments, setPendingAssignments] = useState({}); // { employeeId: hodUserId }
+
+    const fetchHodAssignData = async () => {
+        setHodAssignLoading(true);
+        try {
+            const res = await fetch("/api/admin/employee-hod-assignments");
+            const json = await res.json();
+            if (!res.ok || !json.success) throw new Error(json.message || "Failed to load");
+            setHodAssignData(json.data);
+            if (!selectedHodId && json.data.hods?.length > 0) setSelectedHodId(json.data.hods[0].id);
+        } catch (err) {
+            setHodAssignMsg({ type: "error", text: err.message || "Failed to load HOD assignments" });
+        }
+        setHodAssignLoading(false);
+    };
+
+    const saveHodAssignments = async () => {
+        const assignments = Object.entries(pendingAssignments).map(([employeeId, hodUserId]) => ({ employeeId, hodUserId }));
+        if (assignments.length === 0) {
+            setHodAssignMsg({ type: "error", text: "No changes to save" });
+            return;
+        }
+        try {
+            const res = await fetch("/api/admin/employee-hod-assignments", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ assignments }),
+            });
+            const json = await res.json();
+            if (!res.ok || !json.success) throw new Error(json.message || "Save failed");
+            setHodAssignMsg({ type: "success", text: `Saved ${assignments.length} assignments.` });
+            setPendingAssignments({});
+            fetchHodAssignData();
+        } catch (err) {
+            setHodAssignMsg({ type: "error", text: err.message || "Save failed" });
+        }
+    };
+
+    const unassignEmployee = async (employeeId) => {
+        try {
+            const res = await fetch(`/api/admin/employee-hod-assignments?employeeId=${employeeId}`, { method: "DELETE" });
+            const json = await res.json();
+            if (!res.ok || !json.success) throw new Error(json.message || "Unassign failed");
+            setHodAssignMsg({ type: "success", text: "Unassigned." });
+            fetchHodAssignData();
+        } catch (err) {
+            setHodAssignMsg({ type: "error", text: err.message || "Unassign failed" });
+        }
+    };
+
     const handleBulkUpload = async () => {
         if (!bulkFile) {
             setBulkMsg({ type: "error", text: "Please select an Excel file" });
@@ -632,11 +689,13 @@ export default function AdminDashboard() {
     };
 
     useEffect(() => { if (tab === "branches") fetchBranches(); }, [tab]);
+    useEffect(() => { if (tab === "hodassign" && !hodAssignData) fetchHodAssignData(); }, [tab]);
 
     const TABS = [
         { id: "summary", label: "Summary" },
         { id: "branches", label: "Branches" },
         { id: "org", label: "Org Structure" },
+        { id: "hodassign", label: "Assign HODs" },
         { id: "quarter", label: "Quarter" },
         { id: "questions", label: "Questions" },
         { id: "employees", label: "All Employees" },
@@ -730,8 +789,96 @@ export default function AdminDashboard() {
                                 </div>
                             </div>
 
-                            {/* SECTION — Department Winners List */}
+                            {/* SECTION — Branch-wise Stage Progress */}
+                            {quarterProgress.branches && quarterProgress.branches.length > 0 && (
+                                <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 sm:p-6">
+                                    <h3 className="text-lg font-bold text-[#003087] mb-4 flex items-center gap-2">
+                                        Branch-wise Stage Progress
+                                    </h3>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-[12px] border-collapse min-w-[880px]">
+                                            <thead className="bg-[#F5F5F5]">
+                                                <tr>
+                                                    <th className="text-left px-3 py-2 font-bold text-[#333333]">Branch</th>
+                                                    <th className="text-left px-3 py-2 font-bold text-[#333333]">Type</th>
+                                                    <th className="text-right px-3 py-2 font-bold text-[#333333]">Employees</th>
+                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 1<br /><span className="text-[9px] font-medium text-[#666666]">Submitted / Shortlisted</span></th>
+                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 2<br /><span className="text-[9px] font-medium text-[#666666]">BM / HOD evals</span></th>
+                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 3<br /><span className="text-[9px] font-medium text-[#666666]">CM evals</span></th>
+                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 4<br /><span className="text-[9px] font-medium text-[#666666]">HR evals</span></th>
+                                                    <th className="text-center px-3 py-2 font-bold text-[#F57C00]">Winners<br /><span className="text-[9px] font-medium text-[#666666]">(of expected)</span></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {quarterProgress.branches.map((b) => {
+                                                    const expected = b.branchType === "BIG" ? 4 : 3;
+                                                    return (
+                                                        <tr key={b.branchId} className="border-t border-[#E0E0E0] hover:bg-[#FAFCFF]">
+                                                            <td className="px-3 py-2 font-bold text-[#1A1A2E]">{b.branchName}</td>
+                                                            <td className="px-3 py-2">
+                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${b.branchType === "BIG" ? "bg-[#F3E5F5] text-[#6A1B9A] border-[#CE93D8]" : "bg-[#FFF8E1] text-[#F57F17] border-[#FFE082]"}`}>{b.branchType}</span>
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right font-bold">{b.totalEmployees}</td>
+                                                            <td className="px-3 py-2 text-right">
+                                                                <span className="font-bold text-[#003087]">{b.stage1.submitted}</span>
+                                                                <span className="text-[#999999]"> / </span>
+                                                                <span className="font-bold text-[#00843D]">{b.stage1.shortlisted}</span>
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right">
+                                                                <span className="font-bold text-[#003087]">{b.stage2.evaluatedByBm + b.stage2.evaluatedByHod}</span>
+                                                                <span className="text-[#999999]"> / </span>
+                                                                <span className="font-bold text-[#00843D]">{b.stage2.shortlisted}</span>
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right">
+                                                                <span className="font-bold text-[#003087]">{b.stage3.evaluatedByCm}</span>
+                                                                <span className="text-[#999999]"> / </span>
+                                                                <span className="font-bold text-[#00843D]">{b.stage3.shortlisted}</span>
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right">
+                                                                <span className="font-bold text-[#003087]">{b.stage4.evaluatedByHr}</span>
+                                                                <span className="text-[#999999]"> / </span>
+                                                                <span className="font-bold text-[#00843D]">{b.stage4.shortlisted}</span>
+                                                            </td>
+                                                            <td className="px-3 py-2 text-center">
+                                                                <span className={`font-bold ${b.winners.length >= expected ? "text-[#00843D]" : "text-[#F57C00]"}`}>{b.winners.length} / {expected}</span>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* SECTION — Branch Winners List */}
                             <div className="bg-gradient-to-r from-[#FFF8E1] to-[#FFF3E0] border border-[#FFCC80] rounded-xl p-4 sm:p-6 shadow-sm">
+                                <h3 className="text-lg font-bold text-[#F57C00] mb-3 flex items-center gap-2">
+                                    <span className="text-xl">🏆</span> Branch Winners
+                                </h3>
+                                {quarterProgress.branches && quarterProgress.branches.some(b => b.winners.length > 0) ? (
+                                    <div className="space-y-3">
+                                        {quarterProgress.branches.filter(b => b.winners.length > 0).map(b => (
+                                            <div key={b.branchId} className="bg-white/80 border border-[#FFE0B2] rounded-lg p-3">
+                                                <p className="text-[13px] font-bold text-[#F57C00] mb-2">{b.branchName} <span className="text-[10px] font-medium text-[#666666]">· {b.branchType === "BIG" ? "4 expected" : "3 expected"}</span></p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {b.winners.map((w, i) => (
+                                                        <span key={w.id} className="text-[11px] font-bold px-2 py-1 rounded-full border"
+                                                              style={{ backgroundColor: w.collarType === "WHITE_COLLAR" ? "#E3F2FD" : "#E8F5E9", color: w.collarType === "WHITE_COLLAR" ? "#003087" : "#00843D", borderColor: w.collarType === "WHITE_COLLAR" ? "#90CAF9" : "#A5D6A7" }}>
+                                                            {i + 1}. {w.name} · {w.collarType === "WHITE_COLLAR" ? "WC" : "BC"}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-[#999999] italic">No winners declared yet. Evaluation in progress.</p>
+                                )}
+                            </div>
+
+                            {/* SECTION — Legacy Department Winners (hidden placeholder) */}
+                            <div className="hidden">
                                 <h3 className="text-lg font-bold text-[#F57C00] mb-3 flex items-center gap-2">
                                     <span className="text-xl">🏆</span> Department Winners
                                 </h3>
@@ -1037,11 +1184,19 @@ export default function AdminDashboard() {
                                             <p className="text-[10px] sm:text-xs text-[#666666] uppercase tracking-wider">{dept.branch} Branch &middot; {dept.employeeCount} Employees</p>
                                         </div>
                                         <div className="flex items-center gap-3">
-                                            {/* Role badges summary */}
-                                            <div className="hidden sm:flex gap-1.5">
-                                                {dept.supervisors?.length > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-[#003087] border border-blue-200 font-bold">{dept.supervisors.length} SUP</span>}
-                                                {dept.branchManagers?.length > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-[#00843D] border border-emerald-200 font-bold">{dept.branchManagers.length} BM</span>}
-                                                {dept.clusterManagers?.length > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-50 text-[#F7941D] border border-orange-200 font-bold">{dept.clusterManagers.length} CM</span>}
+                                            {/* Collar badge + top evaluator summary */}
+                                            <div className="hidden sm:flex gap-1.5 items-center">
+                                                {dept.collarType === "WHITE_COLLAR" ? (
+                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-[#003087] border border-blue-200 font-bold">WHITE COLLAR</span>
+                                                ) : (
+                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-[#00843D] border border-emerald-200 font-bold">BLUE COLLAR</span>
+                                                )}
+                                                {dept.collarType === "WHITE_COLLAR" && dept.branchManagers?.[0] && (
+                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#F5F5F5] text-[#333333] border border-[#E0E0E0] font-bold">BM: {dept.branchManagers[0].name.split(" ")[0]}</span>
+                                                )}
+                                                {dept.collarType !== "WHITE_COLLAR" && dept.hods?.[0] && (
+                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#F5F5F5] text-[#333333] border border-[#E0E0E0] font-bold">HOD: {dept.hods[0].name.split(" ")[0]}</span>
+                                                )}
                                             </div>
                                             <svg className={`w-5 h-5 text-[#666666] transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                                         </div>
@@ -1050,57 +1205,42 @@ export default function AdminDashboard() {
                                     {/* Expanded content */}
                                     {isExpanded && (
                                         <div className="border-t border-[#E0E0E0] p-3 sm:p-5 space-y-5">
-                                            {/* Role Assignments */}
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                <div className="bg-blue-50/60 rounded-lg p-3 border border-blue-100">
+                                            {/* Single evaluator card: BM (WC) or HOD (BC) */}
+                                            {dept.collarType === "WHITE_COLLAR" ? (
+                                                <div className="bg-blue-50/60 rounded-lg p-4 border border-blue-100">
                                                     <div className="flex items-center justify-between mb-2">
-                                                        <p className="text-xs font-bold text-[#003087] uppercase tracking-wider">Supervisor</p>
-                                                        <button onClick={() => openReassignModal({ id: dept.id, name: dept.name }, "SUPERVISOR")} className="text-[10px] px-2 py-0.5 rounded bg-[#003087] text-white font-bold hover:bg-[#00843D] transition-colors cursor-pointer">Reassign</button>
-                                                    </div>
-                                                    {dept.supervisors?.length > 0 ? (
-                                                        <div className="space-y-2">
-                                                            {dept.supervisors.map(sup => (
-                                                                <button key={sup.id} onClick={() => openPersonDetail(sup)} className="w-full text-left p-2 rounded-lg hover:bg-white transition-colors cursor-pointer group/person">
-                                                                    <p className="text-sm text-[#003087] font-semibold group-hover/person:underline">{sup.name}</p>
-                                                                    <p className="text-xs text-[#666666]">{sup.designation || "—"} {sup.empCode ? `(${sup.empCode})` : ""}</p>
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    ) : <p className="text-sm text-[#999999] italic">Not Assigned</p>}
-                                                </div>
-                                                <div className="bg-emerald-50/60 rounded-lg p-3 border border-emerald-100">
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <p className="text-xs font-bold text-[#00843D] uppercase tracking-wider">Branch Manager</p>
-                                                        <button onClick={() => openReassignModal({ id: dept.id, name: dept.name }, "BRANCH_MANAGER")} className="text-[10px] px-2 py-0.5 rounded bg-[#00843D] text-white font-bold hover:bg-[#003087] transition-colors cursor-pointer">Reassign</button>
+                                                        <p className="text-xs font-bold text-[#003087] uppercase tracking-wider">Branch Manager (Evaluator)</p>
+                                                        <button onClick={() => openReassignModal({ id: dept.id, name: dept.name }, "BRANCH_MANAGER")} className="text-[10px] px-2 py-0.5 rounded bg-[#003087] text-white font-bold hover:bg-[#00843D] transition-colors cursor-pointer">Reassign</button>
                                                     </div>
                                                     {dept.branchManagers?.length > 0 ? (
                                                         <div className="space-y-2">
                                                             {dept.branchManagers.map(bm => (
                                                                 <button key={bm.id} onClick={() => openPersonDetail(bm)} className="w-full text-left p-2 rounded-lg hover:bg-white transition-colors cursor-pointer group/person">
-                                                                    <p className="text-sm text-[#00843D] font-semibold group-hover/person:underline">{bm.name}</p>
+                                                                    <p className="text-sm text-[#003087] font-semibold group-hover/person:underline">{bm.name}</p>
                                                                     <p className="text-xs text-[#666666]">{bm.designation || "—"} {bm.empCode ? `(${bm.empCode})` : ""}</p>
                                                                 </button>
                                                             ))}
                                                         </div>
                                                     ) : <p className="text-sm text-[#999999] italic">Not Assigned</p>}
                                                 </div>
-                                                <div className="bg-orange-50/60 rounded-lg p-3 border border-orange-100">
+                                            ) : (
+                                                <div className="bg-emerald-50/60 rounded-lg p-4 border border-emerald-100">
                                                     <div className="flex items-center justify-between mb-2">
-                                                        <p className="text-xs font-bold text-[#E65100] uppercase tracking-wider">Cluster Manager</p>
-                                                        <button onClick={() => openReassignModal({ id: dept.id, name: dept.name }, "CLUSTER_MANAGER")} className="text-[10px] px-2 py-0.5 rounded bg-[#E65100] text-white font-bold hover:bg-[#003087] transition-colors cursor-pointer">Reassign</button>
+                                                        <p className="text-xs font-bold text-[#00843D] uppercase tracking-wider">Head of Department (Evaluator)</p>
+                                                        <button onClick={() => openReassignModal({ id: dept.id, name: dept.name }, "HOD")} className="text-[10px] px-2 py-0.5 rounded bg-[#00843D] text-white font-bold hover:bg-[#003087] transition-colors cursor-pointer">Reassign</button>
                                                     </div>
-                                                    {dept.clusterManagers?.length > 0 ? (
+                                                    {dept.hods?.length > 0 ? (
                                                         <div className="space-y-2">
-                                                            {dept.clusterManagers.map(cm => (
-                                                                <button key={cm.id} onClick={() => openPersonDetail(cm)} className="w-full text-left p-2 rounded-lg hover:bg-white transition-colors cursor-pointer group/person">
-                                                                    <p className="text-sm text-[#E65100] font-semibold group-hover/person:underline">{cm.name}</p>
-                                                                    <p className="text-xs text-[#666666]">{cm.designation || "—"} {cm.empCode ? `(${cm.empCode})` : ""}</p>
+                                                            {dept.hods.map(h => (
+                                                                <button key={h.id} onClick={() => openPersonDetail(h)} className="w-full text-left p-2 rounded-lg hover:bg-white transition-colors cursor-pointer group/person">
+                                                                    <p className="text-sm text-[#00843D] font-semibold group-hover/person:underline">{h.name}</p>
+                                                                    <p className="text-xs text-[#666666]">{h.designation || "—"} {h.empCode ? `(${h.empCode})` : ""}</p>
                                                                 </button>
                                                             ))}
                                                         </div>
                                                     ) : <p className="text-sm text-[#999999] italic">Not Assigned</p>}
                                                 </div>
-                                            </div>
+                                            )}
 
                                             {/* Employee List */}
                                             <div>
@@ -1159,6 +1299,215 @@ export default function AdminDashboard() {
                                 </div>
                                 );
                             })}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ═══════ ASSIGN HODs TAB ═══════ */}
+            {tab === "hodassign" && (
+                <div className="space-y-4">
+                    {hodAssignMsg.text && (
+                        <div className={`p-3 rounded-lg text-sm border ${hodAssignMsg.type === "success" ? "bg-[#E8F5E9] border-[#A5D6A7] text-[#1B5E20]" : "bg-[#FFEBEE] border-[#EF9A9A] text-[#D32F2F]"}`}>
+                            {hodAssignMsg.text}
+                        </div>
+                    )}
+
+                    {/* WC / BC Split toggle */}
+                    <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-5">
+                        <h3 className="text-[16px] font-bold text-[#003087] mb-3">Employee Evaluation Assignment</h3>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setHodAssignView("WHITE_COLLAR")}
+                                className={`flex-1 min-h-[48px] px-4 py-3 rounded-lg text-[14px] font-bold border-2 transition-all ${hodAssignView === "WHITE_COLLAR" ? "bg-[#003087] text-white border-[#003087]" : "bg-white text-[#003087] border-[#90CAF9] hover:bg-[#E3F2FD]"}`}
+                            >
+                                White Collar
+                                <span className="block text-[11px] font-medium opacity-90 mt-0.5">Evaluated by Branch Manager</span>
+                            </button>
+                            <button
+                                onClick={() => setHodAssignView("BLUE_COLLAR")}
+                                className={`flex-1 min-h-[48px] px-4 py-3 rounded-lg text-[14px] font-bold border-2 transition-all ${hodAssignView === "BLUE_COLLAR" ? "bg-[#00843D] text-white border-[#00843D]" : "bg-white text-[#00843D] border-[#A5D6A7] hover:bg-[#E8F5E9]"}`}
+                            >
+                                Blue Collar · Assign HODs
+                                <span className="block text-[11px] font-medium opacity-90 mt-0.5">Admin assigns employees to HODs</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {hodAssignLoading && !hodAssignData && (
+                        <div className="flex items-center justify-center h-32"><div className="animate-spin h-8 w-8 border-2 border-[#003087] border-t-transparent rounded-full" /></div>
+                    )}
+
+                    {hodAssignData && hodAssignView === "WHITE_COLLAR" && (
+                        <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-5">
+                            <h3 className="text-[15px] font-bold text-[#003087] mb-3">White Collar Employees</h3>
+                            <p className="text-[12px] text-[#666666] mb-3">These employees are evaluated directly by the Branch Manager. HODs with white-collar designation are also listed here.</p>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-[12px] border-collapse">
+                                    <thead className="bg-[#F5F5F5]">
+                                        <tr>
+                                            <th className="text-left px-3 py-2 font-bold text-[#333333]">Emp Code</th>
+                                            <th className="text-left px-3 py-2 font-bold text-[#333333]">Name</th>
+                                            <th className="text-left px-3 py-2 font-bold text-[#333333]">Department</th>
+                                            <th className="text-left px-3 py-2 font-bold text-[#333333]">Branch</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {hodAssignData.employees.filter(e => e.collarType === "WHITE_COLLAR").map(e => (
+                                            <tr key={e.id} className="border-t border-[#E0E0E0] hover:bg-[#FAFCFF]">
+                                                <td className="px-3 py-2 font-medium">{e.empCode}</td>
+                                                <td className="px-3 py-2">{e.name}</td>
+                                                <td className="px-3 py-2 text-[#666666]">{e.department}</td>
+                                                <td className="px-3 py-2 text-[#666666]">{e.branch}</td>
+                                            </tr>
+                                        ))}
+                                        {hodAssignData.employees.filter(e => e.collarType === "WHITE_COLLAR").length === 0 && (
+                                            <tr><td colSpan={4} className="px-3 py-6 text-center text-[#999999]">No white collar employees found.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {hodAssignData && hodAssignView === "BLUE_COLLAR" && (
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                            {/* HOD list sidebar */}
+                            <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 lg:col-span-1">
+                                <h4 className="text-[13px] font-bold text-[#00843D] mb-3 uppercase tracking-wider">HODs ({hodAssignData.hods.length})</h4>
+                                <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                                    {hodAssignData.hods.length === 0 && <p className="text-[12px] text-[#999999] italic">No HODs assigned. Assign HOD role to users in Org Structure tab first.</p>}
+                                    {hodAssignData.hods.map(h => (
+                                        <button
+                                            key={h.id}
+                                            onClick={() => setSelectedHodId(h.id)}
+                                            className={`w-full text-left border rounded-lg p-3 transition-all ${selectedHodId === h.id ? "bg-[#E8F5E9] border-[#00843D] shadow-sm" : "bg-white border-[#E0E0E0] hover:bg-[#FAFCFF]"}`}
+                                        >
+                                            <p className="text-[13px] font-bold text-[#1A1A2E]">{h.name}</p>
+                                            <p className="text-[11px] text-[#666666]">{h.empCode} · {h.branchName || "—"}</p>
+                                            <div className="flex items-center gap-2 mt-2">
+                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#E3F2FD] text-[#003087]">Assigned: {h.assignedCount}</span>
+                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#E8F5E9] text-[#00843D]">Evaluated: {h.evaluatedCount}</span>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Employee list */}
+                            <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 lg:col-span-2">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h4 className="text-[13px] font-bold text-[#003087] uppercase tracking-wider">Blue Collar Employees</h4>
+                                    <button
+                                        onClick={saveHodAssignments}
+                                        disabled={Object.keys(pendingAssignments).length === 0}
+                                        className="min-h-[36px] px-4 py-2 bg-[#00843D] hover:bg-[#006633] text-white text-[12px] font-bold rounded-lg disabled:bg-[#CCCCCC] disabled:cursor-not-allowed"
+                                    >
+                                        Save {Object.keys(pendingAssignments).length > 0 ? `(${Object.keys(pendingAssignments).length})` : ""}
+                                    </button>
+                                </div>
+
+                                {/* Filters */}
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+                                    <input
+                                        type="text"
+                                        placeholder="Search name / code"
+                                        value={hodAssignFilter.search}
+                                        onChange={e => setHodAssignFilter({ ...hodAssignFilter, search: e.target.value })}
+                                        className="px-3 py-2 border border-[#CCCCCC] rounded-lg text-[12px] focus:outline-none focus:ring-2 focus:ring-[#003087]"
+                                    />
+                                    <select
+                                        value={hodAssignFilter.branchId}
+                                        onChange={e => setHodAssignFilter({ ...hodAssignFilter, branchId: e.target.value })}
+                                        className="px-3 py-2 border border-[#CCCCCC] rounded-lg text-[12px] focus:outline-none focus:ring-2 focus:ring-[#003087]"
+                                    >
+                                        <option value="">All Branches</option>
+                                        {[...new Map(hodAssignData.employees.map(e => [e.branchId, e.branch])).entries()].map(([id, name]) => (
+                                            <option key={id} value={id}>{name}</option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        value={hodAssignFilter.departmentId}
+                                        onChange={e => setHodAssignFilter({ ...hodAssignFilter, departmentId: e.target.value })}
+                                        className="px-3 py-2 border border-[#CCCCCC] rounded-lg text-[12px] focus:outline-none focus:ring-2 focus:ring-[#003087]"
+                                    >
+                                        <option value="">All Departments</option>
+                                        {[...new Map(hodAssignData.employees.map(e => [e.departmentId, e.department])).entries()].map(([id, name]) => (
+                                            <option key={id} value={id}>{name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="overflow-x-auto max-h-[500px]">
+                                    <table className="w-full text-[12px] border-collapse">
+                                        <thead className="bg-[#F5F5F5] sticky top-0">
+                                            <tr>
+                                                <th className="text-left px-3 py-2 font-bold text-[#333333]">Emp Code</th>
+                                                <th className="text-left px-3 py-2 font-bold text-[#333333]">Name</th>
+                                                <th className="text-left px-3 py-2 font-bold text-[#333333]">Department</th>
+                                                <th className="text-left px-3 py-2 font-bold text-[#333333]">Branch</th>
+                                                <th className="text-left px-3 py-2 font-bold text-[#333333]">Current HOD</th>
+                                                <th className="text-left px-3 py-2 font-bold text-[#333333]">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {hodAssignData.employees
+                                                .filter(e => e.collarType === "BLUE_COLLAR")
+                                                .filter(e => {
+                                                    if (hodAssignFilter.search) {
+                                                        const s = hodAssignFilter.search.toLowerCase();
+                                                        if (!e.name.toLowerCase().includes(s) && !e.empCode.toLowerCase().includes(s)) return false;
+                                                    }
+                                                    if (hodAssignFilter.branchId && e.branchId !== hodAssignFilter.branchId) return false;
+                                                    if (hodAssignFilter.departmentId && e.departmentId !== hodAssignFilter.departmentId) return false;
+                                                    return true;
+                                                })
+                                                .map(e => {
+                                                    const pendingHod = pendingAssignments[e.id];
+                                                    const currentHodId = pendingHod !== undefined ? pendingHod : e.assignedHodId;
+                                                    const currentHod = hodAssignData.hods.find(h => h.id === currentHodId);
+                                                    const isPending = pendingHod !== undefined;
+                                                    return (
+                                                        <tr key={e.id} className={`border-t border-[#E0E0E0] ${isPending ? "bg-[#FFF8E1]" : "hover:bg-[#FAFCFF]"}`}>
+                                                            <td className="px-3 py-2 font-medium">{e.empCode}</td>
+                                                            <td className="px-3 py-2">{e.name}</td>
+                                                            <td className="px-3 py-2 text-[#666666]">{e.department}</td>
+                                                            <td className="px-3 py-2 text-[#666666]">{e.branch}</td>
+                                                            <td className="px-3 py-2">
+                                                                {currentHod ? (
+                                                                    <span className="text-[11px] font-bold text-[#00843D]">{currentHod.name}</span>
+                                                                ) : (
+                                                                    <span className="text-[11px] text-[#999999] italic">Unassigned</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-3 py-2">
+                                                                <div className="flex items-center gap-2">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            if (!selectedHodId) { setHodAssignMsg({ type: "error", text: "Select an HOD first" }); return; }
+                                                                            setPendingAssignments({ ...pendingAssignments, [e.id]: selectedHodId });
+                                                                        }}
+                                                                        className="px-2 py-1 bg-[#003087] hover:bg-[#00843D] text-white text-[10px] font-bold rounded"
+                                                                    >
+                                                                        Assign to selected
+                                                                    </button>
+                                                                    {e.assignedHodId && !isPending && (
+                                                                        <button
+                                                                            onClick={() => unassignEmployee(e.id)}
+                                                                            className="px-2 py-1 bg-[#FFEBEE] hover:bg-[#FFCDD2] text-[#D32F2F] text-[10px] font-bold rounded border border-[#EF9A9A]"
+                                                                        >
+                                                                            Unassign
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>

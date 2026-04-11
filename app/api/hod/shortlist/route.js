@@ -14,27 +14,39 @@ export const GET = withRole(["HOD"], async (request, { user }) => {
         const quarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
         if (!quarter) return fail("No active quarter");
 
-        // Get HOD's department assignments
+        // Prefer per-employee HOD assignments (new flow). Fall back to department-level.
+        const empAssignments = await prisma.employeeHodAssignment.findMany({
+            where: { hodUserId: user.userId, quarterId: quarter.id },
+            select: { employeeId: true },
+        });
+        const assignedEmployeeIds = empAssignments.map(a => a.employeeId);
+
+        // Department-level assignments (legacy / fallback)
         const hodAssignments = await prisma.hodAssignment.findMany({
             where: { hodUserId: user.userId, quarterId: quarter.id },
             include: { department: { select: { id: true, name: true, branchId: true } } }
         });
 
-        if (hodAssignments.length === 0) {
-            return ok({ employees: [], message: "No departments assigned to you for this quarter" });
+        if (assignedEmployeeIds.length === 0 && hodAssignments.length === 0) {
+            return ok({ employees: [], message: "No employees assigned to you for this quarter" });
         }
 
-        const deptIds = hodAssignments.map(a => a.departmentId);
-        const branchId = hodAssignments[0].department.branchId;
+        // Build the shortlist query. If per-employee assignments exist, use those only.
+        const whereClause = {
+            quarterId: quarter.id,
+            collarType: "BLUE_COLLAR",
+        };
+        if (assignedEmployeeIds.length > 0) {
+            whereClause.userId = { in: assignedEmployeeIds };
+        } else {
+            const deptIds = hodAssignments.map(a => a.departmentId);
+            const branchId = hodAssignments[0].department.branchId;
+            whereClause.branchId = branchId;
+            whereClause.user = { departmentId: { in: deptIds } };
+        }
 
-        // Get BC Stage 1 shortlisted employees in HOD's departments
         const shortlisted = await prisma.branchShortlistStage1.findMany({
-            where: {
-                branchId,
-                quarterId: quarter.id,
-                collarType: "BLUE_COLLAR",
-                user: { departmentId: { in: deptIds } }
-            },
+            where: whereClause,
             include: {
                 user: {
                     select: { id: true, name: true, empCode: true, designation: true, departmentId: true,

@@ -181,6 +181,105 @@ export const GET = withRole(["ADMIN"], async () => {
             ? Math.round((overallSubmitted / overallTotalEmployees) * 100)
             : 0;
 
+        // 5b. Branch-level stage counts using new BranchShortlist* models
+        const [
+            branches,
+            bStage1,
+            bStage2,
+            bStage3,
+            bStage4,
+            hodEvals,
+            bmEvalsAll,
+            cmEvalsAll,
+            hrEvalsAll,
+            branchBest,
+        ] = await Promise.all([
+            prisma.branch.findMany({ select: { id: true, name: true, branchType: true } }),
+            prisma.branchShortlistStage1.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true } }),
+            prisma.branchShortlistStage2.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true } }),
+            prisma.branchShortlistStage3.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true } }),
+            prisma.branchShortlistStage4.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true } }),
+            prisma.hodEvaluation.findMany({ where: { quarterId: qId }, select: { employee: { select: { department: { select: { branchId: true } } } } } }),
+            prisma.branchManagerEvaluation.findMany({ where: { quarterId: qId }, select: { employee: { select: { department: { select: { branchId: true } } } } } }),
+            prisma.clusterManagerEvaluation.findMany({ where: { quarterId: qId }, select: { employee: { select: { department: { select: { branchId: true } } } } } }),
+            prisma.hrEvaluation.findMany({ where: { quarterId: qId }, select: { employee: { select: { department: { select: { branchId: true } } } } } }).catch(() => []),
+            prisma.branchBestEmployee.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true, user: { select: { id: true, name: true } } } }).catch(() => []),
+        ]);
+
+        const countBy = (arr, key) => {
+            const m = new Map();
+            for (const r of arr) {
+                const k = r[key] || r?.employee?.department?.branchId;
+                if (!k) continue;
+                m.set(k, (m.get(k) || 0) + 1);
+            }
+            return m;
+        };
+        const s1Map = countBy(bStage1, "branchId");
+        const s1Wc = countBy(bStage1.filter(r => r.collarType === "WHITE_COLLAR"), "branchId");
+        const s1Bc = countBy(bStage1.filter(r => r.collarType === "BLUE_COLLAR"), "branchId");
+        const s2Map = countBy(bStage2, "branchId");
+        const s3Map = countBy(bStage3, "branchId");
+        const s4Map = countBy(bStage4, "branchId");
+        const hodMap = countBy(hodEvals, "branchId");
+        const bmMap = countBy(bmEvalsAll, "branchId");
+        const cmMap = countBy(cmEvalsAll, "branchId");
+        const hrMap = countBy(hrEvalsAll, "branchId");
+
+        // Total employees per branch
+        const usersByBranch = await prisma.user.groupBy({
+            by: ["departmentId"],
+            where: { role: "EMPLOYEE", departmentRoles: { none: {} } },
+            _count: { id: true },
+        });
+        const deptToBranch = new Map();
+        const allDepts = await prisma.department.findMany({ select: { id: true, branchId: true } });
+        for (const d of allDepts) deptToBranch.set(d.id, d.branchId);
+        const branchEmpCount = new Map();
+        for (const u of usersByBranch) {
+            const bId = deptToBranch.get(u.departmentId);
+            if (!bId) continue;
+            branchEmpCount.set(bId, (branchEmpCount.get(bId) || 0) + u._count.id);
+        }
+        // Self-assessments per branch
+        const selfByBranch = new Map();
+        for (const sa of selfAssessments) {
+            const u = allUsers.find(x => x.id === sa.userId);
+            if (!u) continue;
+            const bId = deptToBranch.get(u.departmentId);
+            if (!bId) continue;
+            selfByBranch.set(bId, (selfByBranch.get(bId) || 0) + 1);
+        }
+
+        const branchesPayload = branches.map(b => ({
+            branchId: b.id,
+            branchName: b.name,
+            branchType: b.branchType,
+            totalEmployees: branchEmpCount.get(b.id) || 0,
+            stage1: {
+                submitted: selfByBranch.get(b.id) || 0,
+                shortlisted: s1Map.get(b.id) || 0,
+                shortlistedWhite: s1Wc.get(b.id) || 0,
+                shortlistedBlue: s1Bc.get(b.id) || 0,
+            },
+            stage2: {
+                shortlisted: s2Map.get(b.id) || 0,
+                evaluatedByBm: bmMap.get(b.id) || 0,
+                evaluatedByHod: hodMap.get(b.id) || 0,
+            },
+            stage3: {
+                shortlisted: s3Map.get(b.id) || 0,
+                evaluatedByCm: cmMap.get(b.id) || 0,
+            },
+            stage4: {
+                shortlisted: s4Map.get(b.id) || 0,
+                evaluatedByHr: hrMap.get(b.id) || 0,
+            },
+            winners: branchBest
+                .filter(w => w.branchId === b.id)
+                .map(w => ({ id: w.user.id, name: w.user.name, collarType: w.collarType })),
+        })).sort((a, b) => a.branchName.localeCompare(b.branchName));
+
         // 6. Return Payload Matching Client Expectation
         return ok({
             quarter: {
@@ -192,6 +291,7 @@ export const GET = withRole(["ADMIN"], async () => {
                 questionCount: quarter.questionCount
             },
             departments: resultDepartments.sort((a, b) => a.departmentName.localeCompare(b.departmentName)),
+            branches: branchesPayload,
             overallStats: {
                 totalEmployees: overallTotalEmployees,
                 totalSubmitted: overallSubmitted,
