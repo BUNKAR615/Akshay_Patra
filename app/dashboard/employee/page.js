@@ -144,7 +144,8 @@ export default function EmployeeDashboard() {
                 await fetchStatus();
             }
             setQuestions([]);
-            setSuccessMsg("Your assessment has been submitted successfully! You will be notified if you are shortlisted.");
+           
+            setSuccessMsg("Assessment submitted successfully! मूल्यांकन सफलतापूर्वक जमा किया गया।!");
             window.scrollTo({ top: 0, behavior: "smooth" });
         } catch (e) {
             throw e; // Rethrow so EvaluationForm handles the error state internally

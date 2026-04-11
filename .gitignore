@@ -29,3 +29,6 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+# claude code worktrees / settings
+.claude/
