@@ -34,7 +34,6 @@ export default function HodDashboard() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
-    const [switchingRole, setSwitchingRole] = useState(false);
 
     const fetchData = async () => {
         try {
@@ -62,21 +61,6 @@ export default function HodDashboard() {
     useEffect(() => {
         fetchData();
     }, []);
-
-    const handleSwitchToEmployee = async () => {
-        setSwitchingRole(true);
-        try {
-            await api("/api/auth/select-role", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ role: "EMPLOYEE" }),
-            });
-            window.location.href = "/dashboard/employee";
-        } catch (e) {
-            setError(e.message);
-            setSwitchingRole(false);
-        }
-    };
 
     const handleEvaluate = async (answers) => {
         setError("");
@@ -135,33 +119,6 @@ export default function HodDashboard() {
                     }}
                 />
             )}
-
-            {/* Switch to Employee button */}
-            <div className="flex flex-wrap items-center gap-3 mb-8">
-                <button
-                    onClick={handleSwitchToEmployee}
-                    disabled={switchingRole}
-                    className="min-h-[44px] px-5 py-2.5 text-[14px] font-bold rounded-lg border-2 transition-all cursor-pointer flex items-center gap-2 shadow-sm"
-                    style={{
-                        borderColor: ACCENT,
-                        color: ACCENT,
-                        backgroundColor: "white",
-                    }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = ACCENT;
-                        e.currentTarget.style.color = "white";
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = "white";
-                        e.currentTarget.style.color = ACCENT;
-                    }}
-                >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                    </svg>
-                    {switchingRole ? "Switching..." : "Switch to Employee"}
-                </button>
-            </div>
 
             {/* Progress Bar */}
             <div className="bg-white border border-[#E0E0E0] rounded-xl p-6 mb-8 shadow-sm">

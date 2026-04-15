@@ -26,16 +26,16 @@ export const GET = withRole(["ADMIN"], async (request) => {
             include: { user: { select: { id: true, name: true, designation: true, role: true } } },
         });
 
-        const supervisor = roles.find((r) => r.role === "SUPERVISOR")?.user || null;
         const branchManager = roles.find((r) => r.role === "BRANCH_MANAGER")?.user || null;
         const clusterManagers = roles.filter((r) => r.role === "CLUSTER_MANAGER").map((r) => r.user);
+        const hods = roles.filter((r) => r.role === "HOD").map((r) => r.user);
 
         return ok({
             department: dept.name,
             departmentId: dept.id,
-            supervisor,
             branchManager,
             clusterManagers,
+            hods,
         });
     } catch (err) {
         console.error("Get dept roles error:", err);

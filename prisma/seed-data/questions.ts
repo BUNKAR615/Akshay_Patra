@@ -1,6 +1,8 @@
-// Questions bank – kept in existing seed.js structure
+// Questions bank — three levels only: SELF, BRANCH_MANAGER, CLUSTER_MANAGER.
+// HOD-level evaluation (big-branch blue-collar) reuses the BRANCH_MANAGER bank.
 export const QUESTIONS = [
-  // SELF ASSESSMENT — ATTENDANCE
+  // ═════════════════════════ SELF ASSESSMENT ═════════════════════════
+  // ATTENDANCE
   { text: 'I report to work on time every day without exception.', textHindi: 'मैं बिना किसी अपवाद के हर दिन समय पर काम पर रिपोर्ट करता/करती हूँ।', category: 'ATTENDANCE', level: 'SELF', isActive: true },
   { text: 'I inform my supervisor in advance when I need to be absent.', textHindi: 'जब मुझे अनुपस्थित रहना होता है तो मैं अपने पर्यवेक्षक को पहले से सूचित करता/करती हूँ।', category: 'ATTENDANCE', level: 'SELF', isActive: true },
   { text: 'My attendance record this quarter has been consistent and reliable.', textHindi: 'इस तिमाही में मेरी उपस्थिति का रिकॉर्ड निरंतर और विश्वसनीय रहा है।', category: 'ATTENDANCE', level: 'SELF', isActive: true },
@@ -59,32 +61,72 @@ export const QUESTIONS = [
   { text: 'I follow ethical standards in all work situations.', textHindi: 'मैं सभी कार्य स्थितियों में नैतिक मानकों का पालन करता/करती हूँ।', category: 'INTEGRITY', level: 'SELF', isActive: true },
   { text: 'I do not misuse my position or authority.', textHindi: 'मैं अपनी स्थिति या अधिकार का दुरुपयोग नहीं करता/करती।', category: 'INTEGRITY', level: 'SELF', isActive: true },
   { text: 'I act with consistency whether or not I am being observed.', textHindi: 'मैं देखे जाने या न देखे जाने पर एक समान व्यवहार करता/करती हूँ।', category: 'INTEGRITY', level: 'SELF', isActive: true },
-  // SUPERVISOR
-  { text: 'This employee consistently delivers work of high quality.', textHindi: 'यह कर्मचारी लगातार उच्च गुणवत्ता का काम करता/करती है।', category: 'PRODUCTIVITY', level: 'SUPERVISOR', isActive: true },
-  { text: 'This employee meets deadlines without requiring supervision.', textHindi: 'यह कर्मचारी बिना निगरानी के समय सीमा पूरी करता/करती है।', category: 'PRODUCTIVITY', level: 'SUPERVISOR', isActive: true },
-  { text: 'This employee handles work pressure effectively.', textHindi: 'यह कर्मचारी काम के दबाव को प्रभावी ढंग से संभालता/संभालती है।', category: 'PRODUCTIVITY', level: 'SUPERVISOR', isActive: true },
-  { text: "This employee's productivity this quarter has been above average.", textHindi: 'इस तिमाही में इस कर्मचारी की उत्पादकता औसत से अधिक रही है।', category: 'PRODUCTIVITY', level: 'SUPERVISOR', isActive: true },
-  { text: 'This employee shows consistent improvement over time.', textHindi: 'यह कर्मचारी समय के साथ लगातार सुधार दिखाता/दिखाती है।', category: 'PRODUCTIVITY', level: 'SUPERVISOR', isActive: true },
-  { text: 'This employee maintains a positive attitude at the workplace.', textHindi: 'यह कर्मचारी कार्यस्थल पर सकारात्मक दृष्टिकोण बनाए रखता/रखती है।', category: 'DISCIPLINE', level: 'SUPERVISOR', isActive: true },
-  { text: 'This employee cooperates well with the entire team.', textHindi: 'यह कर्मचारी पूरी टीम के साथ अच्छे से सहयोग करता/करती है।', category: 'TEAMWORK', level: 'SUPERVISOR', isActive: true },
-  { text: 'This employee responds to feedback constructively.', textHindi: 'यह कर्मचारी फीडबैक पर रचनात्मक तरीके से प्रतिक्रिया देता/देती है।', category: 'DISCIPLINE', level: 'SUPERVISOR', isActive: true },
-  { text: 'This employee handles conflicts maturely and professionally.', textHindi: 'यह कर्मचारी विवादों को परिपक्वता और पेशेवर तरीके से संभालता/संभालती है।', category: 'DISCIPLINE', level: 'SUPERVISOR', isActive: true },
-  { text: 'This employee follows workplace rules consistently.', textHindi: 'यह कर्मचारी कार्यस्थल के नियमों का लगातार पालन करता/करती है।', category: 'DISCIPLINE', level: 'SUPERVISOR', isActive: true },
-  { text: 'I can assign critical tasks to this employee with confidence.', textHindi: 'मैं इस कर्मचारी को आत्मविश्वास के साथ महत्वपूर्ण कार्य सौंप सकता/सकती हूँ।', category: 'INTEGRITY', level: 'SUPERVISOR', isActive: true },
-  { text: 'This employee shows up prepared and ready every day.', textHindi: 'यह कर्मचारी हर दिन तैयार होकर आता/आती है।', category: 'ATTENDANCE', level: 'SUPERVISOR', isActive: true },
-  { text: 'This employee takes ownership of mistakes and corrects them.', textHindi: 'यह कर्मचारी गलतियों की जिम्मेदारी लेता/लेती है और उन्हें सुधारता/सुधारती है।', category: 'INTEGRITY', level: 'SUPERVISOR', isActive: true },
-  { text: 'This employee follows through on every commitment made.', textHindi: 'यह कर्मचारी की गई हर प्रतिबद्धता को पूरा करता/करती है।', category: 'INTEGRITY', level: 'SUPERVISOR', isActive: true },
-  // BRANCH MANAGER
-  { text: 'This employee demonstrates leadership potential in their role.', textHindi: 'यह कर्मचारी अपनी भूमिका में नेतृत्व क्षमता प्रदर्शित करता/करती है।', category: 'INITIATIVE', level: 'BRANCH_MANAGER', isActive: true },
-  { text: 'This employee contributes positively to the department goals.', textHindi: 'यह कर्मचारी विभाग के लक्ष्यों में सकारात्मक योगदान देता/देती है।', category: 'PRODUCTIVITY', level: 'BRANCH_MANAGER', isActive: true },
-  { text: 'This employee shows responsibility beyond their job description.', textHindi: 'यह कर्मचारी अपने कार्य विवरण से परे जिम्मेदारी दिखाता/दिखाती है।', category: 'INITIATIVE', level: 'BRANCH_MANAGER', isActive: true },
+
+  // ═════════════════════════ BRANCH MANAGER (30) ═════════════════════════
+  // Also used by big-branch HODs for blue-collar Stage-2 evaluation.
+  // ATTENDANCE (4)
+  { text: 'This employee shows up prepared and ready every day.', textHindi: 'यह कर्मचारी हर दिन तैयार होकर आता/आती है।', category: 'ATTENDANCE', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee maintains excellent attendance throughout the quarter.', textHindi: 'यह कर्मचारी पूरे तिमाही में उत्कृष्ट उपस्थिति बनाए रखता/रखती है।', category: 'ATTENDANCE', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee is rarely absent without proper notice.', textHindi: 'यह कर्मचारी उचित सूचना के बिना शायद ही कभी अनुपस्थित रहता/रहती है।', category: 'ATTENDANCE', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee is punctual and completes full working hours.', textHindi: 'यह कर्मचारी समयनिष्ठ है और पूरे कार्य घंटे पूरा करता/करती है।', category: 'ATTENDANCE', level: 'BRANCH_MANAGER', isActive: true },
+  // DISCIPLINE (5)
+  { text: 'This employee maintains a positive attitude at the workplace.', textHindi: 'यह कर्मचारी कार्यस्थल पर सकारात्मक दृष्टिकोण बनाए रखता/रखती है।', category: 'DISCIPLINE', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee responds to feedback constructively.', textHindi: 'यह कर्मचारी फीडबैक पर रचनात्मक तरीके से प्रतिक्रिया देता/देती है।', category: 'DISCIPLINE', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee handles conflicts maturely and professionally.', textHindi: 'यह कर्मचारी विवादों को परिपक्वता और पेशेवर तरीके से संभालता/संभालती है।', category: 'DISCIPLINE', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee follows workplace rules consistently.', textHindi: 'यह कर्मचारी कार्यस्थल के नियमों का लगातार पालन करता/करती है।', category: 'DISCIPLINE', level: 'BRANCH_MANAGER', isActive: true },
   { text: 'This employee handles pressure situations with maturity.', textHindi: 'यह कर्मचारी दबाव की स्थितियों को परिपक्वता से संभालता/संभालती है।', category: 'DISCIPLINE', level: 'BRANCH_MANAGER', isActive: true },
+  // PRODUCTIVITY (6)
+  { text: 'This employee consistently delivers work of high quality.', textHindi: 'यह कर्मचारी लगातार उच्च गुणवत्ता का काम करता/करती है।', category: 'PRODUCTIVITY', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee meets deadlines without requiring supervision.', textHindi: 'यह कर्मचारी बिना निगरानी के समय सीमा पूरी करता/करती है।', category: 'PRODUCTIVITY', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee handles work pressure effectively.', textHindi: 'यह कर्मचारी काम के दबाव को प्रभावी ढंग से संभालता/संभालती है।', category: 'PRODUCTIVITY', level: 'BRANCH_MANAGER', isActive: true },
+  { text: "This employee's productivity this quarter has been above average.", textHindi: 'इस तिमाही में इस कर्मचारी की उत्पादकता औसत से अधिक रही है।', category: 'PRODUCTIVITY', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee shows consistent improvement over time.', textHindi: 'यह कर्मचारी समय के साथ लगातार सुधार दिखाता/दिखाती है।', category: 'PRODUCTIVITY', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee contributes positively to the department goals.', textHindi: 'यह कर्मचारी विभाग के लक्ष्यों में सकारात्मक योगदान देता/देती है।', category: 'PRODUCTIVITY', level: 'BRANCH_MANAGER', isActive: true },
+  // TEAMWORK (5)
+  { text: 'This employee cooperates well with the entire team.', textHindi: 'यह कर्मचारी पूरी टीम के साथ अच्छे से सहयोग करता/करती है।', category: 'TEAMWORK', level: 'BRANCH_MANAGER', isActive: true },
   { text: "This employee's presence positively impacts team morale.", textHindi: 'इस कर्मचारी की उपस्थिति टीम के मनोबल पर सकारात्मक प्रभाव डालती है।', category: 'TEAMWORK', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee actively mentors or helps newer colleagues.', textHindi: 'यह कर्मचारी नए सहकर्मियों का सक्रिय रूप से मार्गदर्शन या सहायता करता/करती है।', category: 'TEAMWORK', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee communicates openly across departments.', textHindi: 'यह कर्मचारी विभागों में खुले तौर पर संवाद करता/करती है।', category: 'TEAMWORK', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee builds constructive working relationships.', textHindi: 'यह कर्मचारी रचनात्मक कार्य संबंध बनाता/बनाती है।', category: 'TEAMWORK', level: 'BRANCH_MANAGER', isActive: true },
+  // INITIATIVE (5)
+  { text: 'This employee demonstrates leadership potential in their role.', textHindi: 'यह कर्मचारी अपनी भूमिका में नेतृत्व क्षमता प्रदर्शित करता/करती है।', category: 'INITIATIVE', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee shows responsibility beyond their job description.', textHindi: 'यह कर्मचारी अपने कार्य विवरण से परे जिम्मेदारी दिखाता/दिखाती है।', category: 'INITIATIVE', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee proposes ideas that improve branch operations.', textHindi: 'यह कर्मचारी ऐसे विचार प्रस्तुत करता/करती है जो शाखा संचालन में सुधार लाते हैं।', category: 'INITIATIVE', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee takes charge during critical situations.', textHindi: 'यह कर्मचारी महत्वपूर्ण स्थितियों के दौरान कमान संभालता/संभालती है।', category: 'INITIATIVE', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee voluntarily supports extra branch activities.', textHindi: 'यह कर्मचारी स्वेच्छा से अतिरिक्त शाखा गतिविधियों का समर्थन करता/करती है।', category: 'INITIATIVE', level: 'BRANCH_MANAGER', isActive: true },
+  // INTEGRITY (5)
+  { text: 'I can assign critical tasks to this employee with confidence.', textHindi: 'मैं इस कर्मचारी को आत्मविश्वास के साथ महत्वपूर्ण कार्य सौंप सकता/सकती हूँ।', category: 'INTEGRITY', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee takes ownership of mistakes and corrects them.', textHindi: 'यह कर्मचारी गलतियों की जिम्मेदारी लेता/लेती है और उन्हें सुधारता/सुधारती है।', category: 'INTEGRITY', level: 'BRANCH_MANAGER', isActive: true },
+  { text: 'This employee follows through on every commitment made.', textHindi: 'यह कर्मचारी की गई हर प्रतिबद्धता को पूरा करता/करती है।', category: 'INTEGRITY', level: 'BRANCH_MANAGER', isActive: true },
   { text: 'This employee represents the values of Akshaya Patra well.', textHindi: 'यह कर्मचारी अक्षय पात्र के मूल्यों का अच्छे से प्रतिनिधित्व करता/करती है।', category: 'INTEGRITY', level: 'BRANCH_MANAGER', isActive: true },
-  // CLUSTER MANAGER
+  { text: 'This employee is honest and transparent in all dealings.', textHindi: 'यह कर्मचारी सभी व्यवहारों में ईमानदार और पारदर्शी है।', category: 'INTEGRITY', level: 'BRANCH_MANAGER', isActive: true },
+
+  // ═════════════════════════ CLUSTER MANAGER (20) ═════════════════════════
+  // ATTENDANCE (2)
+  { text: 'This employee demonstrates dependable attendance across the cluster.', textHindi: 'यह कर्मचारी क्लस्टर में भरोसेमंद उपस्थिति प्रदर्शित करता/करती है।', category: 'ATTENDANCE', level: 'CLUSTER_MANAGER', isActive: true },
+  { text: 'This employee consistently shows up when the organization needs them.', textHindi: 'जब संगठन को आवश्यकता होती है तो यह कर्मचारी लगातार उपस्थित होता/होती है।', category: 'ATTENDANCE', level: 'CLUSTER_MANAGER', isActive: true },
+  // DISCIPLINE (3)
+  { text: 'This employee embodies organizational discipline at a high standard.', textHindi: 'यह कर्मचारी उच्च मानक पर संगठनात्मक अनुशासन का प्रतीक है।', category: 'DISCIPLINE', level: 'CLUSTER_MANAGER', isActive: true },
+  { text: 'This employee handles cross-branch coordination professionally.', textHindi: 'यह कर्मचारी शाखाओं के बीच समन्वय को पेशेवर तरीके से संभालता/संभालती है।', category: 'DISCIPLINE', level: 'CLUSTER_MANAGER', isActive: true },
+  { text: 'This employee adheres to policies even under stress.', textHindi: 'दबाव में भी यह कर्मचारी नीतियों का पालन करता/करती है।', category: 'DISCIPLINE', level: 'CLUSTER_MANAGER', isActive: true },
+  // PRODUCTIVITY (4)
   { text: 'This employee has made a measurable impact this quarter.', textHindi: 'इस कर्मचारी ने इस तिमाही में मापने योग्य प्रभाव डाला है।', category: 'PRODUCTIVITY', level: 'CLUSTER_MANAGER', isActive: true },
+  { text: "This employee's output contributes to cluster-wide performance.", textHindi: 'इस कर्मचारी का उत्पादन क्लस्टर-व्यापी प्रदर्शन में योगदान देता है।', category: 'PRODUCTIVITY', level: 'CLUSTER_MANAGER', isActive: true },
+  { text: 'This employee delivers results that other branches can learn from.', textHindi: 'यह कर्मचारी ऐसे परिणाम देता/देती है जिनसे अन्य शाखाएँ सीख सकती हैं।', category: 'PRODUCTIVITY', level: 'CLUSTER_MANAGER', isActive: true },
+  { text: 'This employee sustains high performance over the full quarter.', textHindi: 'यह कर्मचारी पूरी तिमाही में उच्च प्रदर्शन बनाए रखता/रखती है।', category: 'PRODUCTIVITY', level: 'CLUSTER_MANAGER', isActive: true },
+  // TEAMWORK (2)
+  { text: 'This employee strengthens collaboration within the cluster.', textHindi: 'यह कर्मचारी क्लस्टर के भीतर सहयोग को मजबूत करता/करती है।', category: 'TEAMWORK', level: 'CLUSTER_MANAGER', isActive: true },
+  { text: 'This employee builds trust across branches and teams.', textHindi: 'यह कर्मचारी शाखाओं और टीमों में विश्वास बनाता/बनाती है।', category: 'TEAMWORK', level: 'CLUSTER_MANAGER', isActive: true },
+  // INITIATIVE (4)
   { text: 'This employee demonstrates the qualities of a future leader.', textHindi: 'यह कर्मचारी भविष्य के नेता के गुण प्रदर्शित करता/करती है।', category: 'INITIATIVE', level: 'CLUSTER_MANAGER', isActive: true },
+  { text: 'This employee sets a standard for others in the organization.', textHindi: 'यह कर्मचारी संगठन में दूसरों के लिए एक मानक स्थापित करता/करती है।', category: 'INITIATIVE', level: 'CLUSTER_MANAGER', isActive: true },
+  { text: 'This employee drives improvements beyond their immediate role.', textHindi: 'यह कर्मचारी अपनी तात्कालिक भूमिका से आगे बढ़कर सुधार लाता/लाती है।', category: 'INITIATIVE', level: 'CLUSTER_MANAGER', isActive: true },
+  { text: 'This employee takes ownership of cluster-level initiatives.', textHindi: 'यह कर्मचारी क्लस्टर-स्तरीय पहलों की जिम्मेदारी लेता/लेती है।', category: 'INITIATIVE', level: 'CLUSTER_MANAGER', isActive: true },
+  // COMMUNICATION (2)
+  { text: 'This employee communicates effectively with cluster leadership.', textHindi: 'यह कर्मचारी क्लस्टर नेतृत्व के साथ प्रभावी ढंग से संवाद करता/करती है।', category: 'COMMUNICATION', level: 'CLUSTER_MANAGER', isActive: true },
+  { text: 'This employee escalates issues with clarity and context.', textHindi: 'यह कर्मचारी स्पष्टता और संदर्भ के साथ समस्याओं को आगे बढ़ाता/बढ़ाती है।', category: 'COMMUNICATION', level: 'CLUSTER_MANAGER', isActive: true },
+  // INTEGRITY (3)
   { text: 'This employee is reliable and trustworthy at the highest level.', textHindi: 'यह कर्मचारी उच्चतम स्तर पर विश्वसनीय और भरोसेमंद है।', category: 'INTEGRITY', level: 'CLUSTER_MANAGER', isActive: true },
   { text: 'This employee consistently upholds the mission of Akshaya Patra.', textHindi: 'यह कर्मचारी लगातार अक्षय पात्र के मिशन को बनाए रखता/रखती है।', category: 'INTEGRITY', level: 'CLUSTER_MANAGER', isActive: true },
-  { text: 'This employee sets a standard for others in the organization.', textHindi: 'यह कर्मचारी संगठन में दूसरों के लिए एक मानक स्थापित करता/करती है।', category: 'INITIATIVE', level: 'CLUSTER_MANAGER', isActive: true },
+  { text: 'This employee is a role model for ethical conduct in the cluster.', textHindi: 'यह कर्मचारी क्लस्टर में नैतिक आचरण के लिए एक आदर्श है।', category: 'INTEGRITY', level: 'CLUSTER_MANAGER', isActive: true },
 ];

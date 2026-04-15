@@ -25,6 +25,9 @@ model Branch {
   branchShortlist3   BranchShortlistStage3[]
   branchShortlist4   BranchShortlistStage4[]
   branchBestEmployees BranchBestEmployee[]
+  scopedUsers        User[]                     @relation("UserBranchScope")
+  hrAssignments      HrBranchAssignment[]
+  committeeAssignments CommitteeBranchAssignment[]
 
   @@map("branches")
 }
@@ -97,9 +100,20 @@ model User {
   empHodAssignmentsAsHod EmployeeHodAssignment[] @relation("HodAssigneeHod")
   empHodAssignmentsAsEmp EmployeeHodAssignment[] @relation("HodAssigneeEmp")
 
+  // Branch-level scope for BM/CM/HR/Committee users (no departmentId required)
+  branchId               String?
+  scopedBranch           Branch?                 @relation("UserBranchScope", fields: [branchId], references: [id])
+
+  // Secondary password used only by big-branch HODs when logging in as HOD-evaluator
+  passwordHod            String?
+
+  hrBranchAssignments    HrBranchAssignment[]
+  committeeBranchAssignments CommitteeBranchAssignment[]
+
   @@index([departmentId])
   @@index([role])
   @@index([departmentId, role])
+  @@index([branchId, role])
   @@map("users")
 }
 
@@ -113,7 +127,7 @@ model Quarter {
   questionCount         Int                        @default(15)
   bmQuestionCount       Int                        @default(15)
   hodQuestionCount      Int                        @default(15)
-  cmQuestionCount       Int                        @default(5)
+  cmQuestionCount       Int                        @default(10)
   createdAt             DateTime                   @default(now())
   updatedAt             DateTime                   @updatedAt
   bestEmployees         BestEmployee[]
@@ -688,6 +702,36 @@ model BranchBestEmployee {
   @@index([branchId, quarterId, collarType])
   @@index([userId])
   @@map("branch_best_employees")
+}
+
+/// HrBranchAssignment — links HR users to the branches they can evaluate
+model HrBranchAssignment {
+  id         String   @id @default(cuid())
+  hrUserId   String
+  branchId   String
+  assignedBy String
+  assignedAt DateTime @default(now())
+  hr         User     @relation(fields: [hrUserId], references: [id], onDelete: Cascade)
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([hrUserId, branchId])
+  @@index([branchId])
+  @@map("hr_branch_assignments")
+}
+
+/// CommitteeBranchAssignment — links Committee members to the branches they oversee
+model CommitteeBranchAssignment {
+  id           String   @id @default(cuid())
+  memberUserId String
+  branchId     String
+  assignedBy   String
+  assignedAt   DateTime @default(now())
+  member       User     @relation(fields: [memberUserId], references: [id], onDelete: Cascade)
+  branch       Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([memberUserId, branchId])
+  @@index([branchId])
+  @@map("committee_branch_assignments")
 }
 
 // ═══════════════════════════════════════════════════════════════

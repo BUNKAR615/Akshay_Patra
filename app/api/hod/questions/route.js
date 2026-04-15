@@ -7,7 +7,8 @@ import { ok, fail, serverError } from "../../../../lib/api-response";
 
 /**
  * GET /api/hod/questions
- * Returns HOD-level questions for the active quarter.
+ * Returns Branch-Manager-level questions for the active quarter.
+ * HOD evaluators in big branches reuse the BM question bank (no separate HOD bank).
  */
 export const GET = withRole(["HOD"], async (request, { user }) => {
     try {
@@ -15,7 +16,7 @@ export const GET = withRole(["HOD"], async (request, { user }) => {
         if (!quarter) return fail("No active quarter");
 
         const questions = await prisma.quarterQuestion.findMany({
-            where: { quarterId: quarter.id, question: { level: "HOD" } },
+            where: { quarterId: quarter.id, question: { level: "BRANCH_MANAGER" } },
             include: { question: { select: { id: true, text: true, textHindi: true, category: true, level: true } } },
             orderBy: { question: { category: "asc" } }
         });

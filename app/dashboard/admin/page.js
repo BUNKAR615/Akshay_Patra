@@ -695,14 +695,13 @@ export default function AdminDashboard() {
         { id: "summary", label: "Summary" },
         { id: "branches", label: "Branches" },
         { id: "org", label: "Org Structure" },
-        { id: "hodassign", label: "Assign HODs" },
         { id: "quarter", label: "Quarter" },
         { id: "questions", label: "Questions" },
         { id: "employees", label: "All Employees" },
         { id: "logs", label: "Audit Logs" },
     ];
     const CATEGORIES = ["ATTENDANCE", "DISCIPLINE", "PRODUCTIVITY", "TEAMWORK", "INITIATIVE", "COMMUNICATION", "INTEGRITY"];
-    const LEVELS = ["SELF", "SUPERVISOR", "HOD", "BRANCH_MANAGER", "CLUSTER_MANAGER", "HR"];
+    const LEVELS = ["SELF", "BRANCH_MANAGER", "CLUSTER_MANAGER"];
 
     // Filtered + grouped questions
     const filteredQuestions = questions.filter((q) => {
@@ -1691,9 +1690,11 @@ export default function AdminDashboard() {
                             <select value={empFilter.role} onChange={(e) => setEmpFilter({ ...empFilter, role: e.target.value })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-40">
                                 <option value="">All Roles</option>
                                 <option value="EMPLOYEE">Employee</option>
-                                <option value="SUPERVISOR">Supervisor</option>
                                 <option value="BRANCH_MANAGER">Branch Manager</option>
                                 <option value="CLUSTER_MANAGER">Cluster Manager</option>
+                                <option value="HOD">HOD</option>
+                                <option value="HR">HR</option>
+                                <option value="COMMITTEE">Committee</option>
                                 <option value="ADMIN">Admin</option>
                             </select>
                             <button onClick={() => { setShowAddEmp(!showAddEmp); setAddMsg({ type: "", text: "" }); }} className="col-span-1 h-10 px-3 sm:px-4 bg-[#00843D] hover:bg-[#006B32] text-white text-xs sm:text-sm font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors">
@@ -2162,9 +2163,11 @@ export default function AdminDashboard() {
                                     <select value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })}
                                         className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]">
                                         <option value="EMPLOYEE">Employee</option>
-                                        <option value="SUPERVISOR">Supervisor</option>
                                         <option value="BRANCH_MANAGER">Branch Manager</option>
                                         <option value="CLUSTER_MANAGER">Cluster Manager</option>
+                                        <option value="HOD">HOD</option>
+                                        <option value="HR">HR</option>
+                                        <option value="COMMITTEE">Committee</option>
                                     </select>
                                 </div>
 

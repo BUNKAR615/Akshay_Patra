@@ -69,22 +69,6 @@ function selectSelfQuestions(questions, count) {
 }
 
 /**
- * Select SUPERVISOR questions: ≥2 from PERFORMANCE, rest from BEHAVIOR/RELIABILITY.
- */
-function selectSupervisorQuestions(questions, count) {
-    const performance = questions.filter(q => q.category === "PERFORMANCE");
-    const others = questions.filter(q => q.category !== "PERFORMANCE");
-
-    const perfPicks = fisherYatesShuffle(performance).slice(0, Math.min(2, performance.length));
-    const usedIds = new Set(perfPicks.map(q => q.id));
-    const otherPool = fisherYatesShuffle(others.filter(q => !usedIds.has(q.id)));
-    const remaining = count - perfPicks.length;
-    const otherPicks = otherPool.slice(0, remaining);
-
-    return fisherYatesShuffle([...perfPicks, ...otherPicks]);
-}
-
-/**
  * Simple random selection for BM / CM levels.
  */
 function selectSimple(questions, count) {
@@ -124,18 +108,14 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         }
 
         // ── Fetch active questions per level ──
+        // Note: HOD evaluators reuse the BRANCH_MANAGER question bank, so there is no separate HOD level.
         const selfQuestions = await prisma.question.findMany({ where: { level: "SELF", isActive: true } });
-        const supQuestions = await prisma.question.findMany({ where: { level: "SUPERVISOR", isActive: true } });
         const bmQuestions = await prisma.question.findMany({ where: { level: "BRANCH_MANAGER", isActive: true } });
         const cmQuestions = await prisma.question.findMany({ where: { level: "CLUSTER_MANAGER", isActive: true } });
 
-        // ── NEW: Also fetch HOD questions ──
-        const hodQuestions = await prisma.question.findMany({ where: { level: "HOD", isActive: true } });
-
         const selfCount = data.questionCount; // strictly admin-set
         const bmCount = data.bmQuestionCount || 15;
-        const hodCount = data.hodQuestionCount || 15;
-        const cmCount = data.cmQuestionCount || 5;
+        const cmCount = data.cmQuestionCount || 10;
 
         // Validate sufficient questions
         if (selfQuestions.length < selfCount) {
@@ -147,28 +127,21 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         if (cmQuestions.length < cmCount) {
             return fail(`Not enough active CLUSTER_MANAGER questions. Need ${cmCount}, found ${cmQuestions.length}. Add more questions.`);
         }
-        // HOD questions only required if there are big branches
-        const bigBranches = await prisma.branch.findMany({ where: { branchType: "BIG" } });
-        if (bigBranches.length > 0 && hodQuestions.length < hodCount) {
-            return fail(`Not enough active HOD questions. Need ${hodCount}, found ${hodQuestions.length}. Add more questions (big branches require HOD questions).`);
-        }
 
         // ── Select random questions per level ──
         const selectedSelf = selectSelfQuestions(selfQuestions, selfCount);
         const selectedBm = selectSimple(bmQuestions, bmCount);
         const selectedCm = selectSimple(cmQuestions, cmCount);
-        const selectedHod = hodQuestions.length >= hodCount ? selectSimple(hodQuestions, hodCount) : [];
 
         const allSelectedIds = [
             ...selectedSelf.map(q => q.id),
             ...selectedBm.map(q => q.id),
             ...selectedCm.map(q => q.id),
-            ...selectedHod.map(q => q.id),
         ];
 
         const { quarter, assignmentStats } = await prisma.$transaction(async (tx) => {
             const q = await tx.quarter.create({
-                data: { name: data.quarterName, status: "ACTIVE", startDate: start, endDate: end, questionCount: data.questionCount, bmQuestionCount: bmCount, hodQuestionCount: hodCount, cmQuestionCount: cmCount },
+                data: { name: data.quarterName, status: "ACTIVE", startDate: start, endDate: end, questionCount: data.questionCount, bmQuestionCount: bmCount, hodQuestionCount: bmCount, cmQuestionCount: cmCount },
             });
             await tx.quarterQuestion.createMany({
                 data: allSelectedIds.map((questionId) => ({ quarterId: q.id, questionId })),
@@ -183,7 +156,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         console.log("Saved to DB (Quarter):", quarter);
 
         await prisma.auditLog.create({
-            data: { userId: user.userId, action: "QUARTER_STARTED", details: { quarterId: quarter.id, name: quarter.name, questionCount: data.questionCount, totalLocked: allSelectedIds.length, selfCount: selectedSelf.length, bmCount: selectedBm.length, hodCount: selectedHod.length, cmCount: selectedCm.length } },
+            data: { userId: user.userId, action: "QUARTER_STARTED", details: { quarterId: quarter.id, name: quarter.name, questionCount: data.questionCount, totalLocked: allSelectedIds.length, selfCount: selectedSelf.length, bmCount: selectedBm.length, cmCount: selectedCm.length } },
         });
 
         // Notify all employees
@@ -248,19 +221,20 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             include: { quarterQuestions: { include: { question: { select: { id: true, text: true, textHindi: true, category: true, level: true } } } } },
         });
 
-        const deptsWithoutSupervisor = await prisma.department.findMany({
-            where: { departmentRoles: { none: { role: "SUPERVISOR" } } },
+        // Warn on branches without BM assigned
+        const branchesWithoutBm = await prisma.branch.findMany({
+            where: { scopedUsers: { none: { role: "BRANCH_MANAGER" } } },
             select: { name: true },
         });
 
         let warningMsg = "";
-        if (deptsWithoutSupervisor.length > 0) {
-            const names = deptsWithoutSupervisor.map(d => d.name).join(", ");
-            warningMsg = ` WARNING: ${deptsWithoutSupervisor.length} department(s) have no assigned supervisor (${names}). Employees there cannot submit assessments!`;
+        if (branchesWithoutBm.length > 0) {
+            const names = branchesWithoutBm.map(b => b.name).join(", ");
+            warningMsg = ` WARNING: ${branchesWithoutBm.length} branch(es) have no assigned Branch Manager (${names}). Stage 2 evaluations in those branches cannot proceed!`;
         }
 
         const responseData = {
-            message: `Quarter "${data.quarterName}" started with ${allSelectedIds.length} questions locked (${selectedSelf.length} SELF, ${selectedBm.length} BM, ${selectedHod.length} HOD, ${selectedCm.length} CM). ${assignmentStats.totalEmployees} employees assigned unique question sets.${warningMsg}`,
+            message: `Quarter "${data.quarterName}" started with ${allSelectedIds.length} questions locked (${selectedSelf.length} SELF, ${selectedBm.length} BM, ${selectedCm.length} CM). ${assignmentStats.totalEmployees} employees assigned unique question sets.${warningMsg}`,
             quarter: result,
             assignmentStats,
         };

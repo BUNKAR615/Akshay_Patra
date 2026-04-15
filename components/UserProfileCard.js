@@ -2,9 +2,11 @@
 
 const ROLE_LABELS = {
     EMPLOYEE: "Employee",
-    SUPERVISOR: "Supervisor",
+    HOD: "HOD",
     BRANCH_MANAGER: "Branch Manager",
     CLUSTER_MANAGER: "Cluster Manager",
+    HR: "HR",
+    COMMITTEE: "Committee",
     ADMIN: "Admin",
 };
 
@@ -12,7 +14,9 @@ const ROLE_COLORS = {
     ADMIN: "bg-purple-100 text-purple-700 border-purple-300",
     CLUSTER_MANAGER: "bg-red-100 text-red-700 border-red-300",
     BRANCH_MANAGER: "bg-orange-100 text-orange-700 border-orange-300",
-    SUPERVISOR: "bg-blue-100 text-blue-700 border-blue-300",
+    HOD: "bg-purple-100 text-purple-700 border-purple-300",
+    HR: "bg-sky-100 text-sky-700 border-sky-300",
+    COMMITTEE: "bg-amber-100 text-amber-700 border-amber-300",
     EMPLOYEE: "bg-green-100 text-green-700 border-green-300",
 };
 

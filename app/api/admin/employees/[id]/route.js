@@ -74,17 +74,9 @@ export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
             },
         });
 
-        // Clean up department FK shortcuts if this user was a supervisor/BM
+        // Clean up department FK shortcuts if this user was a BM
         const deptUpdates = [];
         for (const dr of employee.departmentRoles) {
-            if (dr.role === "SUPERVISOR") {
-                deptUpdates.push(
-                    prisma.department.updateMany({
-                        where: { id: dr.departmentId, supervisorId: id },
-                        data: { supervisorId: null },
-                    })
-                );
-            }
             if (dr.role === "BRANCH_MANAGER") {
                 deptUpdates.push(
                     prisma.department.updateMany({
@@ -192,7 +184,7 @@ export const PATCH = withRole(["ADMIN"], async (request, { params, user }) => {
         }
 
         // Role
-        const validRoles = ["EMPLOYEE", "SUPERVISOR", "BRANCH_MANAGER", "CLUSTER_MANAGER", "ADMIN"];
+        const validRoles = ["EMPLOYEE", "BRANCH_MANAGER", "CLUSTER_MANAGER", "HOD", "HR", "COMMITTEE", "ADMIN"];
         if (role !== undefined && role !== employee.role && validRoles.includes(role)) {
             updateData.role = role;
             changes.push(`Role changed from "${employee.role}" to "${role}"`);

@@ -44,10 +44,6 @@ export const GET = withRole(["ADMIN"], async () => {
             .filter((dept) => dept._count.users > 0 || dept.departmentRoles.length > 0)
             .map((dept) => {
                 const roles = dept.departmentRoles;
-                const supervisors = roles.filter((r) => r.role === "SUPERVISOR").map(r => ({
-                    ...r.user,
-                    mappedRole: "SUPERVISOR",
-                }));
                 const branchManagers = roles.filter((r) => r.role === "BRANCH_MANAGER").map(r => ({
                     ...r.user,
                     mappedRole: "BRANCH_MANAGER",
@@ -92,8 +88,6 @@ export const GET = withRole(["ADMIN"], async () => {
                     branchType: dept.branch.branchType,
                     collarType: dept.collarType,
                     employeeCount: dept._count.users,
-                    supervisor: supervisors[0] || null,
-                    supervisors,
                     branchManager: branchManagers[0] || null,
                     branchManagers,
                     clusterManagers,

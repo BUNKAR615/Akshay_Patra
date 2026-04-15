@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import DashboardShell from "../../../components/DashboardShell";
 import EvaluationForm from "../../../components/EvaluationForm";
 import UserProfileCard from "../../../components/UserProfileCard";
+import * as XLSX from "xlsx";
 
 async function api(url, opts) {
     const res = await fetch(url, opts);
@@ -45,6 +46,18 @@ export default function BranchManagerDashboard() {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const [isMultiDept, setIsMultiDept] = useState(false);
+    const [bmTab, setBmTab] = useState("evaluate");
+
+    // Manage tab state
+    const [manageEmployees, setManageEmployees] = useState([]);
+    const [manageDepts, setManageDepts] = useState([]);
+    const [manageLoading, setManageLoading] = useState(false);
+    const [manageMsg, setManageMsg] = useState({ text: "", type: "" });
+    const [uploadFile, setUploadFile] = useState(null);
+    const [uploading, setUploading] = useState(false);
+    const [editDeptId, setEditDeptId] = useState(null);
+    const [editDeptName, setEditDeptName] = useState("");
+    const fileInputRef = useRef(null);
 
     // HOD assignment state (BIG branches only)
     const [hodAssignments, setHodAssignments] = useState([]);
@@ -169,6 +182,64 @@ export default function BranchManagerDashboard() {
         }
     };
 
+    // ── Manage tab helpers ──
+    const fetchManageData = async () => {
+        setManageLoading(true);
+        try {
+            const branchId = user?.branchId || "";
+            if (!branchId) return;
+            const [empData, deptData] = await Promise.all([
+                api(`/api/admin/branches/${branchId}/employees`),
+                api(`/api/admin/branches/${branchId}/departments`),
+            ]);
+            setManageEmployees(empData.employees || []);
+            setManageDepts(deptData.departments || []);
+        } catch (e) {
+            setManageMsg({ text: e.message, type: "error" });
+        } finally {
+            setManageLoading(false);
+        }
+    };
+
+    const handleBulkUpload = async () => {
+        if (!uploadFile) return;
+        setUploading(true);
+        setManageMsg({ text: "", type: "" });
+        try {
+            const fd = new FormData();
+            fd.append("file", uploadFile);
+            const data = await api("/api/branch-manager/employees/bulk-upload", { method: "POST", body: fd });
+            setManageMsg({
+                text: `Upload complete: ${data.employeesCreated} created, ${data.employeesUpdated} updated, ${data.departmentsCreated?.length || 0} new depts${data.errors?.length ? `, ${data.errors.length} errors` : ""}`,
+                type: data.errors?.length ? "error" : "success",
+            });
+            setUploadFile(null);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+            fetchManageData();
+        } catch (e) {
+            setManageMsg({ text: e.message, type: "error" });
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleRenameDept = async (deptId) => {
+        if (!editDeptName.trim()) return;
+        setManageMsg({ text: "", type: "" });
+        try {
+            await api(`/api/branch-manager/departments/${deptId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: editDeptName.trim() }),
+            });
+            setManageMsg({ text: "Department renamed!", type: "success" });
+            setEditDeptId(null);
+            fetchManageData();
+        } catch (e) {
+            setManageMsg({ text: e.message, type: "error" });
+        }
+    };
+
     const handleEvaluate = async (answers) => {
         setError(""); setSuccess("");
         try {
@@ -230,8 +301,120 @@ export default function BranchManagerDashboard() {
                 />
             )}
 
-            {/* Branch Stats Panel */}
-            {bmStats && (
+            {/* Tab Switcher */}
+            <div className="flex gap-2 mb-6">
+                {[{ id: "evaluate", label: "Evaluate" }, { id: "manage", label: "Manage" }].map(t => (
+                    <button
+                        key={t.id}
+                        onClick={() => { setBmTab(t.id); if (t.id === "manage" && manageEmployees.length === 0) fetchManageData(); }}
+                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${bmTab === t.id ? "bg-[#003087] text-white shadow-sm" : "bg-[#F5F5F5] text-[#333] hover:bg-[#E0E0E0]"}`}
+                    >
+                        {t.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* ═══════ MANAGE TAB ═══════ */}
+            {bmTab === "manage" && (
+                <div className="space-y-6">
+                    {manageMsg.text && (
+                        <div className={`p-3 rounded-lg text-sm font-medium ${manageMsg.type === "error" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
+                            {manageMsg.text}
+                        </div>
+                    )}
+
+                    {/* Bulk Upload */}
+                    <div className="bg-white border border-[#E0E0E0] rounded-xl p-5">
+                        <h3 className="text-[16px] font-bold text-[#003087] mb-3">Employee Bulk Upload</h3>
+                        <p className="text-[12px] text-[#666] mb-3">Upload an Excel file with columns: empCode, name, department, collar (BLUE_COLLAR/WHITE_COLLAR), designation, mobile</p>
+                        <div className="flex flex-wrap gap-3 items-center">
+                            <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={e => setUploadFile(e.target.files?.[0] || null)} className="text-sm" />
+                            <button onClick={handleBulkUpload} disabled={!uploadFile || uploading} className="px-4 py-2 bg-[#003087] text-white rounded-lg text-sm font-bold hover:bg-[#002266] cursor-pointer disabled:opacity-50">
+                                {uploading ? "Uploading..." : "Upload"}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Departments */}
+                    <div className="bg-white border border-[#E0E0E0] rounded-xl p-5">
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-[16px] font-bold text-[#003087]">Departments ({manageDepts.length})</h3>
+                            <button onClick={fetchManageData} className="text-xs px-3 py-1 bg-gray-100 rounded hover:bg-gray-200 cursor-pointer font-bold">Refresh</button>
+                        </div>
+                        {manageLoading ? (
+                            <div className="text-center py-4 text-gray-500 text-sm">Loading...</div>
+                        ) : (
+                            <div className="space-y-2">
+                                {manageDepts.map(d => (
+                                    <div key={d.id} className="flex items-center justify-between bg-[#F9FAFB] rounded-lg px-4 py-3">
+                                        {editDeptId === d.id ? (
+                                            <div className="flex items-center gap-2">
+                                                <input value={editDeptName} onChange={e => setEditDeptName(e.target.value)} className="border rounded px-2 py-1 text-sm w-40" autoFocus onKeyDown={e => e.key === "Enter" && handleRenameDept(d.id)} />
+                                                <button onClick={() => handleRenameDept(d.id)} className="text-xs px-2 py-1 bg-[#003087] text-white rounded font-bold cursor-pointer">Save</button>
+                                                <button onClick={() => setEditDeptId(null)} className="text-xs px-2 py-1 bg-gray-200 rounded font-bold cursor-pointer">Cancel</button>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-medium text-sm">{d.name}</span>
+                                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${d.collarType === "WHITE_COLLAR" ? "bg-gray-100 text-gray-600" : "bg-blue-50 text-blue-600"}`}>
+                                                    {d.collarType === "WHITE_COLLAR" ? "WC" : "BC"}
+                                                </span>
+                                                <button onClick={() => { setEditDeptId(d.id); setEditDeptName(d.name); }} className="text-[10px] px-2 py-0.5 bg-gray-100 rounded hover:bg-gray-200 cursor-pointer">Rename</button>
+                                            </div>
+                                        )}
+                                        <span className="text-[12px] text-[#666]">{d.employeeCount} emp</span>
+                                    </div>
+                                ))}
+                                {manageDepts.length === 0 && <p className="text-sm text-gray-500 text-center py-2">No departments</p>}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Employee Table */}
+                    <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden">
+                        <div className="px-5 py-3 border-b border-[#E0E0E0] flex items-center justify-between">
+                            <h3 className="text-[16px] font-bold text-[#003087]">Employees ({manageEmployees.length})</h3>
+                        </div>
+                        {manageLoading ? (
+                            <div className="text-center py-8 text-gray-500 text-sm">Loading...</div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="bg-[#F5F5F5] text-left">
+                                            <th className="px-4 py-2 font-bold text-[11px] text-[#999] uppercase">Emp Code</th>
+                                            <th className="px-4 py-2 font-bold text-[11px] text-[#999] uppercase">Name</th>
+                                            <th className="px-4 py-2 font-bold text-[11px] text-[#999] uppercase">Department</th>
+                                            <th className="px-4 py-2 font-bold text-[11px] text-[#999] uppercase">Designation</th>
+                                            <th className="px-4 py-2 font-bold text-[11px] text-[#999] uppercase">Collar</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-[#F0F0F0]">
+                                        {manageEmployees.filter(e => e.role === "EMPLOYEE").map(emp => (
+                                            <tr key={emp.id} className="hover:bg-[#FAFAFA]">
+                                                <td className="px-4 py-2 font-mono text-[12px] font-bold text-[#003087]">{emp.empCode || "—"}</td>
+                                                <td className="px-4 py-2 font-medium">{emp.name}</td>
+                                                <td className="px-4 py-2 text-[#666]">{emp.department?.name || "—"}</td>
+                                                <td className="px-4 py-2 text-[#666]">{emp.designation || "—"}</td>
+                                                <td className="px-4 py-2">
+                                                    {emp.collarType ? (
+                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${emp.collarType === "WHITE_COLLAR" ? "bg-gray-100 text-gray-600" : "bg-blue-50 text-blue-600"}`}>
+                                                            {emp.collarType === "WHITE_COLLAR" ? "WC" : "BC"}
+                                                        </span>
+                                                    ) : "—"}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ═══════ EVALUATE TAB ═══════ */}
+            {bmTab === "evaluate" && bmStats && (
                 <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 sm:p-5 mb-6 shadow-sm">
                     <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                         <div>
@@ -292,8 +475,8 @@ export default function BranchManagerDashboard() {
                 </div>
             )}
 
-            {/* Big Branch Info Banner */}
-            {isBigBranch && (
+            {/* Remaining evaluate-tab content */}
+            {bmTab === "evaluate" && isBigBranch && (
                 <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-xl p-5 mb-8 shadow-sm">
                     <div className="flex items-start gap-4">
                         <div className="w-10 h-10 rounded-full bg-[#F7941D]/10 flex items-center justify-center shrink-0 border border-[#FFE082]">
@@ -314,7 +497,7 @@ export default function BranchManagerDashboard() {
             )}
 
             {/* HOD Assignment Panel — BIG branches only */}
-            {isBigBranch && (
+            {bmTab === "evaluate" && isBigBranch && (
                 <div className="bg-white border border-[#E0E0E0] rounded-xl p-6 mb-8 shadow-sm">
                     <div className="flex items-center gap-3 mb-5">
                         <div className="w-10 h-10 rounded-full bg-[#003087]/10 flex items-center justify-center shrink-0">
@@ -443,6 +626,7 @@ export default function BranchManagerDashboard() {
                 </div>
             )}
 
+            {bmTab === "evaluate" && <>
             {/* Department Selector — shown only if BM has multiple departments */}
             {isMultiDept && (
                 <div className="bg-[#E8F5E9] border border-[#A5D6A7] rounded-xl p-5 mb-8 shadow-sm">
@@ -595,6 +779,7 @@ export default function BranchManagerDashboard() {
                     )}
                 </div>
             )}
+            </>}
         </DashboardShell>
     );
 }

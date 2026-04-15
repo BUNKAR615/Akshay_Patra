@@ -510,9 +510,11 @@ export default function HRDashboard() {
                             <select value={empFilter.role} onChange={(e) => setEmpFilter({ ...empFilter, role: e.target.value })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] w-full sm:w-40">
                                 <option value="">All Roles</option>
                                 <option value="EMPLOYEE">Employee</option>
-                                <option value="SUPERVISOR">Supervisor</option>
                                 <option value="BRANCH_MANAGER">Branch Manager</option>
                                 <option value="CLUSTER_MANAGER">Cluster Manager</option>
+                                <option value="HOD">HOD</option>
+                                <option value="HR">HR</option>
+                                <option value="COMMITTEE">Committee</option>
                                 <option value="ADMIN">Admin</option>
                             </select>
                         </div>
@@ -542,7 +544,7 @@ export default function HRDashboard() {
                                             <td className="px-5 py-3 text-sm font-bold text-[#003087]">{e.name}</td>
                                             <td className="px-5 py-3 text-sm text-[#333333]">{e.department}{e.evaluatorRoles?.length > 0 && <span className="block text-[10px] text-[#666666] mt-0.5">{e.evaluatorRoles.map(er => `${er.role.replace("_"," ")} \u2014 ${er.department}`).join(", ")}</span>}</td>
                                             <td className="px-5 py-3 text-sm text-[#666666]">{e.designation}</td>
-                                            <td className="px-5 py-3"><div className="flex flex-wrap gap-1">{roles.map(r => <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-700 border-gray-200" : r === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace("_", " ")}</span>)}</div></td>
+                                            <td className="px-5 py-3"><div className="flex flex-wrap gap-1">{roles.map(r => <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-700 border-gray-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : r === "HOD" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace("_", " ")}</span>)}</div></td>
                                             <td className="px-5 py-3">
                                                 {!isAdmin && <button onClick={() => setRemoveId(e.id)} className="text-xs px-3 py-1 bg-red-50 text-red-700 border border-red-200 rounded-full font-bold hover:bg-red-100 cursor-pointer">Remove</button>}
                                             </td>

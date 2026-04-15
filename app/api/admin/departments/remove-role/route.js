@@ -9,7 +9,7 @@ import { z } from "zod";
 const removeRoleSchema = z.object({
     userId: z.string().min(1),
     departmentId: z.string().min(1),
-    role: z.enum(["SUPERVISOR", "BRANCH_MANAGER", "CLUSTER_MANAGER"]),
+    role: z.enum(["HOD", "BRANCH_MANAGER", "CLUSTER_MANAGER", "HR", "COMMITTEE"]),
 });
 
 /**
@@ -31,9 +31,7 @@ export const DELETE = withRole(["ADMIN"], async (request, { user }) => {
             await tx.DepartmentRoleMapping.delete({ where: { id: existing.id } });
 
             // Clear department FK shortcuts
-            if (data.role === "SUPERVISOR") {
-                await tx.department.update({ where: { id: data.departmentId }, data: { supervisorId: null } });
-            } else if (data.role === "BRANCH_MANAGER") {
+            if (data.role === "BRANCH_MANAGER") {
                 await tx.department.update({ where: { id: data.departmentId }, data: { branchManagerId: null } });
             }
         });

@@ -41,8 +41,14 @@ export default function UnauthorizedPage() {
             case "BRANCH_MANAGER":
                 router.push("/dashboard/branch-manager");
                 break;
-            case "SUPERVISOR":
-                router.push("/dashboard/supervisor");
+            case "HOD":
+                router.push("/dashboard/hod");
+                break;
+            case "HR":
+                router.push("/dashboard/hr");
+                break;
+            case "COMMITTEE":
+                router.push("/dashboard/committee");
                 break;
             default:
                 router.push("/dashboard/employee");

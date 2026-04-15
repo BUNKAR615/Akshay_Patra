@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import DashboardShell from "../../../components/DashboardShell";
 import TimedEvaluationForm from "../../../components/TimedEvaluationForm";
-import { PageSpinner, SkeletonCard } from "../../../components/Skeleton";
+import { SkeletonCard } from "../../../components/Skeleton";
 
 async function api(url, opts) {
     const res = await fetch(url, opts);
@@ -11,7 +11,7 @@ async function api(url, opts) {
     if (!res.ok) {
         if (res.status === 401) {
             window.location.replace("/login");
-            return new Promise(() => { }); // never resolves, waits for redirect
+            return new Promise(() => { });
         }
         throw new Error(json.message || "Something went wrong. Please try again in a moment.");
     }
@@ -19,74 +19,17 @@ async function api(url, opts) {
     return json.data;
 }
 
-const STAGE_COLORS = {
-    completed: "emerald", shortlisted: "amber", evaluated: "sky",
-    pending: "gray", winner: "amber",
-};
-
-function StagePill({ status }) {
-    const labels = { completed: "Completed", shortlisted: "Shortlisted ✓", evaluated: "Evaluated", pending: "⏳ Pending", winner: "🏆 Winner!" };
-    const colors = { completed: "emerald", shortlisted: "amber", evaluated: "sky", pending: "gray", winner: "amber" };
-    const c = colors[status] || "gray";
-    return (
-        <span className={`text-[12px] px-2.5 py-1 rounded-full bg-${c}-500/10 text-${c}-500 border border-${c}-500/20 font-bold`}>
-            {labels[status] || status}
-        </span>
-    );
-}
-
 export default function EmployeeDashboard() {
     const [user, setUser] = useState(null);
     const [currentQuarterName, setCurrentQuarterName] = useState("");
-    const [tab, setTab] = useState("current");
-
-    // Current status state
     const [status, setStatus] = useState(null);
     const [questions, setQuestions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [successMsg, setSuccessMsg] = useState("");
 
-    // History state
-    const [history, setHistory] = useState([]);
-    const [historyLoaded, setHistoryLoaded] = useState(false);
-
-    // ── Safe fetch for employee status ──
-    const fetchStatus = async () => {
-        try {
-            setLoading(true);
-            setError(null);
-
-            const res = await fetch("/api/employee/current-status", {
-                headers: { "Content-Type": "application/json" },
-            });
-
-            // Handle non-200 responses gracefully
-            if (!res.ok) {
-                const errorData = await res.json().catch(() => ({}));
-                console.error("Status API error:", res.status, errorData);
-                setError("Unable to load quarter information.");
-                return;
-            }
-
-            const json = await res.json();
-
-            if (json.success) {
-                setStatus(json.data);
-            } else {
-                setError("Unable to load data. Please try again.");
-            }
-        } catch (err) {
-            console.error("Fetch error:", err);
-            setError("Connection error. Please check your internet.");
-        } finally {
-            setLoading(false);
-        }
-    };
-
     useEffect(() => {
         (async () => {
-            // Load user profile, status, and questions in parallel
             const [meResult, statusResult, questionsResult] = await Promise.allSettled([
                 api("/api/auth/me"),
                 fetch("/api/employee/current-status", { headers: { "Content-Type": "application/json" } }).then(async (res) => {
@@ -114,18 +57,6 @@ export default function EmployeeDashboard() {
         })();
     }, []);
 
-    useEffect(() => {
-        if (tab === "history" && !historyLoaded) {
-            (async () => {
-                try {
-                    const h = await api("/api/employee/history");
-                    setHistory(h.history);
-                    setHistoryLoaded(true);
-                } catch { }
-            })();
-        }
-    }, [tab, historyLoaded]);
-
     const handleConfirmedSubmit = async ({ answers, completionTimeSeconds }) => {
         setError(null);
         setSuccessMsg("");
@@ -135,20 +66,15 @@ export default function EmployeeDashboard() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ answers, completionTimeSeconds }),
             });
-            // Re-fetch from current-status for full data (submitted answers, stages, etc.)
             try {
                 const st = await api("/api/employee/current-status");
                 setStatus(st);
-            } catch {
-                // Fallback: at least refresh from /status
-                await fetchStatus();
-            }
+            } catch { /* ignore */ }
             setQuestions([]);
-           
-            setSuccessMsg("Assessment submitted successfully! मूल्यांकन सफलतापूर्वक जमा किया गया।!");
+            setSuccessMsg("Assessment submitted successfully! मूल्यांकन सफलतापूर्वक जमा किया गया।");
             window.scrollTo({ top: 0, behavior: "smooth" });
         } catch (e) {
-            throw e; // Rethrow so EvaluationForm handles the error state internally
+            throw e;
         }
     };
 
@@ -163,282 +89,102 @@ export default function EmployeeDashboard() {
         );
     }
 
-    const TABS = [
-        { id: "current", label: "Current Quarter" },
-        { id: "history", label: "My History" },
-    ];
+    const dept = user?.department?.name || user?.departmentName || "—";
 
     return (
         <DashboardShell user={user} currentQuarter={currentQuarterName} title="Employee Dashboard">
-            {/* Simplified Profile Row — only name, empCode, branch, dept, collar */}
-            {user && (() => {
-                const branch = user.department?.branch?.name || user.branchName || user.branch || "—";
-                const dept = user.department?.name || user.departmentName || (user.departmentRoles?.length > 0 ? user.departmentRoles[0].department?.name : null) || "—";
-                const collarRaw = user.collarType || user.department?.collarType || (user.departmentRoles?.length > 0 ? user.departmentRoles[0].department?.collarType : null);
-                const isWhite = collarRaw === "WHITE_COLLAR" || collarRaw === "WHITE";
-                const collarLabel = collarRaw ? (isWhite ? "White Collar" : "Blue Collar") : null;
-                return (
-                    <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 mb-6 shadow-sm">
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-3">
-                            <div>
-                                <p className="text-[11px] text-[#999999] font-bold uppercase tracking-wider">Name</p>
-                                <p className="text-[14px] font-bold text-[#003087]">{user.name}</p>
-                            </div>
-                            <div>
-                                <p className="text-[11px] text-[#999999] font-bold uppercase tracking-wider">Employee ID</p>
-                                <p className="text-[14px] font-bold text-[#333333]">{user.empCode || "—"}</p>
-                            </div>
-                            <div>
-                                <p className="text-[11px] text-[#999999] font-bold uppercase tracking-wider">Branch</p>
-                                <p className="text-[14px] font-bold text-[#333333]">{branch}</p>
-                            </div>
-                            <div>
-                                <p className="text-[11px] text-[#999999] font-bold uppercase tracking-wider">Department</p>
-                                <p className="text-[14px] font-bold text-[#333333]">{dept}</p>
-                            </div>
-                            <div>
-                                <p className="text-[11px] text-[#999999] font-bold uppercase tracking-wider">Collar</p>
-                                {collarLabel ? (
-                                    <span className={`text-[12px] px-2.5 py-0.5 rounded-full font-bold inline-block mt-0.5 ${isWhite ? "bg-[#E3F2FD] text-[#003087] border border-[#90CAF9]" : "bg-[#FFF3E0] text-[#E65100] border border-[#FFCC80]"}`}>
-                                        {collarLabel}
-                                    </span>
-                                ) : (
-                                    <p className="text-[14px] font-bold text-[#333333]">—</p>
-                                )}
-                            </div>
+            {/* Minimal profile header — name, empCode, department only */}
+            {user && (
+                <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 mb-6 shadow-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-3">
+                        <div>
+                            <p className="text-[11px] text-[#999999] font-bold uppercase tracking-wider">Name</p>
+                            <p className="text-[16px] font-bold text-[#003087]">{user.name}</p>
+                        </div>
+                        <div>
+                            <p className="text-[11px] text-[#999999] font-bold uppercase tracking-wider">Employee ID</p>
+                            <p className="text-[16px] font-bold text-[#333333]">{user.empCode || "—"}</p>
+                        </div>
+                        <div>
+                            <p className="text-[11px] text-[#999999] font-bold uppercase tracking-wider">Department</p>
+                            <p className="text-[16px] font-bold text-[#333333]">{dept}</p>
                         </div>
                     </div>
-                );
-            })()}
-
-            {/* Tab Switcher */}
-            <div className="flex gap-2 bg-[#F5F5F5] rounded-xl p-1.5 mb-8 border border-[#E0E0E0] w-fit">
-                {TABS.map((t) => (
-                    <button key={t.id} onClick={() => setTab(t.id)}
-                        className={`min-h-[44px] min-w-[80px] px-6 py-2 rounded-lg text-[14px] font-bold transition-all cursor-pointer ${tab === t.id ? "bg-[#003087] text-white shadow" : "text-[#666666] hover:text-[#003087] hover:bg-white border border-transparent"}`}
-                    >{t.label}</button>
-                ))}
-            </div>
+                </div>
+            )}
 
             {error && (
                 <div className="mb-6 p-4 bg-[#FFEBEE] border-l-4 border-[#D32F2F] rounded-r-lg shadow-sm">
                     <p className="text-[#D32F2F] text-[14px] font-bold">⚠ {error}</p>
-                    <button
-                        onClick={fetchStatus}
-                        className="mt-2 text-[13px] text-[#D32F2F] underline cursor-pointer hover:text-[#B71C1C] transition-colors"
-                    >
-                        Click here to retry
-                    </button>
-                </div>
-            )}
-            {successMsg && <div className="mb-6 p-5 bg-[#E8F5E9] border-l-4 border-[#00843D] rounded-r-lg text-[#1B5E20] text-[15px] font-bold shadow-sm flex items-center gap-3">
-                <svg className="w-6 h-6 text-[#00843D] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                {successMsg}
-            </div>}
-
-            {/* ═══════════════ CURRENT QUARTER TAB ═══════════════ */}
-            {tab === "current" && (
-                <div className="space-y-8">
-                    {/* Quarter Header */}
-                    {status?.quarter && (
-                        <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-5 flex items-center justify-between">
-                            <div>
-                                <p className="text-[13px] text-[#666666] font-bold uppercase tracking-wider">Current Quarter</p>
-                                <p className="text-[20px] font-bold text-[#003087]">
-                                    {status.quarter.name}
-                                    {user?.branchName && (
-                                        <span className="text-[14px] font-medium text-[#666666] ml-2">— {user.branchName}</span>
-                                    )}
-                                </p>
-                            </div>
-                            <span className={`text-[13px] px-4 py-1.5 rounded-full border font-bold ${status.quarter.status === "ACTIVE" ? "bg-[#E8F5E9] text-[#1B5E20] border-[#A5D6A7]" : "bg-[#F5F5F5] text-[#666666] border-[#CCCCCC]"}`}>
-                                {status.quarter.status}
-                            </span>
-                        </div>
-                    )}
-
-                    {/* ── NOT YET SUBMITTED: Show form ── */}
-                    {status && !status.submitted && questions.length > 0 && (
-                        <>
-                            <div className="bg-[#E3F2FD] border border-[#90CAF9] rounded-xl p-5 mb-6">
-                                <h3 className="text-[18px] font-bold text-[#003087] mb-2">Self Assessment</h3>
-                                <p className="text-[#333333] text-[15px] leading-relaxed">Please rate your performance honestly on each question below from -2 (Strongly Disagree) to +2 (Strongly Agree).</p>
-                            </div>
-                            <TimedEvaluationForm
-                                questions={questions}
-                                onSubmit={handleConfirmedSubmit}
-                                submitLabel="Submit Self Assessment"
-                                startTitle="Self Assessment"
-                                startDescription="You will be shown one question at a time. Each question has a 30-second timer. Once answered, you cannot return to previous questions."
-                            />
-                        </>
-                    )}
-
-                    {/* ── SUBMITTED: Show results ── */}
-                    {status?.submitted && (
-                        <>
-                            {/* Success banner */}
-                            <div className="bg-[#F8FBFA] border-2 border-[#00843D] rounded-xl p-6 shadow-sm relative overflow-hidden">
-                                <div className="flex flex-col gap-2">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <div className="w-8 h-8 rounded-full bg-[#00843D] flex items-center justify-center shrink-0 shadow-sm">
-                                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                            </svg>
-                                        </div>
-                                        <h3 className="text-[20px] font-black text-[#003087]">Assessment Submitted</h3>
-                                    </div>
-                                    
-                                    <div className="space-y-1 ml-11">
-                                        <p className="text-[#333333] text-[15px] font-medium">
-                                            Submitted on: {new Date(status.selfAssessment.submittedAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                                        </p>
-                                        <p className="text-[#333333] text-[15px] font-medium">
-                                            Questions Answered: {status.selfAssessment.answers?.length || status.quarter.questionCount} of {status.quarter.questionCount}
-                                        </p>
-                                    </div>
-
-                                    <div className="mt-4 ml-11 pt-4 border-t border-[#A5D6A7]/30">
-                                        <p className="text-[#333333] text-[15px] font-medium mb-1">Your responses have been recorded.</p>
-                                        <p className="text-[#333333] text-[15px] font-medium">You will be notified if you are shortlisted for the next stage.</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Stage Progress Pipeline */}
-                            {status.stages.length > 0 && (
-                                <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-6">
-                                    <h4 className="text-[18px] font-bold text-[#003087] mb-6 flex items-center gap-3">
-                                        <svg className="w-5 h-5 text-[#F7941D]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
-                                        Your Progress Pipeline
-                                    </h4>
-                                    <div className="space-y-4">
-                                        {status.stages.map((s, i) => (
-                                            <div key={i} className={`flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl border ${s.status === "winner" ? "border-[#FFE082] bg-[#FFF8E1] shadow-sm" : s.status === "pending" ? "border-[#E0E0E0] bg-[#F5F5F5]" : "border-[#A5D6A7] bg-[#E8F5E9] shadow-sm"}`}>
-                                                <div className="flex items-center gap-4 flex-1">
-                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[15px] font-bold shrink-0 ${s.status === "pending" ? "bg-white border-2 border-[#CCCCCC] text-[#666666]" : s.status === "winner" ? "bg-[#F7941D] text-white shadow-md" : "bg-[#00843D] text-white shadow-md"}`}>
-                                                        {s.stage}
-                                                    </div>
-                                                    <div>
-                                                        <p className={`text-[16px] font-bold ${s.status === "pending" ? "text-[#333333]" : "text-[#1A1A2E]"}`}>{s.name}</p>
-                                                        {s.detail && <p className="text-[13px] text-[#666666] mt-1 font-medium">{s.detail}</p>}
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-4 shrink-0 sm:ml-auto pl-14 sm:pl-0">
-                                                    <StagePill status={s.status} />
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Answers are intentionally not shown after submission */}
-
-                            {/* Current Standings (only when quarter is CLOSED) */}
-                            {status.winner && (
-                                <div className={`mt-8 rounded-2xl p-8 border-2 shadow-sm ${status.winner.isCurrentUser ? "bg-[#FFF8E1] border-[#FFE082]" : "bg-white border-[#E0E0E0]"}`}>
-                                    <h4 className="text-[16px] font-bold text-[#666666] mb-6 tracking-wide uppercase">Final Quarter Result</h4>
-                                    {status.winner.isCurrentUser ? (
-                                        <div className="text-center">
-                                            <span className="text-6xl block mb-4">🏆</span>
-                                            <p className="text-[24px] font-black text-[#003087] leading-tight">Congratulations!</p>
-                                            <p className="text-[20px] font-bold text-[#333333] mb-4">You are the Best Employee of the Quarter!</p>
-                                            <div className="inline-block bg-white px-6 py-3 rounded-xl border border-[#FFE082] shadow-sm">
-                                                <p className="text-[#00843D] font-black text-[18px]">You won the quarter!</p>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
-                                            <span className="text-5xl">🏆</span>
-                                            <div className="flex-1">
-                                                <p className="text-[#003087] font-black text-[22px] mb-1">{status.winner.name}</p>
-                                                <p className="text-[#666666] text-[15px] font-medium">{status.winner.department}</p>
-                                            </div>
-                                            <div className="bg-[#F5F5F5] px-6 py-4 border border-[#E0E0E0] rounded-xl w-full md:w-auto">
-                                                <p className="text-[#666666] text-[13px] font-bold uppercase mb-1">Your Highest Stage</p>
-                                                <p className="text-[#003087] font-black text-[20px]">Stage {status.currentStage}</p>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </>
-                    )}
-
-                    {/* No active quarter — either status is null or quarter is null */}
-                    {(!status || !status.quarter) && !error && (
-                        <div className="bg-[#F5F5F5] border border-[#E0E0E0] rounded-2xl p-12 text-center shadow-inner">
-                            <span className="text-4xl block mb-4 opacity-50">📅</span>
-                            <h3 className="text-[20px] font-bold text-[#333333] mb-2">No Active Evaluation Quarter</h3>
-                            <p className="text-[#666666] text-[15px] font-medium max-w-md mx-auto mb-2">The current evaluation cycle has not started yet.</p>
-                            <p className="text-[#666666] text-[14px] font-medium max-w-md mx-auto">Please contact <span className="font-bold text-[#003087]">RISHPAL KUMAWAT</span> (Admin) for more details.</p>
-                        </div>
-                    )}
                 </div>
             )}
 
-            {/* ═══════════════ HISTORY TAB ═══════════════ */}
-            {tab === "history" && (
-                <div className="space-y-6">
-                    {!historyLoaded && (
-                        <div className="space-y-4"><SkeletonCard lines={3} /><SkeletonCard lines={3} /></div>
-                    )}
-                    {historyLoaded && history.length === 0 && (
-                        <div className="bg-[#F5F5F5] border border-[#E0E0E0] rounded-2xl p-12 text-center shadow-inner">
-                            <span className="text-4xl block mb-4 opacity-50">📂</span>
-                            <h3 className="text-[20px] font-bold text-[#333333] mb-2">No Participation History</h3>
-                            <p className="text-[#666666] text-[15px] font-medium">You haven't participated in any completed quarters yet.</p>
+            {successMsg && (
+                <div className="mb-6 p-5 bg-[#E8F5E9] border-l-4 border-[#00843D] rounded-r-lg text-[#1B5E20] text-[15px] font-bold shadow-sm flex items-center gap-3">
+                    <svg className="w-6 h-6 text-[#00843D] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    {successMsg}
+                </div>
+            )}
+
+            {/* Quarter header */}
+            {status?.quarter && (
+                <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-5 mb-6 flex items-center justify-between">
+                    <div>
+                        <p className="text-[13px] text-[#666666] font-bold uppercase tracking-wider">Current Quarter</p>
+                        <p className="text-[20px] font-bold text-[#003087]">{status.quarter.name}</p>
+                    </div>
+                    <span className={`text-[13px] px-4 py-1.5 rounded-full border font-bold ${status.quarter.status === "ACTIVE" ? "bg-[#E8F5E9] text-[#1B5E20] border-[#A5D6A7]" : "bg-[#F5F5F5] text-[#666666] border-[#CCCCCC]"}`}>
+                        {status.quarter.status}
+                    </span>
+                </div>
+            )}
+
+            {/* Self-assessment form (not yet submitted) */}
+            {status && !status.submitted && questions.length > 0 && (
+                <>
+                    <div className="bg-[#E3F2FD] border border-[#90CAF9] rounded-xl p-5 mb-6">
+                        <h3 className="text-[18px] font-bold text-[#003087] mb-2">Self Assessment</h3>
+                        <p className="text-[#333333] text-[15px] leading-relaxed">
+                            Please rate your performance honestly on each question below from -2 (Strongly Disagree) to +2 (Strongly Agree).
+                        </p>
+                    </div>
+                    <TimedEvaluationForm
+                        questions={questions}
+                        onSubmit={handleConfirmedSubmit}
+                        submitLabel="Submit Self Assessment"
+                        startTitle="Self Assessment"
+                        startDescription="You will be shown one question at a time. Each question has a 30-second timer. Once answered, you cannot return to previous questions."
+                    />
+                </>
+            )}
+
+            {/* Already submitted */}
+            {status?.submitted && (
+                <div className="bg-[#F8FBFA] border-2 border-[#00843D] rounded-xl p-6 shadow-sm">
+                    <div className="flex items-center gap-3 mb-2">
+                        <div className="w-8 h-8 rounded-full bg-[#00843D] flex items-center justify-center shrink-0 shadow-sm">
+                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
                         </div>
-                    )}
+                        <h3 className="text-[20px] font-black text-[#003087]">Assessment Submitted</h3>
+                    </div>
+                    <p className="text-[#333333] text-[15px] font-medium ml-11">
+                        Your self-assessment has been recorded. Thank you for participating.
+                    </p>
+                </div>
+            )}
 
-                    {history.map((h, i) => (
-                        <div key={i} className={`bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow ${h.isBestEmployee ? "border-2 border-[#FFE082]" : "border-[#E0E0E0]"}`}>
-                            {/* Quarter Header */}
-                            <div className={`px-6 py-5 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${h.isBestEmployee ? "bg-[#FFF8E1] border-[#FFE082]/50" : "bg-[#F9FAFB] border-[#E0E0E0]"}`}>
-                                <div className="flex items-center gap-4">
-                                    {h.isBestEmployee && <span className="text-3xl">🏆</span>}
-                                    <div>
-                                        <p className="text-[#003087] font-black text-[18px] mb-1">{h.quarter.name}</p>
-                                        <p className="text-[#666666] text-[13px] font-medium">
-                                            {new Date(h.quarter.startDate).toLocaleDateString()} — {new Date(h.quarter.endDate).toLocaleDateString()}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-3">
-                                    <span className={`text-[12px] px-3.5 py-1.5 rounded-full border shadow-sm font-bold uppercase tracking-wider ${h.quarter.status === "ACTIVE" ? "bg-[#E8F5E9] text-[#1B5E20] border-[#A5D6A7]" : "bg-[#F5F5F5] text-[#666666] border-[#CCCCCC]"}`}>
-                                        {h.quarter.status}
-                                    </span>
-                                    {h.isBestEmployee && (
-                                        <span className="text-[12px] px-3.5 py-1.5 rounded-full bg-[#F7941D] text-white font-bold shadow uppercase tracking-wider">Best Employee</span>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Scores & Progress */}
-                            <div className="p-6">
-                                <div className="mb-6">
-                                    <div className="bg-[#F5F5F5] border border-[#E0E0E0] shadow-sm rounded-xl p-4 text-center w-max px-8">
-                                        <p className="text-[11px] text-[#666666] font-bold uppercase tracking-wider mb-1">Highest Stage Reached</p>
-                                        <p className="text-[20px] font-black text-[#003087]">Stage {h.highestStage}</p>
-                                    </div>
-                                </div>
-
-                                {/* Stage progress dots */}
-                                <div className="flex justify-between items-center mb-2">
-                                    <span className="text-[12px] text-[#666666] font-bold">Stage 1</span>
-                                    <span className="text-[12px] text-[#666666] font-bold">Stage 4</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    {[1, 2, 3, 4].map((s) => (
-                                        <div key={s} className="flex items-center gap-1 flex-1">
-                                            <div className={`w-full h-3 rounded-full transition-colors ${s <= h.highestStage ? "bg-[#00843D] shadow-sm" : "bg-[#E0E0E0] border border-[#CCCCCC]"}`} />
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    ))}
+            {/* No active quarter */}
+            {(!status || !status.quarter) && !error && (
+                <div className="bg-[#F5F5F5] border border-[#E0E0E0] rounded-2xl p-12 text-center shadow-inner">
+                    <span className="text-4xl block mb-4 opacity-50">📅</span>
+                    <h3 className="text-[20px] font-bold text-[#333333] mb-2">No Active Evaluation Quarter</h3>
+                    <p className="text-[#666666] text-[15px] font-medium max-w-md mx-auto">
+                        The current evaluation cycle has not started yet.
+                    </p>
                 </div>
             )}
         </DashboardShell>

@@ -28,7 +28,7 @@ export const GET = withRole(["ADMIN"], async (request, { user }) => {
         const branches = await prisma.branch.findMany({
             include: {
                 departments: {
-                    select: { id: true, name: true },
+                    select: { id: true, name: true, collarType: true, _count: { select: { users: true } } },
                 },
                 _count: {
                     select: { departments: true },
@@ -37,7 +37,23 @@ export const GET = withRole(["ADMIN"], async (request, { user }) => {
             orderBy: { name: "asc" },
         });
 
-        return ok({ branches });
+        // Attach employee count (employees live on departments, keyed to branch via departmentId)
+        const withCounts = await Promise.all(branches.map(async (b) => {
+            const employeeCount = await prisma.user.count({
+                where: { role: "EMPLOYEE", OR: [{ branchId: b.id }, { department: { branchId: b.id } }] },
+            });
+            const bmCount = await prisma.user.count({ where: { role: "BRANCH_MANAGER", branchId: b.id } });
+            const cmCount = await prisma.user.count({ where: { role: "CLUSTER_MANAGER", branchId: b.id } });
+            return {
+                ...b,
+                employeeCount,
+                bmCount,
+                cmCount,
+                departmentCount: b._count.departments,
+            };
+        }));
+
+        return ok({ branches: withCounts });
     } catch (err) {
         console.error("[BRANCHES] GET Error:", err.message);
         return serverError();

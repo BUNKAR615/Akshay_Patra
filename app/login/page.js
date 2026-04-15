@@ -5,7 +5,6 @@ import Image from "next/image";
 
 const ROLE_REDIRECTS = {
     EMPLOYEE: "/dashboard/employee",
-    SUPERVISOR: "/dashboard/supervisor",
     HOD: "/dashboard/hod",
     BRANCH_MANAGER: "/dashboard/branch-manager",
     CLUSTER_MANAGER: "/dashboard/cluster-manager",
@@ -48,15 +47,7 @@ export default function LoginPage() {
                 return;
             }
 
-            // Multi-role: redirect to role selection
-            if (json.data.requiresRoleSelection) {
-                sessionStorage.setItem("availableRoles", JSON.stringify(json.data.availableRoles));
-                sessionStorage.setItem("userName", json.data.user.name || "");
-                window.location.href = "/select-role";
-                return;
-            }
-
-            // Single role: redirect to dashboard
+            // Single role — redirect to the matching dashboard
             const redirectPath = ROLE_REDIRECTS[json.data.user.role] || "/dashboard/employee";
             window.location.href = redirectPath;
         } catch (err) {

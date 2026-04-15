@@ -12,7 +12,7 @@ const HR_ALLOWED = ["1800349", "5100029"]; // Rishpal Kumar (ADMIN), Chetan Sing
 /**
  * GET /api/admin/employees
  * Returns paginated, searchable employee list for the admin directory.
- * Includes evaluator role mappings so filtering by SUPERVISOR/BM/CM works.
+ * Includes evaluator role mappings so filtering by BM/CM/HOD works.
  */
 export const GET = withRole(["ADMIN"], async (request) => {
     try {
@@ -38,7 +38,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
             });
         }
 
-        const isEvalRole = role === "SUPERVISOR" || role === "BRANCH_MANAGER" || role === "CLUSTER_MANAGER";
+        const isEvalRole = role === "BRANCH_MANAGER" || role === "CLUSTER_MANAGER" || role === "HOD";
 
         if (department && isEvalRole) {
             // Combined: find users who hold this specific role in this specific department

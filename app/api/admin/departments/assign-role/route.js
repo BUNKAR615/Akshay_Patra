@@ -9,7 +9,7 @@ import { z } from "zod";
 const assignRoleSchema = z.object({
     userId: z.string().min(1),
     departmentId: z.string().min(1),
-    role: z.enum(["SUPERVISOR", "HOD", "BRANCH_MANAGER", "CLUSTER_MANAGER", "HR", "COMMITTEE"]),
+    role: z.enum(["HOD", "BRANCH_MANAGER", "CLUSTER_MANAGER", "HR", "COMMITTEE"]),
 });
 
 /**
@@ -48,9 +48,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
                     where: { departmentId: data.departmentId, role: data.role },
                 });
                 // Clear department FK shortcuts
-                if (data.role === "SUPERVISOR") {
-                    await tx.department.update({ where: { id: data.departmentId }, data: { supervisorId: null } });
-                } else if (data.role === "BRANCH_MANAGER") {
+                if (data.role === "BRANCH_MANAGER") {
                     await tx.department.update({ where: { id: data.departmentId }, data: { branchManagerId: null } });
                 }
             }
@@ -61,9 +59,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             });
 
             // Update Department FK shortcuts
-            if (data.role === "SUPERVISOR") {
-                await tx.department.update({ where: { id: data.departmentId }, data: { supervisorId: data.userId } });
-            } else if (data.role === "BRANCH_MANAGER") {
+            if (data.role === "BRANCH_MANAGER") {
                 await tx.department.update({ where: { id: data.departmentId }, data: { branchManagerId: data.userId } });
             }
 
