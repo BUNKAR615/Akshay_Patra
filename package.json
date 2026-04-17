@@ -5,14 +5,19 @@
   "description": "Best Employee of the Quarter — Akshaya Patra Jaipur Branch Pilot",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma db push --skip-generate --accept-data-loss && next build",
+    "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "postinstall": "prisma generate",
     "lint": "next lint",
+    "test": "vitest run",
+    "prepare": "husky",
     "seed": "ts-node -O \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/seed.ts",
     "prisma:generate": "npx prisma generate",
     "prisma:migrate": "npx prisma migrate dev",
     "prisma:studio": "npx prisma studio"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": "next lint --fix --file"
   },
   "prisma": {
     "seed": "ts-node -O \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/seed.ts"
@@ -37,8 +42,11 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
     "prisma": "^5.16.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^2.0.0"
   }
 }

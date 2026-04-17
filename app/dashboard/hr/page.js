@@ -59,6 +59,7 @@ export default function HRDashboard() {
     const [evalSubmitting, setEvalSubmitting] = useState({});  // { [empId]: bool }
     const [evalDone, setEvalDone] = useState({});              // { [empId]: bool }
     const [evalMessages, setEvalMessages] = useState({});      // { [empId]: { type, text } }
+    const [refUploading, setRefUploading] = useState({});      // { [empId]: bool }
 
     const fileRefs = useRef({});
 
@@ -113,6 +114,34 @@ export default function HRDashboard() {
     useEffect(() => {
         if (authorized && mainTab === "evaluate") fetchShortlist();
     }, [authorized, mainTab]);
+
+    // Upload a PDF for the employee's reference sheet and write the returned
+    // URL into refSheetUrls. The URL text input stays editable in case ops
+    // wants to paste a manual URL instead.
+    const handleRefUpload = async (employeeId, file) => {
+        if (!file) return;
+        if (file.type !== "application/pdf") {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Reference sheet must be a PDF" } }));
+            return;
+        }
+        setRefUploading(prev => ({ ...prev, [employeeId]: true }));
+        setEvalMessages(prev => ({ ...prev, [employeeId]: null }));
+        try {
+            const fd = new FormData();
+            fd.append("file", file);
+            fd.append("kind", "reference");
+            const res = await fetch("/api/hr/upload", { method: "POST", body: fd });
+            const json = await res.json();
+            if (!res.ok || !json.success) {
+                throw new Error(json.message || "Upload failed");
+            }
+            setRefSheetUrls(prev => ({ ...prev, [employeeId]: json.data.url }));
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "success", text: "Reference sheet uploaded" } }));
+        } catch (err) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: err.message || "Upload failed" } }));
+        }
+        setRefUploading(prev => ({ ...prev, [employeeId]: false }));
+    };
 
     const handleEvalSubmit = async (employeeId) => {
         const att = attendancePcts[employeeId];
@@ -370,6 +399,16 @@ export default function HRDashboard() {
                                         placeholder="https://..."
                                         className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
                                     />
+                                    <div className="mt-1.5 flex items-center gap-2">
+                                        <input
+                                            type="file"
+                                            accept="application/pdf"
+                                            disabled={isAlreadyDone || refUploading[emp.id]}
+                                            onChange={(e) => handleRefUpload(emp.id, e.target.files?.[0])}
+                                            className="text-xs text-[#666666] file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#F57C00]/10 file:text-[#F57C00] hover:file:bg-[#F57C00]/20 disabled:opacity-50"
+                                        />
+                                        {refUploading[emp.id] && <span className="text-xs text-[#666666]">Uploading…</span>}
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-[#666666] mb-1.5">Notes (optional)</label>

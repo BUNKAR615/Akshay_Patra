@@ -20,6 +20,17 @@ export async function POST(request) {
             return fail("Invalid or expired refresh token. Please login again.", 401);
         }
 
+        // Reject tokens that were revoked at logout. Logout writes the token into
+        // BlacklistedToken; without this check a logged-out refresh cookie would
+        // keep minting access tokens until JWT expiry.
+        const revoked = await prisma.blacklistedToken.findUnique({
+            where: { token: refreshToken },
+            select: { id: true },
+        });
+        if (revoked) {
+            return fail("Refresh token has been revoked. Please login again.", 401);
+        }
+
         // Verify user still exists and get fresh data
         const user = await prisma.user.findUnique({
             where: { id: decoded.userId },
