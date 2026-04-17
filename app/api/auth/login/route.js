@@ -9,6 +9,7 @@ import { ok, fail, serverError, validateBody } from "../../../../lib/api-respons
 import { loginSchema } from "../../../../lib/validators";
 import { getClientIp, withDbRetry } from "../../../../lib/http";
 import { sanitize } from "../../../../lib/sanitize";
+import { checkAndRecord, clear as clearRateLimit } from "../../../../lib/rate-limit";
 
 /**
  * POST /api/auth/login
@@ -31,6 +32,20 @@ export async function POST(request) {
 
         const empCode = sanitize(data.empCode);
 
+        // Rate-limit: per-IP and per-empCode, before any DB call.
+        // Checked BEFORE recording so the IP key isn't poisoned by a legitimate
+        // user's first wrong attempt; the per-empCode key carries that.
+        const ip = getClientIp(request);
+        const ipKey = `login:ip:${ip}`;
+        const userKey = `login:emp:${empCode}`;
+        const ipGate = checkAndRecord(ipKey, { maxAttempts: 20 });
+        const userGate = checkAndRecord(userKey, { maxAttempts: 8 });
+        if (!ipGate.allowed || !userGate.allowed) {
+            const retryAfterMs = Math.max(ipGate.retryAfterMs, userGate.retryAfterMs);
+            const seconds = Math.ceil(retryAfterMs / 1000);
+            return fail(`Too many login attempts. Try again in ${seconds} seconds.`, 429);
+        }
+
         const user = await withDbRetry(() => prisma.user.findUnique({
             where: { empCode },
             select: {
@@ -48,8 +63,6 @@ export async function POST(request) {
                 }
             },
         }));
-
-        const ip = getClientIp(request);
 
         if (!user) {
             console.warn("[LOGIN] Failed login attempt for unknown empCode:", empCode, "IP:", ip);
@@ -91,6 +104,10 @@ export async function POST(request) {
                 details: { userAgent: request.headers.get("user-agent") || "unknown", role: resolvedRole },
             },
         }).catch(() => {});
+
+        // Success — clear rate-limit counters for this IP + empCode.
+        clearRateLimit(ipKey);
+        clearRateLimit(userKey);
 
         // Branch resolution: prefer User.branchId, fall back to department.branchId
         const branchId = user.branchId || user.department?.branchId || "";

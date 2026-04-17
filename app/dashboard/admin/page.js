@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import DashboardShell from "../../../components/DashboardShell";
 import ConfirmDialog from "../../../components/ConfirmDialog";
 import { PageSpinner, SkeletonCard, SkeletonStats } from "../../../components/Skeleton";
@@ -26,6 +27,7 @@ function getAutoQuarterName() {
 }
 
 export default function AdminDashboard() {
+    const router = useRouter();
     const [user, setUser] = useState(null);
     const [tab, setTab] = useState("summary");
     const [loading, setLoading] = useState(true);
@@ -691,6 +693,9 @@ export default function AdminDashboard() {
     useEffect(() => { if (tab === "branches") fetchBranches(); }, [tab]);
     useEffect(() => { if (tab === "hodassign" && !hodAssignData) fetchHodAssignData(); }, [tab]);
 
+    // Always load branches on mount so the Global/Branch dropdown is populated
+    useEffect(() => { fetchBranches(); }, []);
+
     const TABS = [
         { id: "summary", label: "Summary" },
         { id: "branches", label: "Branches" },
@@ -725,6 +730,21 @@ export default function AdminDashboard() {
         <DashboardShell user={user} title="Admin Panel">
             {/* Profile Card */}
             <UserProfileCard user={user} roles={user?.departmentRoles?.map(dr => dr.role)} />
+
+            {/* Global vs Branch dashboard selector */}
+            <div className="mb-4 flex items-center gap-2 flex-wrap">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-[#999999]">Dashboard</label>
+                <select
+                    value=""
+                    onChange={(e) => { if (e.target.value) router.push(`/dashboard/admin/${e.target.value}`); }}
+                    className="border border-[#E0E0E0] rounded-lg px-3 py-2 text-sm font-medium text-[#333333] bg-white"
+                >
+                    <option value="">Global — all branches</option>
+                    {branches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}{b.location ? ` — ${b.location}` : ""}</option>
+                    ))}
+                </select>
+            </div>
 
             {/* Tabs — scrollable on mobile */}
             <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 mb-6 pb-1">
@@ -936,127 +956,11 @@ export default function AdminDashboard() {
                                 </button>
                             </div>
 
-                            {/* SECTION C & D — Per Department Progress Table & Details */}
-                            <div className="space-y-4">
-                                <h3 className="text-lg font-bold text-[#003087]">Department Progress</h3>
-
-                                <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl overflow-hidden">
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-sm min-w-[700px]">
-                                            <thead>
-                                                <tr className="border-b border-[#E0E0E0] bg-[#F5F5F5]">
-                                                    <th className="text-left font-medium text-[#333333] px-4 py-3 min-w-[150px]">Department</th>
-                                                    <th className="text-center font-medium text-[#333333] px-3 py-3 w-[100px]">Employees</th>
-                                                    <th className="text-center font-medium text-[#333333] px-3 py-3 w-[120px]">Stage 1 (Self)</th>
-                                                    <th className="text-center font-medium text-[#333333] px-3 py-3 w-[120px]">Stage 2 (Sup)</th>
-                                                    <th className="text-center font-medium text-[#333333] px-3 py-3 w-[120px]">Stage 3 (BM)</th>
-                                                    <th className="text-center font-medium text-[#333333] px-3 py-3 w-[120px]">Stage 4 (CM)</th>
-                                                    <th className="text-center font-medium text-[#333333] px-4 py-3 w-[120px]">Current Stage</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-[#E0E0E0]">
-                                                {quarterProgress.departments.map((dept) => {
-                                                    let currentStage = "S1";
-                                                    if (dept.winner) currentStage = "Done";
-                                                    else if (dept.stage4.total > 0) currentStage = "S4";
-                                                    else if (dept.stage3.total > 0) currentStage = "S3";
-                                                    else if (dept.stage2.total > 0) currentStage = "S2";
-
-                                                    const isExpanded = expandedSummaryDept === dept.departmentId;
-                                                    return (
-                                                        <Fragment key={dept.departmentId}>
-                                                        <tr className="hover:bg-[#F9F9F9] transition-colors group cursor-pointer" onClick={() => setExpandedSummaryDept(prev => prev === dept.departmentId ? null : dept.departmentId)}>
-                                                            <td className="px-4 py-4">
-                                                                <div className="font-semibold text-[#003087] flex items-center gap-2">
-                                                                    <svg className="w-4 h-4 text-[#999999]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                                                    {dept.departmentName}
-                                                                </div>
-                                                                {dept.smallDeptRule && <p className="text-[10px] text-[#666666] tracking-tight uppercase mt-0.5">{dept.smallDeptRule}</p>}
-                                                            </td>
-                                                            <td className="text-center px-3 py-4 font-medium text-[#1A1A2E]">{dept.totalEmployees}</td>
-                                                            <td className="text-center px-3 py-4 whitespace-nowrap">
-                                                                <span className={dept.stage1.submitted === dept.stage1.total && dept.stage1.total > 0 ? "text-[#00843D] font-bold" : "text-[#1A1A2E]"}>
-                                                                    {dept.stage1.submitted} / {dept.stage1.total}
-                                                                </span>
-                                                            </td>
-                                                            <td className="text-center px-3 py-4 whitespace-nowrap">
-                                                                <span className={dept.stage2.evaluated === dept.stage2.total && dept.stage2.total > 0 ? "text-[#00843D] font-bold" : "text-[#1A1A2E]"}>
-                                                                    {dept.stage2.evaluated} / {dept.stage2.total}
-                                                                </span>
-                                                            </td>
-                                                            <td className="text-center px-3 py-4 whitespace-nowrap">
-                                                                <span className={dept.stage3.evaluated === dept.stage3.total && dept.stage3.total > 0 ? "text-[#00843D] font-bold" : "text-[#1A1A2E]"}>
-                                                                    {dept.stage3.evaluated} / {dept.stage3.total}
-                                                                </span>
-                                                            </td>
-                                                            <td className="text-center px-3 py-4 whitespace-nowrap">
-                                                                <span className={dept.stage4.evaluated === dept.stage4.total && dept.stage4.total > 0 ? "text-[#00843D] font-bold" : "text-[#1A1A2E]"}>
-                                                                    {dept.stage4.evaluated} / {dept.stage4.total}
-                                                                </span>
-                                                            </td>
-                                                            <td className="text-center px-4 py-4">
-                                                                <span className={`px-2 py-1 text-xs rounded-full border font-bold ${currentStage === "Done" ? "bg-[#E8F5E9] text-[#00843D] border-[#A5D6A7]" : "bg-[#FFF3E0] text-[#F7941D] border-[#FFCC80]"}`}>
-                                                                    {currentStage}
-                                                                </span>
-                                                            </td>
-                                                        </tr>
-                                                        {isExpanded && (
-                                                            <tr>
-                                                                <td colSpan={7} className="p-0 bg-[#F5F5F5] border-t border-[#CCCCCC]">
-                                                                    <div className="p-5">
-                                                                        <div className="flex items-center justify-between mb-3 border-b border-[#CCCCCC] pb-2">
-                                                                            <h4 className="font-bold text-[#003087]">{dept.departmentName} — Candidate Backlog</h4>
-                                                                            {dept.winner && (
-                                                                                <div className="bg-[#FFF3E0] border border-[#FFCC80] text-[#F7941D] px-3 py-1 rounded-md text-xs font-bold flex items-center gap-2">
-                                                                                    🏆 Winner: {dept.winner.name}
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                                                            <div>
-                                                                                <p className="text-xs font-bold text-[#333333] mb-2 border-b border-[#E0E0E0] pb-1">Stage 1: Self Assessed</p>
-                                                                                {dept.stage1.submittedNames.length > 0 ? (
-                                                                                    <ul className="text-xs text-[#1A1A2E] space-y-1 list-disc pl-4">
-                                                                                        {dept.stage1.submittedNames.map((n, i) => <li key={i}>{n}</li>)}
-                                                                                    </ul>
-                                                                                ) : <p className="text-xs text-[#999999] italic">None yet</p>}
-                                                                            </div>
-                                                                            <div>
-                                                                                <p className="text-xs font-bold text-[#333333] mb-2 border-b border-[#E0E0E0] pb-1">Stage 2: Supervisor Evaluates</p>
-                                                                                {dept.stage2.shortlistNames.length > 0 ? (
-                                                                                    <ul className="text-xs text-[#1A1A2E] space-y-1 list-disc pl-4">
-                                                                                        {dept.stage2.shortlistNames.map((n, i) => <li key={i}>{n}</li>)}
-                                                                                    </ul>
-                                                                                ) : <p className="text-xs text-[#999999] italic">Waiting for S1 close</p>}
-                                                                            </div>
-                                                                            <div>
-                                                                                <p className="text-xs font-bold text-[#333333] mb-2 border-b border-[#E0E0E0] pb-1">Stage 3: BM Evaluates</p>
-                                                                                {dept.stage3.shortlistNames.length > 0 ? (
-                                                                                    <ul className="text-xs text-[#1A1A2E] space-y-1 list-disc pl-4">
-                                                                                        {dept.stage3.shortlistNames.map((n, i) => <li key={i}>{n}</li>)}
-                                                                                    </ul>
-                                                                                ) : <p className="text-xs text-[#999999] italic">Waiting for S2 close</p>}
-                                                                            </div>
-                                                                            <div>
-                                                                                <p className="text-xs font-bold text-[#333333] mb-2 border-b border-[#E0E0E0] pb-1">Stage 4: CM Evaluates</p>
-                                                                                {dept.stage4.shortlistNames.length > 0 ? (
-                                                                                    <ul className="text-xs text-[#1A1A2E] space-y-1 list-disc pl-4">
-                                                                                        {dept.stage4.shortlistNames.map((n, i) => <li key={i}>{n}</li>)}
-                                                                                    </ul>
-                                                                                ) : <p className="text-xs text-[#999999] italic">Waiting for S3 close</p>}
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        )}
-                                                        </Fragment>
-                                                    )
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
+                            {/* Department-level progress now lives in the per-branch dashboard */}
+                            <div className="bg-[#F5F5F5] border border-[#E0E0E0] rounded-xl p-5 text-center">
+                                <p className="text-sm text-[#666666]">
+                                    Department-level progress has moved into each branch's dashboard. Pick a branch from the dropdown at the top to see its evaluation pipeline.
+                                </p>
                             </div>
                         </>
                     ) : (

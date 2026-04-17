@@ -47,6 +47,27 @@ export default function BranchEmployeesPage() {
 
     useEffect(() => { fetchEmployees(); }, [branchId, roleFilter]);
 
+    // Admin-initiated password reset. Uses window.prompt to stay UI-light; a
+    // modal can replace this later without touching the API.
+    const [resettingId, setResettingId] = useState(null);
+    const handleResetPassword = async (emp) => {
+        const pwd = window.prompt(`New password for ${emp.name} (${emp.empCode}) — min 8 chars:`);
+        if (pwd == null) return;
+        if (pwd.length < 8) { alert("Password must be at least 8 characters."); return; }
+        setResettingId(emp.id);
+        try {
+            await api(`/api/admin/users/${emp.id}/reset-password`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ newPassword: pwd }),
+            });
+            alert("Password reset. The user has been notified.");
+        } catch (e) {
+            alert(e.message || "Reset failed");
+        }
+        setResettingId(null);
+    };
+
     const filtered = employees.filter(emp => {
         if (!search) return true;
         const q = search.toLowerCase();
@@ -104,6 +125,7 @@ export default function BranchEmployeesPage() {
                                 <th className="px-4 py-3 font-bold text-[11px] text-[#999] uppercase">Role</th>
                                 <th className="px-4 py-3 font-bold text-[11px] text-[#999] uppercase">Collar</th>
                                 <th className="px-4 py-3 font-bold text-[11px] text-[#999] uppercase">Mobile</th>
+                                <th className="px-4 py-3 font-bold text-[11px] text-[#999] uppercase">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-[#F0F0F0]">
@@ -126,6 +148,15 @@ export default function BranchEmployeesPage() {
                                         ) : "—"}
                                     </td>
                                     <td className="px-4 py-3 text-[#666] text-[12px]">{emp.mobile || "—"}</td>
+                                    <td className="px-4 py-3">
+                                        <button
+                                            onClick={() => handleResetPassword(emp)}
+                                            disabled={resettingId === emp.id}
+                                            className="px-2 py-1 text-[11px] font-bold rounded bg-white border border-[#CCCCCC] text-[#333] hover:bg-[#F5F5F5] disabled:opacity-50 cursor-pointer"
+                                        >
+                                            {resettingId === emp.id ? "Resetting…" : "Reset password"}
+                                        </button>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
