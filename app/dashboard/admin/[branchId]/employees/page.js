@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
+import * as XLSX from "xlsx";
 
 async function api(url, opts) {
     const res = await fetch(url, opts);
@@ -32,6 +33,25 @@ export default function BranchEmployeesPage() {
     const [search, setSearch] = useState("");
     const [roleFilter, setRoleFilter] = useState("");
 
+    // Add-employee panel state
+    const [showAddEmp, setShowAddEmp] = useState(false);
+    const [addForm, setAddForm] = useState({ name: "", mobile: "", departmentName: "", joiningDate: "", reason: "", empCode: "", designation: "" });
+    const [addMsg, setAddMsg] = useState({ type: "", text: "" });
+    const [addLoading, setAddLoading] = useState(false);
+
+    // Bulk-upload panel state
+    const [showBulkUpload, setShowBulkUpload] = useState(false);
+    const [bulkFile, setBulkFile] = useState(null);
+    const [bulkLoading, setBulkLoading] = useState(false);
+    const [bulkResult, setBulkResult] = useState(null);
+    const [bulkMsg, setBulkMsg] = useState({ type: "", text: "" });
+
+    // Unique department names seen in the currently loaded employees — used
+    // to populate the add-employee dropdown without another request.
+    const deptNames = Array.from(new Set(
+        employees.map(e => e.department?.name).filter(Boolean)
+    )).sort();
+
     const fetchEmployees = async () => {
         try {
             const url = `/api/admin/branches/${branchId}/employees${roleFilter ? `?role=${roleFilter}` : ""}`;
@@ -46,6 +66,60 @@ export default function BranchEmployeesPage() {
     };
 
     useEffect(() => { fetchEmployees(); }, [branchId, roleFilter]);
+
+    const handleAddEmployee = async () => {
+        setAddLoading(true);
+        setAddMsg({ type: "", text: "" });
+        try {
+            const d = await api(`/api/admin/branches/${branchId}/employees`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(addForm),
+            });
+            setAddMsg({ type: "success", text: `${d.employee.name} added. Default password: ${d.defaultPassword}` });
+            setAddForm({ name: "", mobile: "", departmentName: "", joiningDate: "", reason: "", empCode: "", designation: "" });
+            fetchEmployees();
+        } catch (err) {
+            setAddMsg({ type: "error", text: err.message || "Failed to add employee" });
+        }
+        setAddLoading(false);
+    };
+
+    const handleBulkUpload = async () => {
+        if (!bulkFile) {
+            setBulkMsg({ type: "error", text: "Please select an Excel file" });
+            return;
+        }
+        setBulkLoading(true);
+        setBulkMsg({ type: "", text: "" });
+        setBulkResult(null);
+        try {
+            const fd = new FormData();
+            fd.append("file", bulkFile);
+            const data = await api(`/api/admin/branches/${branchId}/employees/bulk-upload`, { method: "POST", body: fd });
+            setBulkResult(data);
+            setBulkMsg({
+                type: data.errors?.length ? "error" : "success",
+                text: `Upload complete: ${data.employeesCreated} created, ${data.employeesUpdated} updated, ${data.departmentsCreated?.length || 0} new depts${data.errors?.length ? `, ${data.errors.length} errors` : ""}`,
+            });
+            setBulkFile(null);
+            fetchEmployees();
+        } catch (err) {
+            setBulkMsg({ type: "error", text: err.message || "Bulk upload failed" });
+        }
+        setBulkLoading(false);
+    };
+
+    const downloadBulkTemplate = () => {
+        const sampleRows = [
+            { "Emp Code": "5100099", "Name": "Sample Name", "Department": "Production", "Designation": "Operator", "Mobile": "9876543210", "Collar Type": "BLUE_COLLAR" },
+        ];
+        const ws = XLSX.utils.json_to_sheet(sampleRows);
+        ws["!cols"] = [{ wch: 12 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 14 }, { wch: 14 }];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Employees");
+        XLSX.writeFile(wb, "Employee_Upload_Template.xlsx");
+    };
 
     // Admin-initiated password reset. Uses window.prompt to stay UI-light; a
     // modal can replace this later without touching the API.
@@ -84,12 +158,134 @@ export default function BranchEmployeesPage() {
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
                 <h2 className="text-lg font-bold text-[#003087]">Employees ({filtered.length})</h2>
-                <button onClick={fetchEmployees} className="px-3 py-1.5 bg-white border border-[#CCCCCC] rounded-lg text-xs font-bold text-[#333] hover:bg-[#F5F5F5] cursor-pointer">
-                    Refresh
-                </button>
+                <div className="flex flex-wrap gap-2">
+                    <button onClick={() => { setShowAddEmp(!showAddEmp); setAddMsg({ type: "", text: "" }); }} className="h-9 px-3 bg-[#00843D] hover:bg-[#006B32] text-white text-xs font-bold rounded-lg cursor-pointer">
+                        {showAddEmp ? "Cancel" : "+ Add Employee"}
+                    </button>
+                    <button onClick={() => { setShowBulkUpload(!showBulkUpload); setBulkMsg({ type: "", text: "" }); setBulkResult(null); }} className="h-9 px-3 bg-[#F7941D] hover:bg-[#D87A0A] text-white text-xs font-bold rounded-lg cursor-pointer">
+                        {showBulkUpload ? "Cancel" : "Bulk Upload"}
+                    </button>
+                    <button onClick={fetchEmployees} className="h-9 px-3 bg-white border border-[#CCCCCC] rounded-lg text-xs font-bold text-[#333] hover:bg-[#F5F5F5] cursor-pointer">
+                        Refresh
+                    </button>
+                </div>
             </div>
+
+            {/* Add Employee Panel */}
+            {showAddEmp && (
+                <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 shadow-sm space-y-4">
+                    <h3 className="text-base font-bold text-[#003087]">Add New Employee{branch?.name ? ` — ${branch.name}` : ""}</h3>
+                    {addMsg.text && (
+                        <div className={`p-3 rounded-lg text-sm font-medium ${addMsg.type === "success" ? "bg-green-50 text-green-800 border border-green-200" : "bg-red-50 text-red-800 border border-red-200"}`}>{addMsg.text}</div>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div>
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Name *</label>
+                            <input type="text" value={addForm.name} onChange={(e) => setAddForm({ ...addForm, name: e.target.value })} placeholder="Full name" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Employee Code</label>
+                            <input type="text" value={addForm.empCode} onChange={(e) => setAddForm({ ...addForm, empCode: e.target.value })} placeholder="e.g. 5100030" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Mobile Number</label>
+                            <input type="text" value={addForm.mobile} onChange={(e) => setAddForm({ ...addForm, mobile: e.target.value })} placeholder="Phone number" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Department *</label>
+                            <select value={addForm.departmentName} onChange={(e) => setAddForm({ ...addForm, departmentName: e.target.value })} className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm">
+                                <option value="">Select Department</option>
+                                {deptNames.map(d => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Designation</label>
+                            <input type="text" value={addForm.designation} onChange={(e) => setAddForm({ ...addForm, designation: e.target.value })} placeholder="e.g. Executive" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Joining Date</label>
+                            <input type="date" value={addForm.joiningDate} onChange={(e) => setAddForm({ ...addForm, joiningDate: e.target.value })} className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
+                        </div>
+                        <div className="sm:col-span-2 lg:col-span-3">
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Reason for Joining</label>
+                            <input type="text" value={addForm.reason} onChange={(e) => setAddForm({ ...addForm, reason: e.target.value })} placeholder="e.g. New hire, Transfer from another branch" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
+                        </div>
+                    </div>
+                    <button onClick={handleAddEmployee} disabled={addLoading || !addForm.name || !addForm.departmentName} className="px-6 py-2 bg-[#003087] text-white rounded-lg text-sm font-bold hover:bg-[#002266] transition-colors cursor-pointer disabled:opacity-50">
+                        {addLoading ? "Adding..." : "Add Employee"}
+                    </button>
+                </div>
+            )}
+
+            {/* Bulk Upload Panel */}
+            {showBulkUpload && (
+                <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                        <h3 className="text-base font-bold text-[#003087]">Bulk Upload Employees{branch?.name ? ` — ${branch.name}` : ""}</h3>
+                        <button onClick={downloadBulkTemplate} className="text-xs px-3 py-1.5 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg font-bold text-[#333333] hover:bg-white cursor-pointer">
+                            Download Template
+                        </button>
+                    </div>
+                    <div className="text-xs text-[#666666] bg-[#F5F5F5] border border-[#E0E0E0] rounded-lg p-3 space-y-1">
+                        <p className="font-bold text-[#003087]">Required columns: Emp Code, Name, Department, Collar Type</p>
+                        <p>Optional: Designation, Mobile. Collar Type must be WHITE_COLLAR or BLUE_COLLAR.</p>
+                        <p>Uploads are scoped to this branch; missing departments are created here.</p>
+                        <p>Default password: <code className="bg-white px-1 rounded">empCode</code> (employee can change after first login).</p>
+                    </div>
+                    {bulkMsg.text && (
+                        <div className={`p-3 rounded-lg text-sm font-medium ${bulkMsg.type === "success" ? "bg-green-50 text-green-800 border border-green-200" : "bg-red-50 text-red-800 border border-red-200"}`}>{bulkMsg.text}</div>
+                    )}
+                    <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                        <input
+                            type="file"
+                            accept=".xlsx,.xls"
+                            onChange={(e) => setBulkFile(e.target.files?.[0] || null)}
+                            className="flex-1 text-sm file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-[#003087] file:text-white file:font-bold file:cursor-pointer hover:file:bg-[#002266]"
+                        />
+                        <button
+                            onClick={handleBulkUpload}
+                            disabled={bulkLoading || !bulkFile}
+                            className="px-6 py-2 bg-[#F7941D] text-white rounded-lg text-sm font-bold hover:bg-[#D87A0A] transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                            {bulkLoading ? "Uploading..." : "Upload & Create"}
+                        </button>
+                    </div>
+                    {bulkResult && (
+                        <div className="mt-3 space-y-3">
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                    <div className="text-2xl font-bold text-green-700">{bulkResult.employeesCreated}</div>
+                                    <div className="text-[11px] text-green-700 font-bold uppercase tracking-wider">Created</div>
+                                </div>
+                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                    <div className="text-2xl font-bold text-amber-700">{bulkResult.employeesUpdated}</div>
+                                    <div className="text-[11px] text-amber-700 font-bold uppercase tracking-wider">Updated</div>
+                                </div>
+                                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                    <div className="text-2xl font-bold text-red-700">{bulkResult.errors?.length || 0}</div>
+                                    <div className="text-[11px] text-red-700 font-bold uppercase tracking-wider">Errors</div>
+                                </div>
+                            </div>
+                            {bulkResult.errors?.length > 0 && (
+                                <div className="max-h-40 overflow-y-auto bg-red-50 border border-red-200 rounded-lg p-3">
+                                    <p className="text-xs font-bold text-red-800 mb-1">Errors:</p>
+                                    <ul className="text-[11px] text-red-700 space-y-0.5">
+                                        {bulkResult.errors.slice(0, 50).map((e, i) => <li key={i}>{e}</li>)}
+                                    </ul>
+                                </div>
+                            )}
+                            {bulkResult.departmentsCreated?.length > 0 && (
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                    <p className="text-xs font-bold text-blue-800 mb-1">New departments created:</p>
+                                    <p className="text-[11px] text-blue-700">{bulkResult.departmentsCreated.join(", ")}</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Filters */}
             <div className="flex flex-wrap gap-2">
