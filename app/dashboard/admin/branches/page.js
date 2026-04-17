@@ -98,7 +98,18 @@ export default function BranchSelectorPage() {
 
             {/* Header row */}
             <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-[#003087]">Branches ({branches.length})</h2>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => router.push("/dashboard/admin")}
+                        className="px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-sm font-bold text-[#333333] hover:bg-[#F5F5F5] cursor-pointer flex items-center gap-1.5"
+                    >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                        Back to Admin Dashboard
+                    </button>
+                    <h2 className="text-xl font-bold text-[#003087]">Branches ({branches.length})</h2>
+                </div>
                 <div className="flex gap-2">
                     <button
                         onClick={() => router.push("/dashboard/admin/global/quarter")}

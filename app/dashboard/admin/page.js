@@ -377,6 +377,7 @@ export default function AdminDashboard() {
     // Org Structure state
     const [orgStructure, setOrgStructure] = useState([]);
     const [orgLoading, setOrgLoading] = useState(false);
+    const [orgBranchId, setOrgBranchId] = useState("");
 
     // Reassign role modal state (org structure tab)
     const [reassignModal, setReassignModal] = useState(null); // { dept: {id, name}, role }
@@ -419,6 +420,11 @@ export default function AdminDashboard() {
         try {
             const d = await api("/api/admin/departments/all-assignments");
             setOrgStructure(d.departments);
+            setOrgBranchId(prev => {
+                const branchesInResp = Array.from(new Set((d.departments || []).map(x => x.branch))).filter(Boolean);
+                if (prev && branchesInResp.includes(prev)) return prev;
+                return branchesInResp[0] || "";
+            });
         } catch { }
         setOrgLoading(false);
     };
@@ -1022,7 +1028,11 @@ export default function AdminDashboard() {
                     {branchLoading ? <div className="text-center py-8 text-gray-500">Loading...</div> : (
                         <div className="grid gap-4">
                             {branches.map(branch => (
-                                <div key={branch.id} className="bg-white border border-[#E0E0E0] rounded-xl p-4">
+                                <div
+                                    key={branch.id}
+                                    onClick={() => router.push(`/dashboard/admin/${branch.id}`)}
+                                    className="bg-white border border-[#E0E0E0] rounded-xl p-4 hover:shadow-md hover:border-[#003087] transition-all cursor-pointer"
+                                >
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-3">
                                             <div className={`w-3 h-3 rounded-full ${branch.branchType === "BIG" ? "bg-orange-500" : "bg-green-500"}`} />
@@ -1031,7 +1041,7 @@ export default function AdminDashboard() {
                                                 <p className="text-xs text-gray-500">{branch.location} &bull; {branch.branchType} branch &bull; {branch._count?.departments || 0} departments</p>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                                             <span className={`px-2 py-1 rounded text-xs font-bold ${branch.branchType === "BIG" ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}`}>{branch.branchType}</span>
                                             {editBranch?.id === branch.id ? (
                                                 <div className="flex items-center gap-2">
@@ -1064,19 +1074,30 @@ export default function AdminDashboard() {
             {/* ═══════ ORG STRUCTURE TAB ═══════ */}
             {tab === "org" && (
                 <div className="space-y-6">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
                         <h2 className="text-xl font-bold text-[#003087]">Organization Structure</h2>
-                        <button onClick={fetchOrg} className="px-3 py-2 min-h-[44px] min-w-[80px] bg-white border border-[#CCCCCC] rounded-lg text-[#333333] font-bold hover:text-[#003087] hover:bg-[#F5F5F5] text-[14px] flex items-center gap-1.5 cursor-pointer transition-colors">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                            Refresh
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <select
+                                value={orgBranchId}
+                                onChange={(e) => setOrgBranchId(e.target.value)}
+                                className="border border-[#CCCCCC] rounded-lg px-3 py-2 text-sm font-medium text-[#333333] bg-white min-h-[44px]"
+                            >
+                                {Array.from(new Set(orgStructure.map(d => d.branch))).filter(Boolean).map(name => (
+                                    <option key={name} value={name}>{name}</option>
+                                ))}
+                            </select>
+                            <button onClick={fetchOrg} className="px-3 py-2 min-h-[44px] min-w-[80px] bg-white border border-[#CCCCCC] rounded-lg text-[#333333] font-bold hover:text-[#003087] hover:bg-[#F5F5F5] text-[14px] flex items-center gap-1.5 cursor-pointer transition-colors">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                Refresh
+                            </button>
+                        </div>
                     </div>
 
                     {orgLoading ? (
                         <div className="flex items-center justify-center h-32"><div className="animate-spin h-8 w-8 border-2 border-[#003087] border-t-transparent rounded-full" /></div>
                     ) : (
                         <div className="grid grid-cols-1 gap-4">
-                            {orgStructure.map((dept) => {
+                            {orgStructure.filter(dept => !orgBranchId || dept.branch === orgBranchId).map((dept) => {
                                 const isExpanded = expandedDeptId === dept.id;
                                 return (
                                 <div key={dept.id} className={`bg-white border rounded-xl shadow-sm transition-all ${isExpanded ? "border-[#003087] ring-1 ring-[#003087]/20" : "border-[#E0E0E0]"}`}>
