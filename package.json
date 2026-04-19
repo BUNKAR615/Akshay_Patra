@@ -5,7 +5,7 @@
   "description": "Best Employee of the Quarter — Akshaya Patra Jaipur Branch Pilot",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma migrate deploy && next build",
+    "build": "prisma generate && prisma db push --accept-data-loss && next build",
     "start": "next start",
     "postinstall": "prisma generate",
     "lint": "next lint",
