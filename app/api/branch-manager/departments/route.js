@@ -3,78 +3,62 @@ export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
-import { ok, notFound, serverError } from "../../../../lib/api-response";
+import { ok, notFound, fail, serverError } from "../../../../lib/api-response";
 
-// Fisher-Yates shuffle
-function shuffleArray(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-}
-
-/** GET /api/branch-manager/departments */
+/**
+ * GET /api/branch-manager/departments
+ * Branch-scoped bootstrap for the BM dashboard.
+ * Returns the BM's branch, the active quarter, and every department in that
+ * branch with employee counts. Evaluation shortlist data lives in
+ * /api/branch-manager/shortlist.
+ */
 export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
     try {
-        const activeQuarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" }, select: { id: true, name: true } });
+        const activeQuarter = await prisma.quarter.findFirst({
+            where: { status: "ACTIVE" },
+            select: { id: true, name: true, startDate: true, endDate: true, status: true },
+        });
         if (!activeQuarter) return notFound("No active quarter found");
 
-        // Only show departments this BM is assigned to via departmentRoleMapping
-        const deptMappings = await prisma.departmentRoleMapping.findMany({
-            where: { userId: user.userId, role: "BRANCH_MANAGER" },
-            include: { department: true },
-            orderBy: { department: { name: "asc" } },
+        const bmUser = await prisma.user.findUnique({
+            where: { id: user.userId },
+            select: {
+                department: {
+                    select: {
+                        branchId: true,
+                        branch: { select: { id: true, name: true, branchType: true, location: true } },
+                    },
+                },
+            },
         });
+        const branch = bmUser?.department?.branch;
+        if (!branch) return fail("Branch not found for this Branch Manager");
 
-        // No fallback — BM must be assigned via DRM.
-        // If no mappings, return empty so the frontend shows a clear message.
-        const assignedDepts = deptMappings.map(m => m.department);
+        const [depts, empGroups] = await Promise.all([
+            prisma.department.findMany({
+                where: { branchId: branch.id },
+                select: { id: true, name: true, collarType: true },
+                orderBy: { name: "asc" },
+            }),
+            prisma.user.groupBy({
+                by: ["departmentId"],
+                where: { role: "EMPLOYEE", department: { branchId: branch.id } },
+                _count: { _all: true },
+            }),
+        ]);
 
-        // For each assigned department, find number of S2 shortlists and how many evaluated by this BM
-        const departmentsData = await Promise.all(assignedDepts.map(async (dept) => {
-            const shortlists = await prisma.shortlistStage2.findMany({
-                where: { departmentId: dept.id, quarterId: activeQuarter.id },
-                select: { userId: true, user: { select: { id: true, name: true, empCode: true, designation: true } } }
-            });
-
-            const evaluated = await prisma.branchManagerEvaluation.findMany({
-                where: { managerId: user.userId, quarterId: activeQuarter.id, employee: { departmentId: dept.id } },
-                select: { employeeId: true, bmNormalized: true, bmRawScore: true }
-            });
-
-            const evalMap = new Map(evaluated.map(e => [e.employeeId, e]));
-            const evaluatedSet = new Set(evaluated.map(e => e.employeeId));
-
-            const shuffledEmployees = shuffleArray(shortlists.map(s => {
-                const ev = evalMap.get(s.userId);
-                return {
-                    id: s.user.id,
-                    userId: s.userId,
-                    name: s.user.name,
-                    empCode: s.user.empCode,
-                    designation: s.user.designation || '',
-                    isEvaluated: !!ev,
-                    alreadyEvaluated: !!ev, // keeping for backwards compat in UI during transition
-                    mySubmittedScore: ev ? ev.bmNormalized : null,
-                    mySubmittedRawScore: ev ? ev.bmRawScore : null,
-                    user: s.user // keeping for backwards compat
-                };
-            }));
-
-            return {
-                id: dept.id,
-                name: dept.name,
-                totalToEvaluate: shortlists.length,
-                evaluated: evaluatedSet.size,
-                completed: shortlists.length > 0 && evaluatedSet.size >= shortlists.length,
-                shortlist: shuffledEmployees
-            };
+        const countByDept = new Map(empGroups.map((g) => [g.departmentId, g._count._all]));
+        const departments = depts.map((d) => ({
+            id: d.id,
+            name: d.name,
+            collarType: d.collarType,
+            employeeCount: countByDept.get(d.id) || 0,
         }));
 
         return ok({
-            departments: departmentsData,
-            quarter: activeQuarter
+            quarter: activeQuarter,
+            branch,
+            departments,
         });
     } catch (err) {
         console.error("BM departments error:", err);

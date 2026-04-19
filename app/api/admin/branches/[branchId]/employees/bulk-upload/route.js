@@ -7,6 +7,7 @@ import prisma from "../../../../../../../lib/prisma";
 import { withRole } from "../../../../../../../lib/withRole";
 import { ok, fail, serverError, notFound } from "../../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../../lib/auth/requireBranchScope";
+import { resolveBranch } from "../../../../../../../lib/resolveBranch";
 
 const SALT_ROUNDS = 10;
 
@@ -30,6 +31,16 @@ const COLLAR_MAP = {
     white_collar: "WHITE_COLLAR", whitecollar: "WHITE_COLLAR", white: "WHITE_COLLAR", wc: "WHITE_COLLAR",
 };
 
+const ALLOWED_HEADERS = {
+    empcode:     "empCode",
+    name:        "name",
+    department:  "department",
+    collar:      "collar",
+    designation: "designation",
+    mobile:      "mobile",
+};
+const REQUIRED_HEADERS = ["empcode", "name", "department", "collar"];
+
 /**
  * POST /api/admin/branches/[branchId]/employees/bulk-upload
  *
@@ -43,11 +54,12 @@ const COLLAR_MAP = {
  */
 export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
     try {
-        const { branchId, error } = requireBranchScope(user, params);
+        const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;
 
-        const branch = await prisma.branch.findUnique({ where: { id: branchId } });
+        const branch = await resolveBranch(slugOrId);
         if (!branch) return notFound("Branch not found");
+        const branchId = branch.id;
 
         const formData = await request.formData();
         const file = formData.get("file");
@@ -62,6 +74,29 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
         const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
         if (!Array.isArray(rawRows) || rawRows.length === 0) return fail("No data rows");
 
+        const headerRow = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" })[0] || [];
+        const normalizedHeaders = headerRow
+            .map(h => String(h).trim())
+            .filter(h => h.length > 0)
+            .map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ""));
+
+        const unknown = normalizedHeaders.filter(h => !(h in ALLOWED_HEADERS));
+        const missingRequired = REQUIRED_HEADERS.filter(h => !normalizedHeaders.includes(h));
+
+        if (missingRequired.length || unknown.length) {
+            const parts = [];
+            if (missingRequired.length) {
+                parts.push(`missing required column(s): ${missingRequired.map(h => ALLOWED_HEADERS[h]).join(", ")}`);
+            }
+            if (unknown.length) {
+                parts.push(`unexpected column(s): ${unknown.join(", ")}`);
+            }
+            return fail(
+                `Invalid columns — ${parts.join("; ")}. Expected exactly: empCode, name, department, collar, designation, mobile (designation and mobile optional). Header casing does not matter.`,
+                400
+            );
+        }
+
         const rows = [];
         const errors = [];
 
@@ -69,13 +104,13 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             const r = normRow(rawRows[i]);
             const rowNum = i + 2;
 
-            const empCode = pick(r, ["empcode", "employeecode", "empid", "code"]);
-            const name = pick(r, ["name", "fullname", "employeename"]);
-            const department = pick(r, ["department", "dept", "departmentname"]);
-            const collarRaw = pick(r, ["collar", "collartype"]).toLowerCase().replace(/[^a-z_]/g, "");
+            const empCode = pick(r, ["empcode"]);
+            const name = pick(r, ["name"]);
+            const department = pick(r, ["department"]);
+            const collarRaw = pick(r, ["collar"]).toLowerCase().replace(/[^a-z_]/g, "");
             const collarType = COLLAR_MAP[collarRaw] || null;
-            const designation = pick(r, ["designation", "position", "title"]);
-            const mobile = pick(r, ["mobile", "phone", "contact"]);
+            const designation = pick(r, ["designation"]);
+            const mobile = pick(r, ["mobile"]);
 
             if (!empCode) { errors.push(`Row ${rowNum}: missing empCode`); continue; }
             if (!name) { errors.push(`Row ${rowNum}: missing name`); continue; }

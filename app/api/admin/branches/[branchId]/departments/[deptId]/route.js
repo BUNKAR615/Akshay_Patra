@@ -5,6 +5,7 @@ import prisma from "../../../../../../../lib/prisma";
 import { withRole } from "../../../../../../../lib/withRole";
 import { ok, fail, serverError, notFound } from "../../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../../lib/auth/requireBranchScope";
+import { resolveBranch } from "../../../../../../../lib/resolveBranch";
 import { z } from "zod";
 
 const renameSchema = z.object({
@@ -18,8 +19,12 @@ const renameSchema = z.object({
  */
 export const PATCH = withRole(["ADMIN"], async (request, { params, user }) => {
     try {
-        const { branchId, error } = requireBranchScope(user, params);
+        const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;
+
+        const resolvedBranch = await resolveBranch(slugOrId);
+        if (!resolvedBranch) return notFound("Branch not found");
+        const branchId = resolvedBranch.id;
 
         const { deptId } = params;
         if (!deptId) return fail("Department ID is required");

@@ -3,8 +3,9 @@ export const runtime = 'nodejs'
 
 import prisma from "../../../../../../lib/prisma";
 import { withRole } from "../../../../../../lib/withRole";
-import { ok, fail, serverError, validateBody } from "../../../../../../lib/api-response";
+import { ok, fail, serverError, notFound } from "../../../../../../lib/api-response";
 import { branchEvalConfigSchema } from "../../../../../../lib/validators";
+import { resolveBranch } from "../../../../../../lib/resolveBranch";
 
 /**
  * GET /api/admin/branches/[id]/eval-config?quarterId=xxx
@@ -12,7 +13,11 @@ import { branchEvalConfigSchema } from "../../../../../../lib/validators";
  */
 export const GET = withRole(["ADMIN"], async (request, { params }) => {
     try {
-        const { branchId: id } = await params;
+        const { branchId: slugOrId } = await params;
+        const resolved = await resolveBranch(slugOrId);
+        if (!resolved) return notFound("Branch not found");
+        const id = resolved.id;
+
         const { searchParams } = new URL(request.url);
         const quarterId = searchParams.get("quarterId");
 
@@ -35,7 +40,11 @@ export const GET = withRole(["ADMIN"], async (request, { params }) => {
  */
 export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
     try {
-        const { branchId: id } = await params;
+        const { branchId: slugOrId } = await params;
+        const resolved = await resolveBranch(slugOrId);
+        if (!resolved) return notFound("Branch not found");
+        const id = resolved.id;
+
         const body = await request.json();
         body.branchId = id;
 

@@ -67,7 +67,7 @@ export const GET = withRole(["BRANCH_MANAGER", "ADMIN"], async (request, { user 
         // BM evaluations count (for WC in this branch)
         const bmEvaluations = await prisma.branchManagerEvaluation.findMany({
             where: {
-                bmId: user.userId,
+                managerId: user.userId,
                 quarterId: quarter.id,
             },
             select: { employeeId: true },

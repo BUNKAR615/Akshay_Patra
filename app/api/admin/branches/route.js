@@ -110,9 +110,13 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         const existing = await prisma.branch.findUnique({ where: { name: data.name } });
         if (existing) return fail("Branch with this name already exists", 409);
 
+        const slug = data.name.trim().toLowerCase()
+            .replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "");
+
         const branch = await prisma.branch.create({
             data: {
                 name: data.name,
+                slug,
                 location: data.location,
                 branchType: data.branchType,
             },

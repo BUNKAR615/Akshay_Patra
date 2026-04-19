@@ -6,6 +6,7 @@ import prisma from "../../../../../../lib/prisma";
 import { withRole } from "../../../../../../lib/withRole";
 import { ok, fail, serverError, notFound, forbidden, conflict, created } from "../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
+import { resolveBranch } from "../../../../../../lib/resolveBranch";
 
 // Only these two empCodes can add employees (mirrors /api/admin/employees POST)
 const HR_ALLOWED = ["1800349", "5100029"];
@@ -17,11 +18,12 @@ const HR_ALLOWED = ["1800349", "5100029"];
  */
 export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
     try {
-        const { branchId, error } = requireBranchScope(user, params);
+        const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;
 
-        const branch = await prisma.branch.findUnique({ where: { id: branchId } });
+        const branch = await resolveBranch(slugOrId);
         if (!branch) return notFound("Branch not found");
+        const branchId = branch.id;
 
         const { searchParams } = new URL(request.url);
         const roleFilter = searchParams.get("role");
@@ -68,11 +70,12 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             return forbidden("You are not authorized to add employees");
         }
 
-        const { branchId, error } = requireBranchScope(user, params);
+        const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;
 
-        const branch = await prisma.branch.findUnique({ where: { id: branchId } });
+        const branch = await resolveBranch(slugOrId);
         if (!branch) return notFound("Branch not found");
+        const branchId = branch.id;
 
         const body = await request.json();
         const { name, mobile, departmentName, joiningDate, reason, empCode, designation } = body;

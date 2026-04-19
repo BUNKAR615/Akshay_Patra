@@ -747,7 +747,7 @@ export default function AdminDashboard() {
                 >
                     <option value="">Global — all branches</option>
                     {branches.map(b => (
-                        <option key={b.id} value={b.id}>{b.name}{b.location ? ` — ${b.location}` : ""}</option>
+                        <option key={b.id} value={b.slug}>{b.name}{b.location ? ` — ${b.location}` : ""}</option>
                     ))}
                 </select>
             </div>
@@ -1030,7 +1030,7 @@ export default function AdminDashboard() {
                             {branches.map(branch => (
                                 <div
                                     key={branch.id}
-                                    onClick={() => router.push(`/dashboard/admin/${branch.id}`)}
+                                    onClick={() => router.push(`/dashboard/admin/${branch.slug}`)}
                                     className="bg-white border border-[#E0E0E0] rounded-xl p-4 hover:shadow-md hover:border-[#003087] transition-all cursor-pointer"
                                 >
                                     <div className="flex items-center justify-between">

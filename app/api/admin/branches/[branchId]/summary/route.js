@@ -5,6 +5,7 @@ import prisma from "../../../../../../lib/prisma";
 import { withRole } from "../../../../../../lib/withRole";
 import { ok, fail, serverError, notFound } from "../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
+import { resolveBranch } from "../../../../../../lib/resolveBranch";
 
 /**
  * GET /api/admin/branches/[branchId]/summary
@@ -22,18 +23,21 @@ import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScop
  */
 export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
     try {
-        const { branchId, error } = requireBranchScope(user, params);
+        const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;
 
-        const branch = await prisma.branch.findUnique({
+        const branch = await resolveBranch(slugOrId);
+        if (!branch) return notFound("Branch not found");
+        const branchId = branch.id;
+
+        const branchWithCount = await prisma.branch.findUnique({
             where: { id: branchId },
             include: { _count: { select: { departments: true } } },
         });
-        if (!branch) return notFound("Branch not found");
 
         const quarter = await prisma.quarter.findFirst({
             where: { status: "ACTIVE" },
-            select: { id: true, name: true, status: true, year: true, number: true },
+            select: { id: true, name: true, status: true },
         });
 
         const [
@@ -74,6 +78,7 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
             branch: {
                 id: branch.id,
                 name: branch.name,
+                slug: branch.slug,
                 location: branch.location,
                 branchType: branch.branchType,
                 createdAt: branch.createdAt,
@@ -81,7 +86,7 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
             quarter,
             counts: {
                 employees,
-                departments: branch._count.departments,
+                departments: branchWithCount._count.departments,
                 bm,
                 cm,
                 hod: hods,

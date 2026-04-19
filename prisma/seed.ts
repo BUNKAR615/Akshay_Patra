@@ -29,7 +29,7 @@ async function main() {
   const branch = await prisma.branch.upsert({
     where: { name: 'Jaipur' },
     update: { location: 'Jaipur, Rajasthan' },
-    create: { name: 'Jaipur', location: 'Jaipur, Rajasthan' },
+    create: { name: 'Jaipur', slug: 'jaipur', location: 'Jaipur, Rajasthan' },
   });
 
   // ── Step 2: Upsert 13 Departments ──

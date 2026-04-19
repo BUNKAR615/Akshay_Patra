@@ -6,6 +6,7 @@ import prisma from "../../../../../../lib/prisma";
 import { withRole } from "../../../../../../lib/withRole";
 import { ok, fail, created, serverError, notFound } from "../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
+import { resolveBranch } from "../../../../../../lib/resolveBranch";
 import { z } from "zod";
 
 const SALT_ROUNDS = 10;
@@ -32,8 +33,12 @@ const assignSchema = z.object({
  */
 export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
     try {
-        const { branchId, error } = requireBranchScope(user, params);
+        const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;
+
+        const resolved = await resolveBranch(slugOrId);
+        if (!resolved) return notFound("Branch not found");
+        const branchId = resolved.id;
 
         const assignments = await prisma.hrBranchAssignment.findMany({
             where: { branchId },
@@ -54,11 +59,12 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
 
 export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
     try {
-        const { branchId, error } = requireBranchScope(user, params);
+        const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;
 
-        const branch = await prisma.branch.findUnique({ where: { id: branchId } });
+        const branch = await resolveBranch(slugOrId);
         if (!branch) return notFound("Branch not found");
+        const branchId = branch.id;
 
         const body = await request.json();
         const parsed = assignSchema.safeParse(body);
@@ -121,8 +127,12 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
 
 export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
     try {
-        const { branchId, error } = requireBranchScope(user, params);
+        const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;
+
+        const resolved = await resolveBranch(slugOrId);
+        if (!resolved) return notFound("Branch not found");
+        const branchId = resolved.id;
 
         const { searchParams } = new URL(request.url);
         const hrUserId = searchParams.get("hrUserId");

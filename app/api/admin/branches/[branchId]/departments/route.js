@@ -5,6 +5,7 @@ import prisma from "../../../../../../lib/prisma";
 import { withRole } from "../../../../../../lib/withRole";
 import { ok, serverError, notFound } from "../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
+import { resolveBranch } from "../../../../../../lib/resolveBranch";
 
 /**
  * GET /api/admin/branches/[branchId]/departments
@@ -12,11 +13,12 @@ import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScop
  */
 export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
     try {
-        const { branchId, error } = requireBranchScope(user, params);
+        const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;
 
-        const branch = await prisma.branch.findUnique({ where: { id: branchId } });
+        const branch = await resolveBranch(slugOrId);
         if (!branch) return notFound("Branch not found");
+        const branchId = branch.id;
 
         const departments = await prisma.department.findMany({
             where: { branchId },

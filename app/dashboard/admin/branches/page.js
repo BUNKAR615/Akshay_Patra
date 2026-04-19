@@ -149,7 +149,7 @@ export default function BranchSelectorPage() {
                 {branches.map(branch => (
                     <div
                         key={branch.id}
-                        onClick={() => router.push(`/dashboard/admin/${branch.id}`)}
+                        onClick={() => router.push(`/dashboard/admin/${branch.slug}`)}
                         className="bg-white border border-[#E0E0E0] rounded-xl p-5 hover:shadow-md hover:border-[#003087] transition-all cursor-pointer group"
                     >
                         <div className="flex items-start justify-between mb-3">
