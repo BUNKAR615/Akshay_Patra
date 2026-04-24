@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import DashboardShell from "../../../components/DashboardShell";
 
 async function api(url, opts) {
@@ -37,12 +38,14 @@ function UploadIcon() {
 /* ────────────────────────────────────────────────────── */
 
 export default function HRDashboard() {
+    const searchParams = useSearchParams();
+    const view = searchParams.get("view");
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [authorized, setAuthorized] = useState(false);
 
-    /* ─── Top-level tab ─── */
-    const [mainTab, setMainTab] = useState("evaluate"); // "evaluate" | "management"
+    /* ─── Top-level tab — sidebar drives via ?view= ─── */
+    const mainTab = view === "management" ? "management" : "evaluate";
 
     /* ══════════════════════════════════════════════════
        EVALUATE TAB STATE
@@ -648,30 +651,6 @@ export default function HRDashboard() {
     return (
         <DashboardShell user={user} title="HR Dashboard">
             <div className="space-y-6">
-                {/* Main tab switcher */}
-                <div className="flex gap-1 bg-[#F5F5F5] p-1 rounded-xl border border-[#E0E0E0] w-fit">
-                    <button
-                        onClick={() => setMainTab("evaluate")}
-                        className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer ${
-                            mainTab === "evaluate"
-                                ? "bg-[#F57C00] text-white shadow-sm"
-                                : "text-[#666666] hover:text-[#333333] hover:bg-white"
-                        }`}
-                    >
-                        Evaluate
-                    </button>
-                    <button
-                        onClick={() => setMainTab("management")}
-                        className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer ${
-                            mainTab === "management"
-                                ? "bg-[#F57C00] text-white shadow-sm"
-                                : "text-[#666666] hover:text-[#333333] hover:bg-white"
-                        }`}
-                    >
-                        Employee Management
-                    </button>
-                </div>
-
                 {/* Tab content */}
                 {mainTab === "evaluate" && renderEvaluateTab()}
                 {mainTab === "management" && renderManagementTab()}
