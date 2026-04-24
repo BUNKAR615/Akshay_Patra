@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import DashboardShell from "../../../components/DashboardShell";
 import EvaluationForm from "../../../components/EvaluationForm";
 import UserProfileCard from "../../../components/UserProfileCard";
@@ -31,6 +32,8 @@ function StatBox({ label, value, color, compact }) {
 }
 
 export default function BranchManagerDashboard() {
+    const searchParams = useSearchParams();
+    const view = searchParams.get("view");
     const [user, setUser] = useState(null);
     const [currentQuarterName, setCurrentQuarterName] = useState("");
     const [branch, setBranch] = useState(null);
@@ -44,7 +47,13 @@ export default function BranchManagerDashboard() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
-    const [bmTab, setBmTab] = useState("evaluate");
+    // Sidebar drives the tab via ?view= — normalize here.
+    const bmTab = view === "manage" ? "manage" : "evaluate";
+
+    // Lazy-load manage data when user navigates to the manage view.
+    useEffect(() => {
+        if (bmTab === "manage" && manageEmployees.length === 0) fetchManageData();
+    }, [bmTab]);
 
     // Manage tab state
     const [manageEmployees, setManageEmployees] = useState([]);
@@ -301,19 +310,6 @@ export default function BranchManagerDashboard() {
                     }}
                 />
             )}
-
-            {/* Tab Switcher */}
-            <div className="flex gap-2 mb-6">
-                {[{ id: "evaluate", label: "Evaluate" }, { id: "manage", label: "Manage" }].map(t => (
-                    <button
-                        key={t.id}
-                        onClick={() => { setBmTab(t.id); if (t.id === "manage" && manageEmployees.length === 0) fetchManageData(); }}
-                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${bmTab === t.id ? "bg-[#003087] text-white shadow-sm" : "bg-[#F5F5F5] text-[#333] hover:bg-[#E0E0E0]"}`}
-                    >
-                        {t.label}
-                    </button>
-                ))}
-            </div>
 
             {/* ═══════ MANAGE TAB ═══════ */}
             {bmTab === "manage" && (

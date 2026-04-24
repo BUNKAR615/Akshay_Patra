@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import DashboardShell from "../../../components/DashboardShell";
+import { Stat, Alert } from "../../../components/ui";
 import ConfirmDialog from "../../../components/ConfirmDialog";
 import { PageSpinner, SkeletonCard, SkeletonStats } from "../../../components/Skeleton";
 import UserProfileCard from "../../../components/UserProfileCard";
@@ -28,9 +29,28 @@ function getAutoQuarterName() {
 
 export default function AdminDashboard() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const viewParam = searchParams.get("view");
     const [user, setUser] = useState(null);
-    const [tab, setTab] = useState("summary");
+    const [tab, setTabState] = useState(viewParam || "dashboard");
     const [loading, setLoading] = useState(true);
+    const [dismissedAlerts, setDismissedAlerts] = useState([]);
+    const [activity, setActivity] = useState([]);
+
+    // Sidebar drives tab via ?view= query param; keep URL in sync when user triggers setTab.
+    const setTab = (id) => {
+        setTabState(id);
+        const params = new URLSearchParams(Array.from(searchParams.entries()));
+        if (id === "dashboard") params.delete("view"); else params.set("view", id);
+        const qs = params.toString();
+        router.replace(`/dashboard/admin${qs ? `?${qs}` : ""}`, { scroll: false });
+    };
+
+    // React to URL changes from sidebar clicks.
+    useEffect(() => {
+        const next = viewParam || "dashboard";
+        if (next !== tab) setTabState(next);
+    }, [viewParam]);
 
     // Confirm dialog
     const [confirm, setConfirm] = useState({ open: false, type: null });
@@ -475,23 +495,35 @@ export default function AdminDashboard() {
     };
 
     useEffect(() => {
-        if (tab === "summary" && !quarterProgress) {
+        if (tab === "dashboard" && !quarterProgress) {
             fetchProgress();
             fetchReport();
         }
+        if (tab === "pipeline" && !quarterProgress) fetchProgress();
         if (tab === "org" && orgStructure.length === 0) fetchOrg();
         if (tab === "questions" && questions.length === 0) fetchQuestions();
     }, [tab]);
 
     useEffect(() => {
-        // Auto-refresh summary tab every 60s
+        // Auto-refresh dashboard tab every 60s
         let interval;
-        if (tab === "summary") {
+        if (tab === "dashboard") {
             interval = setInterval(() => {
                 fetchProgress();
             }, 60000);
         }
         return () => clearInterval(interval);
+    }, [tab]);
+
+    // Recent activity for the dashboard view.
+    useEffect(() => {
+        if (tab !== "dashboard") return;
+        (async () => {
+            try {
+                const d = await api("/api/admin/audit-logs?page=1&limit=5");
+                setActivity(d.logs || []);
+            } catch { }
+        })();
     }, [tab]);
 
     // ── CSV export ──
@@ -568,7 +600,7 @@ export default function AdminDashboard() {
             setQuarterName(""); setStartDate(""); setEndDate("");
             setQuarterProgress(null);
             setReport(null);
-            if (tab === "summary") { fetchProgress(); fetchReport(); }
+            if (tab === "dashboard") { fetchProgress(); fetchReport(); }
         } catch (e) { setQuarterMsg({ type: "error", text: e.message }); }
         setQuarterLoading(false);
     };
@@ -585,7 +617,7 @@ export default function AdminDashboard() {
             setQuarterMsg({ type: "success", text: d.message });
             setQuarterProgress(null);
             setReport(null);
-            if (tab === "summary") { fetchProgress(); fetchReport(); }
+            if (tab === "dashboard") { fetchProgress(); fetchReport(); }
         } catch (e) { setQuarterMsg({ type: "error", text: e.message }); }
         setQuarterLoading(false);
     };
@@ -702,15 +734,25 @@ export default function AdminDashboard() {
     // Always load branches on mount so the Global/Branch dropdown is populated
     useEffect(() => { fetchBranches(); }, []);
 
-    const TABS = [
-        { id: "summary", label: "Summary" },
-        { id: "branches", label: "Branches" },
-        { id: "org", label: "Org Structure" },
-        { id: "quarter", label: "Quarter" },
-        { id: "questions", label: "Questions" },
-        { id: "employees", label: "All Employees" },
-        { id: "logs", label: "Audit Logs" },
-    ];
+    // Alerts derived from quarter progress: pending-stage warnings + days-left banner.
+    const alerts = useMemo(() => {
+        if (!quarterProgress) return [];
+        const out = [];
+        const endDate = quarterProgress.quarter?.endDate ? new Date(quarterProgress.quarter.endDate) : null;
+        if (endDate) {
+            const daysLeft = Math.ceil((endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+            if (daysLeft > 0 && daysLeft <= 14) {
+                out.push({ id: `qtr-ending-${daysLeft}`, type: daysLeft < 7 ? "warning" : "info", message: `${quarterProgress.quarter.name} ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}.` });
+            }
+        }
+        (quarterProgress.branches || []).forEach((b) => {
+            const pending2 = (b.stage2.shortlisted || 0) - ((b.stage2.evaluatedByBm || 0) + (b.stage2.evaluatedByHod || 0));
+            if (pending2 > 0) out.push({ id: `s2-${b.branchId}`, type: "info", message: `${b.branchName}: ${pending2} Stage-2 evaluation${pending2 === 1 ? "" : "s"} pending.` });
+        });
+        return out;
+    }, [quarterProgress]);
+    const visibleAlerts = alerts.filter(a => !dismissedAlerts.includes(a.id));
+
     const CATEGORIES = ["ATTENDANCE", "DISCIPLINE", "PRODUCTIVITY", "TEAMWORK", "INITIATIVE", "COMMUNICATION", "INTEGRITY"];
     const LEVELS = ["SELF", "BRANCH_MANAGER", "CLUSTER_MANAGER"];
 
@@ -752,18 +794,22 @@ export default function AdminDashboard() {
                 </select>
             </div>
 
-            {/* Tabs — scrollable on mobile */}
-            <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 mb-6 pb-1">
-                <div className="flex gap-1 bg-[#F5F5F5] rounded-xl p-1 border border-[#E0E0E0] w-max sm:w-fit">
-                    {TABS.map((t) => (
-                        <button key={t.id} onClick={() => setTab(t.id)} className={`min-h-[40px] sm:min-h-[44px] px-3 sm:px-4 py-2 rounded-lg text-[13px] sm:text-[14px] font-bold transition-all cursor-pointer whitespace-nowrap ${tab === t.id ? "bg-[#003087] text-white shadow-sm" : "text-[#333333] hover:text-[#003087] hover:bg-white"}`}>{t.label}</button>
-                    ))}
-                </div>
-            </div>
-
-            {/* ═══════ SUMMARY TAB ═══════ */}
-            {tab === "summary" && (
+            {/* ═══════ DASHBOARD TAB ═══════ */}
+            {tab === "dashboard" && (
                 <div className="space-y-6">
+                    {/* Dismissible alerts */}
+                    {visibleAlerts.length > 0 && (
+                        <div className="space-y-2">
+                            {visibleAlerts.map((a) => (
+                                <Alert
+                                    key={a.id}
+                                    type={a.type}
+                                    message={a.message}
+                                    onClose={() => setDismissedAlerts((prev) => [...prev, a.id])}
+                                />
+                            ))}
+                        </div>
+                    )}
                     {progressLoading && !quarterProgress ? (
                         <div className="flex items-center justify-center h-48">
                             <div className="animate-spin h-8 w-8 border-2 border-[#003087] border-t-transparent rounded-full" />
@@ -792,26 +838,32 @@ export default function AdminDashboard() {
 
                             {/* SECTION B — Overall Stats */}
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
-                                <div className="bg-white border border-[#E0E0E0] rounded-xl p-3 sm:p-5 shadow-sm">
-                                    <p className="text-[#333333] tracking-wide text-[10px] sm:text-xs uppercase font-medium">Total Employees</p>
-                                    <p className="text-xl sm:text-2xl font-bold text-[#1A1A2E] mt-1">{quarterProgress.overallStats.totalEmployees}</p>
-                                </div>
-                                <div className="bg-white border border-[#E0E0E0] rounded-xl p-3 sm:p-5 shadow-sm">
-                                    <p className="text-[#333333] tracking-wide text-[10px] sm:text-xs uppercase font-medium">Submitted</p>
-                                    <p className="text-xl sm:text-2xl font-bold text-[#003087] mt-1">{quarterProgress.overallStats.totalSubmitted}</p>
-                                </div>
-                                <div className="bg-white border border-[#E0E0E0] rounded-xl p-3 sm:p-5 shadow-sm">
-                                    <p className="text-[#333333] tracking-wide text-[10px] sm:text-xs uppercase font-medium">Completion</p>
-                                    <p className="text-xl sm:text-2xl font-bold text-[#00843D] mt-1">{quarterProgress.overallStats.overallPercentage}%</p>
-                                </div>
-                                <div className="bg-white border border-[#E0E0E0] rounded-xl p-3 sm:p-5 shadow-sm">
-                                    <p className="text-[#333333] tracking-wide text-[10px] sm:text-xs uppercase font-medium">Winners</p>
-                                    {quarterProgress.overallStats.quarterWinners && quarterProgress.overallStats.quarterWinners.length > 0 ? (
-                                        <p className="text-xl sm:text-2xl font-bold text-[#F7941D] mt-1">{quarterProgress.overallStats.quarterWinners.length} / {quarterProgress.departments.length}</p>
-                                    ) : (
-                                        <p className="text-sm sm:text-lg font-bold text-[#666666] mt-1 italic">In Progress</p>
-                                    )}
-                                </div>
+                                <Stat
+                                    label="Total Employees"
+                                    value={quarterProgress.overallStats.totalEmployees}
+                                    color="#1A1A2E"
+                                />
+                                <Stat
+                                    label="Submitted"
+                                    value={quarterProgress.overallStats.totalSubmitted}
+                                    color="#003087"
+                                    sub={`of ${quarterProgress.overallStats.totalEmployees}`}
+                                />
+                                <Stat
+                                    label="Completion"
+                                    value={`${quarterProgress.overallStats.overallPercentage}%`}
+                                    color="#00843D"
+                                />
+                                <Stat
+                                    label="Winners"
+                                    value={
+                                        quarterProgress.overallStats.quarterWinners?.length > 0
+                                            ? `${quarterProgress.overallStats.quarterWinners.length} / ${quarterProgress.departments.length}`
+                                            : "—"
+                                    }
+                                    color="#F7941D"
+                                    sub={quarterProgress.overallStats.quarterWinners?.length > 0 ? undefined : "In progress"}
+                                />
                             </div>
 
                             {/* SECTION — Branch-wise Stage Progress */}
@@ -962,6 +1014,29 @@ export default function AdminDashboard() {
                                 </button>
                             </div>
 
+                            {/* SECTION — Recent Activity */}
+                            <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 sm:p-6">
+                                <h3 className="text-lg font-bold text-[#003087] mb-3">Recent Activity</h3>
+                                {activity.length === 0 ? (
+                                    <p className="text-sm text-[#999999] italic">No recent activity.</p>
+                                ) : (
+                                    <ul className="divide-y divide-[#E0E0E0]">
+                                        {activity.map((log) => (
+                                            <li key={log.id} className="py-2.5 flex items-start gap-3">
+                                                <div className="w-2 h-2 mt-1.5 rounded-full bg-[#003087] shrink-0" />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[13px] text-[#1A1A2E]">
+                                                        <span className="font-bold">{log.user?.name || "System"}</span>
+                                                        <span className="text-[#666666]"> · {log.action.replace(/_/g, " ").toLowerCase()}</span>
+                                                    </p>
+                                                    <p className="text-[11px] text-[#999999] mt-0.5">{new Date(log.createdAt).toLocaleString()}</p>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+
                             {/* Department-level progress now lives in the per-branch dashboard */}
                             <div className="bg-[#F5F5F5] border border-[#E0E0E0] rounded-xl p-5 text-center">
                                 <p className="text-sm text-[#666666]">
@@ -1000,6 +1075,56 @@ export default function AdminDashboard() {
                                 </button>
                             </div>
                         </div>
+                    )}
+                </div>
+            )}
+
+            {/* ═══════ PIPELINE TAB — per-branch drill-down ═══════ */}
+            {tab === "pipeline" && (
+                <div className="space-y-6">
+                    {!quarterProgress ? (
+                        <div className="bg-white border border-[#E0E0E0] rounded-xl p-8 text-center text-sm text-[#666666]">
+                            {progressLoading ? "Loading pipeline..." : "No active quarter."}
+                        </div>
+                    ) : (
+                        <>
+                            <h2 className="text-xl font-bold text-[#003087]">Evaluation Pipeline</h2>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                {(quarterProgress.branches || []).map((b) => {
+                                    const stages = [
+                                        { label: "Stage 1 — Self", done: b.stage1.submitted, total: b.totalEmployees, color: "#003087" },
+                                        { label: "Stage 2 — BM/HOD", done: (b.stage2.evaluatedByBm || 0) + (b.stage2.evaluatedByHod || 0), total: b.stage2.shortlisted, color: "#00843D" },
+                                        { label: "Stage 3 — CM", done: b.stage3.evaluatedByCm, total: b.stage3.shortlisted, color: "#F7941D" },
+                                        { label: "Stage 4 — HR", done: b.stage4.evaluatedByHr, total: b.stage4.shortlisted, color: "#D32F2F" },
+                                        { label: "Winners", done: b.winners.length, total: b.branchType === "BIG" ? 4 : 3, color: "#6A1B9A" },
+                                    ];
+                                    return (
+                                        <div key={b.branchId} className="bg-white border border-[#E0E0E0] rounded-xl p-4 shadow-sm">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <h3 className="font-bold text-[#1A1A2E]">{b.branchName}</h3>
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${b.branchType === "BIG" ? "bg-[#F3E5F5] text-[#6A1B9A] border-[#CE93D8]" : "bg-[#FFF8E1] text-[#F57F17] border-[#FFE082]"}`}>{b.branchType}</span>
+                                            </div>
+                                            <div className="space-y-2.5">
+                                                {stages.map((s) => {
+                                                    const pct = s.total > 0 ? Math.min(100, Math.round((s.done / s.total) * 100)) : 0;
+                                                    return (
+                                                        <div key={s.label}>
+                                                            <div className="flex items-center justify-between text-[11px] mb-1">
+                                                                <span className="font-bold text-[#333333]">{s.label}</span>
+                                                                <span className="text-[#666666]"><span className="font-bold" style={{ color: s.color }}>{s.done}</span> / {s.total}</span>
+                                                            </div>
+                                                            <div className="h-1.5 bg-[#F5F5F5] rounded-full overflow-hidden">
+                                                                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: s.color }} />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </>
                     )}
                 </div>
             )}
