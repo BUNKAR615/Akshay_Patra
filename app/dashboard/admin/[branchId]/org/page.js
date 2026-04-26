@@ -23,16 +23,20 @@ export default function BranchOrgPage() {
     useEffect(() => {
         (async () => {
             try {
-                const [summary, empData, deptData] = await Promise.all([
+                const [summary, empData, deptData, bmData, cmData] = await Promise.all([
                     api(`/api/admin/branches/${branchId}/summary`),
                     api(`/api/admin/branches/${branchId}/employees`),
                     api(`/api/admin/branches/${branchId}/departments`),
+                    // bm-assign / cm-assign are the source of truth for who is
+                    // currently the BM / CM of this branch (employees-by-role
+                    // can lag during role transitions).
+                    api(`/api/admin/branches/${branchId}/bm-assign`),
+                    api(`/api/admin/branches/${branchId}/cm-assign`),
                 ]);
-                // Group employees by role
                 const employees = empData.employees || [];
-                const cms = employees.filter(e => e.role === "CLUSTER_MANAGER");
-                const bms = employees.filter(e => e.role === "BRANCH_MANAGER");
                 const hods = employees.filter(e => e.role === "HOD");
+                const cms = (cmData.assignments || []).map(a => a.cm).filter(Boolean);
+                const bms = bmData.assignment ? [bmData.assignment.bm] : [];
                 const departments = deptData.departments || [];
 
                 setData({ branch: summary.branch, cms, bms, hods, departments });
@@ -56,7 +60,7 @@ export default function BranchOrgPage() {
 
             {/* CM */}
             <div className="bg-white border border-[#E0E0E0] rounded-xl p-4">
-                <h3 className="text-[13px] font-bold text-[#999] uppercase tracking-wider mb-3">Cluster Manager(s)</h3>
+                <h3 className="text-[13px] font-bold text-[#999] uppercase tracking-wider mb-3">Cluster Manager</h3>
                 {cms.length > 0 ? (
                     <div className="flex flex-wrap gap-3">
                         {cms.map(cm => (
@@ -78,7 +82,7 @@ export default function BranchOrgPage() {
 
             {/* BM */}
             <div className="bg-white border border-[#E0E0E0] rounded-xl p-4">
-                <h3 className="text-[13px] font-bold text-[#999] uppercase tracking-wider mb-3">Branch Manager(s)</h3>
+                <h3 className="text-[13px] font-bold text-[#999] uppercase tracking-wider mb-3">Branch Manager</h3>
                 {bms.length > 0 ? (
                     <div className="flex flex-wrap gap-3">
                         {bms.map(bm => (

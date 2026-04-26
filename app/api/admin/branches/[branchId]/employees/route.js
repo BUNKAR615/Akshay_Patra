@@ -7,6 +7,7 @@ import { withRole } from "../../../../../../lib/withRole";
 import { ok, fail, serverError, notFound, forbidden, conflict, created } from "../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
+import { defaultPasswordFor } from "../../../../../../lib/auth/defaultPassword";
 
 // Only these two empCodes can add employees (mirrors /api/admin/employees POST)
 const HR_ALLOWED = ["1800349", "5100029"];
@@ -94,9 +95,8 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             if (existing) return conflict(`Employee code "${empCode}" already exists`);
         }
 
-        const firstName = name.split(" ")[0];
-        const codeSuffix = empCode ? empCode.slice(-2) : String(Date.now()).slice(-2);
-        const rawPassword = `${firstName}_${codeSuffix}`;
+        // Default password for EMPLOYEE = empCode (per spec).
+        const rawPassword = defaultPasswordFor({ role: "EMPLOYEE", empCode: empCode || `tmp${Date.now()}`, name });
         const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
         const newUser = await prisma.user.create({

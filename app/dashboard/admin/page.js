@@ -530,7 +530,7 @@ export default function AdminDashboard() {
     const exportCSV = (data) => {
         const source = data || report;
         if (!source?.employees?.length) return;
-        const stageLabel = { 1: "Self Assessment", 2: "Supervisor", 3: "Branch Manager", 4: "Cluster Manager" };
+        const stageLabel = { 1: "Self Assessment", 2: "BM / HOD", 3: "Cluster Manager", 4: "HR", 5: "Committee" };
         const csvData = source.employees.map((e) => ({
             "Employee Name": e.employeeName,
             "Department": e.department,

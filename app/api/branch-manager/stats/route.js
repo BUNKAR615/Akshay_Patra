@@ -31,12 +31,12 @@ export const GET = withRole(["BRANCH_MANAGER", "ADMIN"], async (request, { user 
         const branch = bmUser?.department?.branch;
         if (!branch) return fail("Branch not found for user");
 
-        // All employees in this branch (role EMPLOYEE, not evaluators)
+        // All employees in this branch (role EMPLOYEE).
+        // Match the admin branch-summary filter so BM counts stay in sync.
         const allEmployees = await prisma.user.findMany({
             where: {
                 role: "EMPLOYEE",
-                departmentRoles: { none: {} },
-                department: { branchId: branch.id },
+                OR: [{ branchId: branch.id }, { department: { branchId: branch.id } }],
             },
             select: { id: true, collarType: true, department: { select: { collarType: true } } },
         });
@@ -46,11 +46,11 @@ export const GET = withRole(["BRANCH_MANAGER", "ADMIN"], async (request, { user 
         const totalWhiteCollar = allEmployees.filter(e => getCollar(e) === "WHITE_COLLAR").length;
         const totalBlueCollar = allEmployees.filter(e => getCollar(e) === "BLUE_COLLAR").length;
 
-        // Stage 1: self assessment submissions
+        // Stage 1: self assessment submissions (same branch predicate as allEmployees)
         const selfSubs = await prisma.selfAssessment.count({
             where: {
                 quarterId: quarter.id,
-                user: { department: { branchId: branch.id } },
+                user: { OR: [{ branchId: branch.id }, { department: { branchId: branch.id } }] },
             },
         });
 
@@ -62,6 +62,15 @@ export const GET = withRole(["BRANCH_MANAGER", "ADMIN"], async (request, { user 
         const stage1Count = stage1Rows.length;
         const stage1Wc = stage1Rows.filter(r => r.collarType === "WHITE_COLLAR").length;
         const stage1Bc = stage1Rows.filter(r => r.collarType === "BLUE_COLLAR").length;
+
+        // Stage 2 shortlist (post BM/HOD evaluation) — separate from Stage 1 count.
+        const stage2Rows = await prisma.branchShortlistStage2.findMany({
+            where: { branchId: branch.id, quarterId: quarter.id },
+            select: { collarType: true },
+        });
+        const stage2Count = stage2Rows.length;
+        const stage2Wc = stage2Rows.filter(r => r.collarType === "WHITE_COLLAR").length;
+        const stage2Bc = stage2Rows.filter(r => r.collarType === "BLUE_COLLAR").length;
 
         // Stage 2: BM evaluates WC; HODs evaluate BC
         // BM evaluations count (for WC in this branch)
@@ -139,9 +148,9 @@ export const GET = withRole(["BRANCH_MANAGER", "ADMIN"], async (request, { user 
                 shortlistedBlue: stage1Bc,
             },
             stage2: {
-                shortlisted: stage1Count,
-                shortlistedWhite: stage1Wc,
-                shortlistedBlue: stage1Bc,
+                shortlisted: stage2Count,
+                shortlistedWhite: stage2Wc,
+                shortlistedBlue: stage2Bc,
                 evaluatedByBm: bmEvaluatedCount,
                 totalBcEvaluated,
                 evaluationsCompleted: bmEvaluatedCount + totalBcEvaluated,

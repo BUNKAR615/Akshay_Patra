@@ -5,6 +5,7 @@ import prisma from "../../../../../lib/prisma";
 import bcrypt from "bcryptjs";
 import { withRole } from "../../../../../lib/withRole";
 import { NextResponse } from "next/server";
+import { assertBmAssignable, applyBmAssignment, clearBmAssignment } from "../../../../../lib/auth/bmAssignment";
 
 // Only these two empCodes can add/remove employees
 const HR_ALLOWED = ["1800349", "5100029"];
@@ -165,7 +166,7 @@ export const PATCH = withRole(["ADMIN"], async (request, { params, user }) => {
         const employee = await prisma.user.findUnique({
             where: { id },
             include: {
-                department: { select: { id: true, name: true } },
+                department: { select: { id: true, name: true, branchId: true } },
                 departmentRoles: { select: { id: true, role: true, departmentId: true } },
             },
         });
@@ -213,9 +214,70 @@ export const PATCH = withRole(["ADMIN"], async (request, { params, user }) => {
             return NextResponse.json({ success: false, message: "No changes detected" }, { status: 400 });
         }
 
+        // Branch Manager rules — block before any DB write so the unique-index
+        // failure path is only a defensive net for true concurrent races.
+        // Determine the branch the user will end up in after this PATCH.
+        let resolvedTargetBranchId = employee.department?.branchId || employee.branchId || null;
+        if (newDeptId) {
+            const newDept = await prisma.department.findUnique({
+                where: { id: newDeptId },
+                select: { branchId: true },
+            });
+            resolvedTargetBranchId = newDept?.branchId || resolvedTargetBranchId;
+        }
+
+        const willBeBm = (updateData.role === "BRANCH_MANAGER")
+            || (updateData.role === undefined && employee.role === "BRANCH_MANAGER");
+        const branchChanged = newDeptId && resolvedTargetBranchId !== (employee.department?.branchId || employee.branchId);
+
+        if (willBeBm && resolvedTargetBranchId && (updateData.role === "BRANCH_MANAGER" || branchChanged)) {
+            const check = await assertBmAssignable(id, resolvedTargetBranchId);
+            if (!check.ok) {
+                await prisma.auditLog.create({
+                    data: {
+                        userId: user.userId,
+                        action: "ASSIGNMENT_REJECTED",
+                        details: {
+                            type: "BRANCH_MANAGER",
+                            reason: check.code,
+                            message: check.message,
+                            via: "employees/[id] PATCH",
+                            branchId: resolvedTargetBranchId,
+                            targetUserId: id,
+                        },
+                    },
+                }).catch((err) => { console.error("[EDIT EMPLOYEE] Audit log failed:", err); });
+                return NextResponse.json({ success: false, message: check.message }, { status: 409 });
+            }
+        }
+
+        // If the role is being changed AWAY from BRANCH_MANAGER, also clear
+        // any BranchManagerAssignment row pointing at this user.
+        const wasBm = employee.role === "BRANCH_MANAGER";
+        const roleDemoted = updateData.role !== undefined && updateData.role !== "BRANCH_MANAGER" && wasBm;
+
         await prisma.$transaction(async (tx) => {
             // Update the user
             await tx.user.update({ where: { id }, data: updateData });
+
+            if (roleDemoted) {
+                // Demoting an existing BM — clear the assignment + legacy fields.
+                const existing = await tx.branchManagerAssignment.findUnique({
+                    where: { bmUserId: id },
+                });
+                if (existing) {
+                    await clearBmAssignment(tx, { branchId: existing.branchId });
+                }
+            }
+
+            // Becoming or staying a BM — sync the assignment table.
+            if (willBeBm && resolvedTargetBranchId && (updateData.role === "BRANCH_MANAGER" || branchChanged)) {
+                await applyBmAssignment(tx, {
+                    userId: id,
+                    branchId: resolvedTargetBranchId,
+                    assignedBy: user.userId,
+                });
+            }
 
             // If department changed, clear old FK shortcuts on the old department
             if (newDeptId && oldDeptId) {
@@ -261,6 +323,23 @@ export const PATCH = withRole(["ADMIN"], async (request, { params, user }) => {
             data: { message: "Employee updated successfully", changes },
         });
     } catch (err) {
+        // Concurrency safeguard: if a parallel admin assigned a conflicting
+        // BM in the gap between assertBmAssignable and the transaction, the
+        // unique index on bm_branch_assignments raises P2002 — translate to
+        // the spec error message.
+        if (err && err.code === "P2002") {
+            const target = err.meta?.target;
+            if (Array.isArray(target) && target.includes("bm_user_id")) {
+                return NextResponse.json(
+                    { success: false, message: "This user is already assigned as Branch Manager in another branch." },
+                    { status: 409 }
+                );
+            }
+            return NextResponse.json(
+                { success: false, message: "This branch already has a Branch Manager assigned." },
+                { status: 409 }
+            );
+        }
         console.error("[EDIT EMPLOYEE] Error:", err);
         return NextResponse.json({ success: false, message: "Server error" }, { status: 500 });
     }

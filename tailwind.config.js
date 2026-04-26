@@ -11,6 +11,10 @@ module.exports = {
         'ap-blue': '#003087',
         'ap-green': '#00843D',
         'ap-orange': '#F7941D',
+        'ap-dark': '#0D1B3E',
+      },
+      fontFamily: {
+        sans: ['var(--font-dm-sans)', 'DM Sans', 'system-ui', 'sans-serif'],
       },
     },
   },

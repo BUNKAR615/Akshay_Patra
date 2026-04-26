@@ -7,6 +7,7 @@ import { withRole } from "../../../../../../lib/withRole";
 import { ok, fail, created, serverError, notFound } from "../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
+import { defaultPasswordFor } from "../../../../../../lib/auth/defaultPassword";
 import { z } from "zod";
 
 const SALT_ROUNDS = 10;
@@ -72,7 +73,8 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             member = await prisma.user.findUnique({ where: { empCode: data.empCode } });
             if (!member) {
                 if (!data.name) return fail("Name required to create a new committee member");
-                const plain = data.password || data.empCode;
+                // COMMITTEE default password = `${Firstname}_${last 2 digits of empCode}`
+                const plain = data.password || defaultPasswordFor({ role: "COMMITTEE", empCode: data.empCode, name: data.name });
                 const hash = await bcrypt.hash(plain, SALT_ROUNDS);
                 member = await prisma.user.create({
                     data: {

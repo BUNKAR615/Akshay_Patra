@@ -4,6 +4,7 @@ export const runtime = 'nodejs'
 import prisma from "../../../../lib/prisma";
 import bcrypt from "bcryptjs";
 import { withRole } from "../../../../lib/withRole";
+import { defaultPasswordFor } from "../../../../lib/auth/defaultPassword";
 import { NextResponse } from "next/server";
 
 // Only these two empCodes can add/remove employees
@@ -260,10 +261,11 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             }
         }
 
-        // Generate default password: FirstName_lastTwoDigitsOfEmpCode
-        const firstName = name.split(" ")[0];
-        const codeSuffix = empCode ? empCode.slice(-2) : String(Date.now()).slice(-2);
-        const rawPassword = `${firstName}_${codeSuffix}`;
+        // Default password rule (centralized in lib/auth/defaultPassword.js):
+        //   EMPLOYEE → empCode verbatim
+        //   Staff (BM/CM/HR/Committee/Admin) → `${Firstname}_${last 2 digits}`
+        // This route only creates EMPLOYEE rows, so the password is the empCode.
+        const rawPassword = defaultPasswordFor({ role: "EMPLOYEE", empCode: empCode || `tmp${Date.now()}`, name });
         const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
         const newUser = await prisma.user.create({

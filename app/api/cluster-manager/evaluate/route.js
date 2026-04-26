@@ -33,6 +33,13 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         const branchId = employee.department?.branchId;
         const branchType = employee.department?.branch?.branchType;
 
+        // Branch-scope check: CM must be assigned to this employee's branch
+        if (!branchId) return fail("Employee has no branch");
+        const cmAssignment = await prisma.clusterManagerBranchAssignment.findUnique({
+            where: { cmUserId_branchId: { cmUserId: user.userId, branchId } },
+        });
+        if (!cmAssignment) return fail("You are not assigned to this branch", 403);
+
         // Check if employee is in branch Stage 2 shortlist (new flow)
         const branchStage2Entry = await prisma.branchShortlistStage2.findUnique({
             where: { userId_quarterId: { userId: data.employeeId, quarterId: activeQuarter.id } }
@@ -69,8 +76,11 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
 
         // ── Branch-level flow (new) ──
         if (branchStage2Entry && branchId) {
-            const selfNorm = branchStage2Entry.selfScore;
-            const evaluatorNorm = branchStage2Entry.evaluatorScore;
+            // Stage 2 stores selfScore as a 0-60 weighted contribution and
+            // evaluatorScore as a 0-40 weighted contribution. Convert back to
+            // the 0-100 normalized form expected by calculateBranchStage3Score.
+            const selfNorm = (branchStage2Entry.selfScore / 60) * 100;
+            const evaluatorNorm = (branchStage2Entry.evaluatorScore / 40) * 100;
 
             const { selfContribution, evaluatorContribution, cmContribution, combined } =
                 calculateBranchStage3Score(selfNorm, evaluatorNorm, cmNormalized);
@@ -105,8 +115,16 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
 
             let stage3Generated = false;
             if (cmEvalCount >= allStage2.length && allStage2.length > 0) {
-                stage3Generated = true;
-                await generateBranchStage3(branchId, branchType, activeQuarter.id);
+                // Guard against concurrent CM submissions both regenerating Stage 3 +
+                // resending the "advanced to Stage 3" notification. Only the first
+                // caller for this branch+quarter actually generates.
+                const existingStage3 = await prisma.branchShortlistStage3.count({
+                    where: { branchId, quarterId: activeQuarter.id }
+                });
+                if (existingStage3 === 0) {
+                    stage3Generated = true;
+                    await generateBranchStage3(branchId, branchType, activeQuarter.id);
+                }
             }
 
             await prisma.auditLog.create({
@@ -115,7 +133,7 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
                     action: stage3Generated ? "BRANCH_STAGE3_GENERATED" : "CM_EVALUATION_SUBMITTED",
                     details: { employeeId: data.employeeId, quarterId: activeQuarter.id, cmNormalized, combined }
                 }
-            }).catch(() => {});
+            }).catch((err) => { console.error("[CM-EVALUATE] Audit log failed:", err); });
 
             return created({
                 message: "Evaluation submitted successfully",
@@ -289,6 +307,7 @@ async function generateBranchStage3(branchId, branchType, quarterId) {
     // Notify shortlisted employees
     const stage3List = await prisma.branchShortlistStage3.findMany({ where: { branchId, quarterId }, select: { userId: true } });
     for (const s of stage3List) {
-        await createNotification(s.userId, "You have advanced to Stage 3! HR will evaluate next.").catch(() => {});
+        await createNotification(s.userId, "You have advanced to Stage 3! HR will evaluate next.")
+            .catch((err) => { console.error(`[CM-EVALUATE] Stage 3 notification failed for user ${s.userId}:`, err); });
     }
 }

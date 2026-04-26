@@ -188,7 +188,7 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
                 await createNotification(
                     ev.employeeId,
                     "You have been shortlisted to Stage 2! Cluster Manager will evaluate next."
-                ).catch(() => {});
+                ).catch((err) => { console.error(`[BM-EVALUATE] Stage 2 notification failed for user ${ev.employeeId}:`, err); });
             }
         }
 
@@ -204,7 +204,7 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
                     stage2Generated,
                 },
             },
-        }).catch(() => {});
+        }).catch((err) => { console.error("[BM-EVALUATE] Audit log failed:", err); });
 
         return created({
             message: "Evaluation submitted successfully",

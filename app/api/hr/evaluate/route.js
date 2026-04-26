@@ -32,6 +32,20 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
         });
         if (!stage3Entry) return fail("Employee is not in Stage 3 shortlist");
 
+        // Branch-scope check: HR must be assigned to this employee's branch (ADMIN bypasses)
+        if (user.role !== "ADMIN") {
+            const employeeBranch = await prisma.user.findUnique({
+                where: { id: employeeId },
+                select: { department: { select: { branchId: true } } },
+            });
+            const branchId = employeeBranch?.department?.branchId;
+            if (!branchId) return fail("Employee has no branch");
+            const hrAssignment = await prisma.hrBranchAssignment.findUnique({
+                where: { hrUserId_branchId: { hrUserId: user.userId, branchId } },
+            });
+            if (!hrAssignment) return fail("You are not assigned to this branch", 403);
+        }
+
         // Check duplicate evaluation
         const existing = await prisma.hrEvaluation.findUnique({
             where: { hrUserId_employeeId_quarterId: { hrUserId: user.userId, employeeId, quarterId: quarter.id } }
@@ -45,8 +59,11 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
         if (!selfAssessment) return fail("Employee has no self-assessment");
 
         const selfNorm = selfAssessment.normalizedScore;
-        const evaluatorNorm = (stage3Entry.evaluatorScore / 0.30) * (100 / 100); // reverse from weighted contribution
-        const cmNorm = (stage3Entry.cmScore / 0.30) * (100 / 100);
+        // Stage 2 stored evaluatorScore as a weighted contribution (0-40 from 40% weight in calculateBranchStage2Score),
+        // so divide by 40 and multiply by 100 to recover the 0-100 normalized form.
+        const evaluatorNorm = (stage3Entry.evaluatorScore / 40) * 100;
+        // Stage 3 stored cmScore as the already-normalized 0-100 score (avgCmNorm); no reversal needed.
+        const cmNorm = stage3Entry.cmScore;
 
         // Normalize HR score (hrScore is 0-100)
         const hrNorm = hrScore;
@@ -78,7 +95,7 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
                 action: "HR_EVALUATION",
                 details: { employeeId, quarterId: quarter.id, hrScore, finalScore }
             }
-        }).catch(() => {});
+        }).catch((err) => { console.error("[HR-EVALUATE] Audit log failed:", err); });
 
         // Check if ALL Stage 3 employees have been evaluated by HR
         const branchId = stage3Entry.branchId;
@@ -116,6 +133,13 @@ async function generateStage4Shortlist(branchId, quarterId) {
         const wcEvals = hrEvals.filter(e => e.employee.collarType === "WHITE_COLLAR");
         const bcEvals = hrEvals.filter(e => e.employee.collarType === "BLUE_COLLAR");
 
+        if (wcEvals.length === 0) {
+            console.warn(`[HR-EVALUATE] Big branch ${branchId} (quarter ${quarterId}) has zero WHITE_COLLAR HR evaluations — Best Employee pool will not include a WC winner.`);
+        }
+        if (bcEvals.length < 3) {
+            console.warn(`[HR-EVALUATE] Big branch ${branchId} (quarter ${quarterId}) has only ${bcEvals.length} BLUE_COLLAR HR evaluations — fewer than 3 BC winners will be selected.`);
+        }
+
         const wcWinners = wcEvals.slice(0, 1);
         const bcWinners = bcEvals.slice(0, 3);
         const allWinners = [...wcWinners, ...bcWinners];
@@ -149,7 +173,8 @@ async function generateStage4Shortlist(branchId, quarterId) {
                     referenceSheetUrl: ev.referenceSheetUrl,
                 }
             });
-            await createNotification(ev.employeeId, "Congratulations! You have been selected as Best Employee of the Quarter!").catch(() => {});
+            await createNotification(ev.employeeId, "Congratulations! You have been selected as Best Employee of the Quarter!")
+                .catch((err) => { console.error(`[HR-EVALUATE] Best Employee notification failed for user ${ev.employeeId}:`, err); });
         }
     } else {
         // Small branch: top 3 overall
@@ -184,7 +209,8 @@ async function generateStage4Shortlist(branchId, quarterId) {
                     referenceSheetUrl: ev.referenceSheetUrl,
                 }
             });
-            await createNotification(ev.employeeId, "Congratulations! You have been selected as Best Employee of the Quarter!").catch(() => {});
+            await createNotification(ev.employeeId, "Congratulations! You have been selected as Best Employee of the Quarter!")
+                .catch((err) => { console.error(`[HR-EVALUATE] Best Employee notification failed for user ${ev.employeeId}:`, err); });
         }
     }
 }

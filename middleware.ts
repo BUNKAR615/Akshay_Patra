@@ -8,10 +8,13 @@ const PUBLIC_PATHS = [
   '/api/health',
 ]
 
-const getSecret = () =>
-  new TextEncoder().encode(
-    process.env.JWT_SECRET || 'fallback'
-  )
+const getSecret = () => {
+  const secret = process.env.JWT_SECRET
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is not set. Refusing to verify tokens with an insecure fallback.')
+  }
+  return new TextEncoder().encode(secret)
+}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl

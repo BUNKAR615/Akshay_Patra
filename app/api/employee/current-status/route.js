@@ -102,24 +102,29 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
         }
 
         if (supEval) {
-            stages.push({ stage: 2, name: "Supervisor Evaluation", status: stage2 ? "shortlisted" : "evaluated" });
+            stages.push({ stage: 2, name: "Branch Manager / HOD Evaluation", status: stage2 ? "shortlisted" : "evaluated" });
             if (stage2) currentStage = 2;
         } else if (stage1) {
-            stages.push({ stage: 2, name: "Supervisor Evaluation", status: "pending" });
+            stages.push({ stage: 2, name: "Branch Manager / HOD Evaluation", status: "pending" });
         }
 
         if (bmEval) {
-            stages.push({ stage: 3, name: "Branch Manager Evaluation", status: stage3 ? "shortlisted" : "evaluated" });
+            stages.push({ stage: 3, name: "Cluster Manager Evaluation", status: stage3 ? "shortlisted" : "evaluated" });
             if (stage3) currentStage = 3;
         } else if (stage2) {
-            stages.push({ stage: 3, name: "Branch Manager Evaluation", status: "pending" });
+            stages.push({ stage: 3, name: "Cluster Manager Evaluation", status: "pending" });
         }
 
         if (cmEval) {
-            stages.push({ stage: 4, name: "Cluster Manager Evaluation", status: bestEmployee ? "winner" : "evaluated" });
-            if (bestEmployee) currentStage = 4;
+            stages.push({ stage: 4, name: "HR Evaluation", status: "evaluated" });
+            if (!bestEmployee) currentStage = 4;
         } else if (stage3) {
-            stages.push({ stage: 4, name: "Cluster Manager Evaluation", status: "pending" });
+            stages.push({ stage: 4, name: "HR Evaluation", status: "pending" });
+        }
+
+        if (bestEmployee) {
+            stages.push({ stage: 5, name: "Committee Selection", status: "winner" });
+            currentStage = 5;
         }
 
         // ── Get the quarter winner for this employee's department (visible only after quarter is CLOSED) ──

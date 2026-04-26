@@ -5,6 +5,7 @@ import prisma from "../../../../../lib/prisma";
 import bcrypt from "bcryptjs";
 import { withRole } from "../../../../../lib/withRole";
 import { ok, fail, serverError } from "../../../../../lib/api-response";
+import { defaultPasswordFor } from "../../../../../lib/auth/defaultPassword";
 import * as XLSX from "xlsx";
 
 const SALT_ROUNDS = 10;
@@ -92,10 +93,11 @@ export const POST = withRole(["ADMIN", "BRANCH_MANAGER"], async (request, { user
             deptCollarMap.set(r.department, r.collarType);
         }
 
-        // Pre-hash passwords
+        // Pre-hash default passwords. EMPLOYEE → empCode (per spec).
         const hashes = new Map();
         for (const r of rows) {
-            hashes.set(r.empCode, await bcrypt.hash(r.empCode, SALT_ROUNDS));
+            const plain = defaultPasswordFor({ role: "EMPLOYEE", empCode: r.empCode, name: r.name });
+            hashes.set(r.empCode, await bcrypt.hash(plain, SALT_ROUNDS));
         }
 
         const result = await prisma.$transaction(async (tx) => {

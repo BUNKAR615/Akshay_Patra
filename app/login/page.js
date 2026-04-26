@@ -205,8 +205,8 @@ export default function LoginPage() {
                     </form>
 
                     <div className="text-center mt-10 pt-6 border-t border-[#E0E0E0]">
-                        <p className="text-[#333333] text-xs">
-                            Akshaya Patra Foundation — Jaipur Branch © 2025
+                        <p className="text-[#333333] text-xs" suppressHydrationWarning>
+                            Akshaya Patra Foundation — Jaipur Branch © {new Date().getFullYear()}
                         </p>
                     </div>
                 </div>

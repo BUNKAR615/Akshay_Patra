@@ -8,6 +8,7 @@ import { withRole } from "../../../../../../../lib/withRole";
 import { ok, fail, serverError, notFound } from "../../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../../lib/resolveBranch";
+import { defaultPasswordFor } from "../../../../../../../lib/auth/defaultPassword";
 
 const SALT_ROUNDS = 10;
 
@@ -132,10 +133,11 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             deptCollarMap.set(r.department, r.collarType);
         }
 
-        // Pre-hash default passwords
+        // Pre-hash default passwords. EMPLOYEE → empCode (per spec).
         const hashes = new Map();
         for (const r of rows) {
-            hashes.set(r.empCode, await bcrypt.hash(r.empCode, SALT_ROUNDS));
+            const plain = defaultPasswordFor({ role: "EMPLOYEE", empCode: r.empCode, name: r.name });
+            hashes.set(r.empCode, await bcrypt.hash(plain, SALT_ROUNDS));
         }
 
         const result = await prisma.$transaction(async (tx) => {

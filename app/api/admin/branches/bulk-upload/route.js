@@ -4,7 +4,9 @@ export const runtime = 'nodejs'
 import prisma from "../../../../../lib/prisma";
 import bcrypt from "bcryptjs";
 import { withRole } from "../../../../../lib/withRole";
-import { ok, fail, serverError } from "../../../../../lib/api-response";
+import { ok, fail, conflict, serverError } from "../../../../../lib/api-response";
+import { applyBmAssignment } from "../../../../../lib/auth/bmAssignment";
+import { defaultPasswordFor } from "../../../../../lib/auth/defaultPassword";
 import * as XLSX from "xlsx";
 
 const SALT_ROUNDS = 10;
@@ -132,14 +134,18 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         const bmRows = rows.filter(r => r.role === "BRANCH_MANAGER");
         const empRows = rows.filter(r => r.role === "EMPLOYEE");
 
-        // Pre-hash passwords
+        // Pre-hash passwords using the shared default-password rule:
+        //   EMPLOYEE                  → empCode
+        //   BRANCH/CLUSTER MANAGER    → `${Firstname}_${last 2 digits of empCode}`
+        // An explicit value in the `password` column always wins over the default.
         const passwordHashes = new Map();
         for (const r of [...cmRows, ...bmRows]) {
-            const plain = r.password || r.empCode;
+            const plain = r.password || defaultPasswordFor({ role: r.role, empCode: r.empCode, name: r.name });
             passwordHashes.set(r.empCode, await bcrypt.hash(plain, SALT_ROUNDS));
         }
         for (const r of empRows) {
-            passwordHashes.set(r.empCode, await bcrypt.hash(r.empCode, SALT_ROUNDS));
+            const plain = r.password || defaultPasswordFor({ role: r.role, empCode: r.empCode, name: r.name });
+            passwordHashes.set(r.empCode, await bcrypt.hash(plain, SALT_ROUNDS));
         }
 
         // Validate department collar consistency
@@ -152,6 +158,58 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             deptCollarMap.set(r.department, r.collarType);
         }
 
+        // ── Spec rule: only ONE Branch Manager per branch, only ONE branch
+        //    per BM user. Reject the WHOLE upload upfront if any rule fails.
+        if (bmRows.length > 1) {
+            return conflict(
+                `Excel contains ${bmRows.length} BRANCH_MANAGER rows for "${branchName}" — only one is allowed per branch. Conflicting rows: ${bmRows.map(r => `row ${r.rowNum} (${r.empCode})`).join(", ")}.`
+            );
+        }
+        // Also reject duplicate CM rows targeting the same branch in this upload.
+        if (cmRows.length > 1) {
+            return conflict(
+                `Excel contains ${cmRows.length} CLUSTER_MANAGER rows for "${branchName}" — only one is allowed per branch. Conflicting rows: ${cmRows.map(r => `row ${r.rowNum} (${r.empCode})`).join(", ")}.`
+            );
+        }
+        if (bmRows.length === 1) {
+            const bmRow = bmRows[0];
+            const existingBmUser = await prisma.user.findUnique({
+                where: { empCode: bmRow.empCode },
+                select: { id: true, bmAssignment: { select: { branchId: true, branch: { select: { name: true } } } } },
+            });
+            // The user is already BM somewhere — reject unless it is the SAME branch.
+            if (existingBmUser?.bmAssignment) {
+                const sourceBranch = await prisma.branch.findUnique({ where: { name: branchName }, select: { id: true } });
+                if (!sourceBranch || existingBmUser.bmAssignment.branchId !== sourceBranch.id) {
+                    return conflict("This user is already assigned as Branch Manager in another branch.");
+                }
+            }
+            // Branch already has a different BM — reject.
+            const sourceBranch = await prisma.branch.findUnique({ where: { name: branchName }, select: { id: true } });
+            if (sourceBranch) {
+                const branchBm = await prisma.branchManagerAssignment.findUnique({
+                    where: { branchId: sourceBranch.id },
+                    select: { bm: { select: { empCode: true } } },
+                });
+                if (branchBm && branchBm.bm.empCode !== bmRow.empCode) {
+                    return conflict("This branch already has a Branch Manager assigned.");
+                }
+            }
+        }
+        if (cmRows.length === 1) {
+            const cmRow = cmRows[0];
+            const sourceBranch = await prisma.branch.findUnique({ where: { name: branchName }, select: { id: true } });
+            if (sourceBranch) {
+                const branchCm = await prisma.clusterManagerBranchAssignment.findFirst({
+                    where: { branchId: sourceBranch.id },
+                    select: { cm: { select: { empCode: true } } },
+                });
+                if (branchCm && branchCm.cm.empCode !== cmRow.empCode) {
+                    return conflict("This branch already has a Cluster Manager assigned.");
+                }
+            }
+        }
+
         // Execute in a transaction
         const result = await prisma.$transaction(async (tx) => {
             // 1. Upsert Branch
@@ -161,7 +219,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
                 create: { name: branchName, location: branchName, branchType },
             });
 
-            // 2. Upsert CM users
+            // 2. Upsert CM users + maintain ClusterManagerBranchAssignment row
             const cmResult = [];
             for (const r of cmRows) {
                 const u = await tx.user.upsert({
@@ -173,10 +231,17 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
                         branchId: branch.id, designation: r.designation || "CM", mobile: r.mobile || null,
                     },
                 });
+                // Enforce one-CM-per-branch via the assignment table (the new
+                // @@unique([branchId]) backs this up).
+                await tx.clusterManagerBranchAssignment.upsert({
+                    where: { branchId: branch.id },
+                    update: { cmUserId: u.id, assignedBy: user.userId, assignedAt: new Date() },
+                    create: { cmUserId: u.id, branchId: branch.id, assignedBy: user.userId },
+                });
                 cmResult.push({ empCode: u.empCode, name: u.name, id: u.id });
             }
 
-            // 3. Upsert BM users
+            // 3. Upsert BM users + maintain BranchManagerAssignment row
             const bmResult = [];
             for (const r of bmRows) {
                 const u = await tx.user.upsert({
@@ -187,6 +252,13 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
                         password: passwordHashes.get(r.empCode),
                         branchId: branch.id, designation: r.designation || "BM", mobile: r.mobile || null,
                     },
+                });
+                // Enforce one-BM-per-branch and one-branch-per-BM via the new
+                // BranchManagerAssignment table (unique on branchId AND bmUserId).
+                await applyBmAssignment(tx, {
+                    userId: u.id,
+                    branchId: branch.id,
+                    assignedBy: user.userId,
                 });
                 bmResult.push({ empCode: u.empCode, name: u.name, id: u.id });
             }
@@ -262,6 +334,23 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             errors,
         });
     } catch (err) {
+        // Belt-and-braces concurrency safeguard: if another upload (or a
+        // parallel admin call) inserts a conflicting BM/CM row mid-transaction,
+        // the new unique indexes raise P2002 — translate to spec messages.
+        if (err && err.code === "P2002") {
+            const target = err.meta?.target;
+            if (Array.isArray(target)) {
+                if (target.includes("bm_user_id")) {
+                    return conflict("This user is already assigned as Branch Manager in another branch.");
+                }
+                if (target.some((t) => String(t).includes("branch_id"))) {
+                    if (String(err.meta?.modelName || "").toLowerCase().includes("clustermanager")) {
+                        return conflict("This branch already has a Cluster Manager assigned.");
+                    }
+                    return conflict("This branch already has a Branch Manager assigned.");
+                }
+            }
+        }
         console.error("[BRANCH-BULK-UPLOAD] Error:", err.message);
         return serverError();
     }
