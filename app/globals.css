@@ -11,11 +11,58 @@
     --ap-gray: #F5F5F5;
     --ap-text: #1E293B;
     --ap-text-muted: #64748B;
+
+    /* Safe-area insets — fall back to 0 on devices without notches. iOS Safari
+       fills these in automatically once `viewport-fit=cover` is set. */
+    --safe-top:    env(safe-area-inset-top, 0px);
+    --safe-right:  env(safe-area-inset-right, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left:   env(safe-area-inset-left, 0px);
 }
 
 /* Smooth scrolling */
 html {
     scroll-behavior: smooth;
+    /* iOS rotation-text-resize prevention — without this, landscape rotation
+       blows up font sizes by ~30%. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+/* Kill the grey tap-flash on Android Chrome and the blue tap-flash on iOS
+   Safari. Components with hover/focus styling already provide their own
+   visual feedback, so the flash is just visual noise. */
+html, body, button, a, input, select, textarea, label, [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent iOS Safari from auto-zooming when an input gets focus.
+   The trigger is font-size < 16px on the input element. We force 16px on
+   touch-only devices and let desktop CSS keep its smaller "elegant" size. */
+@media (hover: none) and (pointer: coarse) {
+    input,
+    select,
+    textarea {
+        font-size: 16px !important;
+    }
+}
+
+/* Safe-area utility classes used by the dashboard shell so notched iPhones
+   and Android edge-to-edge displays don't clip content. */
+.pt-safe { padding-top: var(--safe-top); }
+.pr-safe { padding-right: var(--safe-right); }
+.pb-safe { padding-bottom: var(--safe-bottom); }
+.pl-safe { padding-left: var(--safe-left); }
+.px-safe { padding-left: var(--safe-left); padding-right: var(--safe-right); }
+.py-safe { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); }
+
+/* Lock body scroll while the mobile sidebar drawer is open. We avoid
+   `overflow:hidden` alone because iOS Safari ignores it on the body — the
+   `position: fixed` trick is what actually holds. */
+body.no-scroll {
+    overflow: hidden;
+    overscroll-behavior: contain;
+    touch-action: none;
 }
 
 /* Selection color */
