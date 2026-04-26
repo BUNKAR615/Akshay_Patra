@@ -40,7 +40,10 @@ export default function BranchSummaryPage() {
     if (error) return <div className="p-4 bg-red-50 text-red-700 rounded-lg font-medium">{error}</div>;
     if (!data) return null;
 
-    const { counts, quarter } = data;
+    const { counts, quarter, branch } = data;
+    // BIG branches assign HODs per-department (non-obvious count worth showing).
+    // SMALL branches don't have multiple HODs, so we hide the card entirely.
+    const isBig = branch?.branchType === "BIG";
 
     return (
         <div className="space-y-6">
@@ -57,19 +60,17 @@ export default function BranchSummaryPage() {
                 </div>
             )}
 
-            {/* Overall stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {/* Core summary — Employees + Departments always; HODs only on BIG
+                branches. BM/CM/HR/Committee counts intentionally removed: they
+                live on the dedicated HR & Committee / Org Structure sub-pages
+                and BM/CM are now constrained to 0–1 per branch by uniqueness
+                rules, so the card adds noise without value. */}
+            <div className={`grid grid-cols-2 ${isBig ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-3`}>
                 <StatBox label="Employees" value={counts.employees} />
                 <StatBox label="Departments" value={counts.departments} />
-                <StatBox label="Branch Managers" value={counts.bm} color="text-emerald-700" />
-                <StatBox label="Cluster Managers" value={counts.cm} color="text-orange-700" />
-            </div>
-
-            {/* Org assignments */}
-            <div className="grid grid-cols-3 gap-3">
-                <StatBox label="HODs Assigned" value={counts.hod} color="text-purple-700" />
-                <StatBox label="HR Assigned" value={counts.hr} color="text-sky-700" />
-                <StatBox label="Committee" value={counts.committee} color="text-amber-700" />
+                {isBig && (
+                    <StatBox label="HODs Assigned" value={counts.hod} color="text-purple-700" />
+                )}
             </div>
 
             {/* Stage progress */}
