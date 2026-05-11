@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import DashboardShell from "../../../components/DashboardShell";
 import TimedEvaluationForm from "../../../components/TimedEvaluationForm";
 import { SkeletonCard } from "../../../components/Skeleton";
+import QuarterCountdown from "../../../components/QuarterCountdown";
 
 async function api(url, opts) {
     const res = await fetch(url, opts);
@@ -130,14 +131,17 @@ export default function EmployeeDashboard() {
 
             {/* Quarter header */}
             {status?.quarter && (
-                <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-5 mb-6 flex items-center justify-between">
-                    <div>
-                        <p className="text-[13px] text-[#666666] font-bold uppercase tracking-wider">Current Quarter</p>
-                        <p className="text-[20px] font-bold text-[#003087]">{status.quarter.name}</p>
+                <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-5 mb-6">
+                    <div className="flex items-center justify-between gap-4">
+                        <div>
+                            <p className="text-[13px] text-[#666666] font-bold uppercase tracking-wider">Current Quarter</p>
+                            <p className="text-[20px] font-bold text-[#003087]">{status.quarter.name}</p>
+                        </div>
+                        <span className={`text-[13px] px-4 py-1.5 rounded-full border font-bold ${status.quarter.status === "ACTIVE" ? "bg-[#E8F5E9] text-[#1B5E20] border-[#A5D6A7]" : "bg-[#F5F5F5] text-[#666666] border-[#CCCCCC]"}`}>
+                            {status.quarter.status}
+                        </span>
                     </div>
-                    <span className={`text-[13px] px-4 py-1.5 rounded-full border font-bold ${status.quarter.status === "ACTIVE" ? "bg-[#E8F5E9] text-[#1B5E20] border-[#A5D6A7]" : "bg-[#F5F5F5] text-[#666666] border-[#CCCCCC]"}`}>
-                        {status.quarter.status}
-                    </span>
+                    <QuarterCountdown quarter={status.quarter} className="mt-4" />
                 </div>
             )}
 

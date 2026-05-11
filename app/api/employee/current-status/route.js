@@ -151,7 +151,14 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
         }
 
         return ok({
-            quarter: { id: quarter.id, name: quarter.name, status: quarter.status, questionCount: quarter.questionCount },
+            quarter: {
+                id: quarter.id,
+                name: quarter.name,
+                status: quarter.status,
+                startDate: quarter.startDate,
+                endDate: quarter.endDate,
+                questionCount: quarter.questionCount,
+            },
             submitted: !!selfAssessment,
             selfAssessment: selfAssessment
                 ? {

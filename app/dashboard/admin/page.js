@@ -7,6 +7,7 @@ import { Stat, Alert } from "../../../components/ui";
 import ConfirmDialog from "../../../components/ConfirmDialog";
 import { PageSpinner, SkeletonCard, SkeletonStats } from "../../../components/Skeleton";
 import UserProfileCard from "../../../components/UserProfileCard";
+import QuarterCountdown from "../../../components/QuarterCountdown";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 
@@ -27,6 +28,16 @@ function getAutoQuarterName() {
     return `Q${qNum}-${fyYear}`;
 }
 
+function buildAdminSharePayload(quarter) {
+    const url = typeof window !== "undefined" ? window.location.href : "";
+    const quarterText = quarter?.name ? ` for ${quarter.name}` : "";
+    return {
+        title: "Akshaya Patra Admin Dashboard",
+        text: `Akshaya Patra admin dashboard${quarterText}`,
+        url,
+    };
+}
+
 export default function AdminDashboard() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -36,6 +47,8 @@ export default function AdminDashboard() {
     const [loading, setLoading] = useState(true);
     const [dismissedAlerts, setDismissedAlerts] = useState([]);
     const [activity, setActivity] = useState([]);
+    const [shareMenuOpen, setShareMenuOpen] = useState(false);
+    const [shareCopied, setShareCopied] = useState(false);
 
     // Sidebar drives tab via ?view= query param; keep URL in sync when user triggers setTab.
     const setTab = (id) => {
@@ -753,6 +766,39 @@ export default function AdminDashboard() {
     }, [quarterProgress]);
     const visibleAlerts = alerts.filter(a => !dismissedAlerts.includes(a.id));
 
+    const openShareFallback = () => {
+        setShareCopied(false);
+        setShareMenuOpen(true);
+    };
+
+    const handleShare = async () => {
+        const payload = buildAdminSharePayload(quarterProgress?.quarter);
+        setShareCopied(false);
+
+        if (typeof navigator !== "undefined" && navigator.share && payload.url) {
+            try {
+                await navigator.share(payload);
+                setShareMenuOpen(false);
+                return;
+            } catch (err) {
+                if (err?.name === "AbortError") return;
+            }
+        }
+
+        openShareFallback();
+    };
+
+    const copyShareLink = async () => {
+        const payload = buildAdminSharePayload(quarterProgress?.quarter);
+        if (!payload.url) return;
+        try {
+            await navigator.clipboard.writeText(payload.url);
+            setShareCopied(true);
+        } catch {
+            window.prompt("Copy this admin dashboard link", payload.url);
+        }
+    };
+
     const CATEGORIES = ["ATTENDANCE", "DISCIPLINE", "PRODUCTIVITY", "TEAMWORK", "INITIATIVE", "COMMUNICATION", "INTEGRITY"];
     const LEVELS = ["SELF", "BRANCH_MANAGER", "CLUSTER_MANAGER"];
 
@@ -769,6 +815,10 @@ export default function AdminDashboard() {
         if (levelQs.length > 0) acc.push({ level, questions: levelQs });
         return acc;
     }, []);
+    const sharePayload = buildAdminSharePayload(quarterProgress?.quarter);
+    const encodedShareText = encodeURIComponent(`${sharePayload.text}\n${sharePayload.url}`);
+    const encodedShareSubject = encodeURIComponent(sharePayload.title);
+    const encodedShareBody = encodeURIComponent(`${sharePayload.text}\n\n${sharePayload.url}`);
 
     if (loading) {
         return <DashboardShell user={user} title="Admin Dashboard"><div className="space-y-4"><SkeletonStats count={4} /><SkeletonCard lines={4} /><SkeletonCard lines={3} /></div></DashboardShell>;
@@ -792,6 +842,30 @@ export default function AdminDashboard() {
                         <option key={b.id} value={b.slug}>{b.name}{b.location ? ` — ${b.location}` : ""}</option>
                     ))}
                 </select>
+                <div className="relative sm:ml-auto">
+                    <button
+                        type="button"
+                        onClick={handleShare}
+                        aria-haspopup="menu"
+                        aria-expanded={shareMenuOpen}
+                        className="min-h-[40px] px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#003087] font-bold text-sm hover:bg-[#F5F5F5] transition-colors cursor-pointer inline-flex items-center gap-2"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.59 13.51l6.83 3.98M15.41 6.51 8.59 10.49M21 5a3 3 0 11-6 0 3 3 0 016 0zM9 12a3 3 0 11-6 0 3 3 0 016 0zm12 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Share
+                    </button>
+                    {shareMenuOpen && (
+                        <div role="menu" className="absolute left-0 sm:left-auto sm:right-0 z-30 mt-2 w-64 rounded-xl border border-[#E0E0E0] bg-white p-2 shadow-xl">
+                            <p className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-[#666666]">Share admin link</p>
+                            <a role="menuitem" href={`https://wa.me/?text=${encodedShareText}`} target="_blank" rel="noopener noreferrer" className="block rounded-lg px-3 py-2 text-sm font-semibold text-[#1A1A2E] hover:bg-[#E8F5E9]">WhatsApp</a>
+                            <a role="menuitem" href={`https://mail.google.com/mail/?view=cm&fs=1&su=${encodedShareSubject}&body=${encodedShareBody}`} target="_blank" rel="noopener noreferrer" className="block rounded-lg px-3 py-2 text-sm font-semibold text-[#1A1A2E] hover:bg-[#E3F2FD]">Gmail</a>
+                            <a role="menuitem" href={`mailto:?subject=${encodedShareSubject}&body=${encodedShareBody}`} className="block rounded-lg px-3 py-2 text-sm font-semibold text-[#1A1A2E] hover:bg-[#F5F5F5]">Email app</a>
+                            <button type="button" role="menuitem" onClick={copyShareLink} className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-[#1A1A2E] hover:bg-[#FFF8E1] cursor-pointer">{shareCopied ? "Link copied" : "Copy link"}</button>
+                            <button type="button" onClick={() => setShareMenuOpen(false)} className="mt-1 w-full rounded-lg px-3 py-2 text-sm font-bold text-[#666666] hover:bg-[#F5F5F5] cursor-pointer">Close</button>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* ═══════ DASHBOARD TAB ═══════ */}
@@ -829,6 +903,7 @@ export default function AdminDashboard() {
                                         Started: {new Date(quarterProgress.quarter.startDate).toLocaleDateString()}
                                     </p>
                                 </div>
+                                <QuarterCountdown quarter={quarterProgress.quarter} compact className="w-full lg:max-w-xl lg:flex-1" />
                                 {quarterProgress.quarter.status === "ACTIVE" && (
                                     <button onClick={requestCloseQuarter} disabled={quarterLoading} className="w-full sm:w-auto px-4 py-2 bg-[#D32F2F] hover:bg-[#B71C1C] text-white font-bold rounded-lg text-sm transition-colors cursor-pointer shadow-sm">
                                         Close Quarter
@@ -1568,6 +1643,7 @@ export default function AdminDashboard() {
                     {quarterMsg.text && (
                         <div className={`p-3 rounded-lg text-sm border ${quarterMsg.type === "success" ? "bg-[#E3F2FD] border-[#90CAF9] text-[#003087]" : "bg-[#FFEBEE] border-[#EF9A9A] text-[#D32F2F]"}`}>{quarterMsg.text}</div>
                     )}
+                    <QuarterCountdown quarter={quarterProgress?.quarter} />
                     <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-6">
                         <h3 className="text-lg font-semibold text-[#003087] mb-4">Start New Quarter</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
