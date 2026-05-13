@@ -154,8 +154,15 @@ export default function CommitteeDashboard() {
     const [currentQuarterName, setCurrentQuarterName] = useState("");
     const [quarter, setQuarter] = useState(null);
     const [branches, setBranches] = useState([]);
+    // `assignedBranches` drives the dropdown — it's the committee member's
+    // full branch assignment list, independent of which branches have
+    // results in this quarter. Spec: "the dropdown should show only the
+    // branches assigned to that role".
+    const [assignedBranches, setAssignedBranches] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    // "ALL" === Total mode (combined across every assigned branch).
+    // This is the default — the pre-login branch picker has been removed.
     const [branchFilter, setBranchFilter] = useState("ALL");
     const [collarFilter, setCollarFilter] = useState("ALL");
 
@@ -174,6 +181,7 @@ export default function CommitteeDashboard() {
                 const data = resultsResult.value;
                 setQuarter(data.quarter);
                 setBranches(data.branches || []);
+                setAssignedBranches(data.assignedBranches || data.branches || []);
             } else {
                 setError(resultsResult.reason?.message || "Unable to load committee results.");
             }
@@ -269,8 +277,11 @@ export default function CommitteeDashboard() {
                         />
                     </div>
 
-                    {/* Filters */}
-                    {branches.length > 0 && (
+                    {/* Filters — Total + per-branch pills. The dropdown
+                        source is `assignedBranches` (every branch this
+                        committee member is on) so the options stay stable
+                        even when a branch has no winners yet this quarter. */}
+                    {(assignedBranches.length > 0 || branches.length > 0) && (
                         <Card style={{ padding: "14px 18px" }}>
                             <div className="flex flex-col gap-3">
                                 <div className="flex items-center gap-2 flex-wrap">
@@ -281,17 +292,21 @@ export default function CommitteeDashboard() {
                                         active={branchFilter === "ALL"}
                                         onClick={() => setBranchFilter("ALL")}
                                     >
-                                        All branches
+                                        Total
                                     </PillButton>
-                                    {branches.map((b) => (
-                                        <PillButton
-                                            key={b.branchId}
-                                            active={branchFilter === b.branchId}
-                                            onClick={() => setBranchFilter(b.branchId)}
-                                        >
-                                            {b.branchName}
-                                        </PillButton>
-                                    ))}
+                                    {(assignedBranches.length > 0 ? assignedBranches : branches).map((b) => {
+                                        const id = b.branchId || b.id;
+                                        const name = b.branchName || b.name;
+                                        return (
+                                            <PillButton
+                                                key={id}
+                                                active={branchFilter === id}
+                                                onClick={() => setBranchFilter(id)}
+                                            >
+                                                {name}
+                                            </PillButton>
+                                        );
+                                    })}
                                 </div>
                                 <div className="flex items-center gap-5 border-t border-[#E4E7ED] pt-3">
                                     <span className="text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">

@@ -1,12 +1,31 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { jwtVerify } from 'jose'
+import { DASHBOARD_HOME } from './lib/dashboardNav'
 
 const PUBLIC_PATHS = [
   '/login',
   '/api/auth/login',
+  // Stage-2 of two-step login flows: the user does not yet have a `token`
+  // cookie, but is authenticated via the short-lived stage-1 cookie that the
+  // endpoint itself verifies (branchSelectToken / roleSelectToken).
+  '/api/auth/select-branch',
+  '/api/auth/select-role',
   '/api/health',
 ]
+
+// Maps a /dashboard/<segment> URL prefix to the role permitted to access it.
+// Used to block cross-role URL navigation (e.g. a Branch Manager typing
+// /dashboard/admin in the address bar) before any page renders.
+const DASHBOARD_ROLE_BY_PREFIX: Record<string, string> = {
+  admin: 'ADMIN',
+  'branch-manager': 'BRANCH_MANAGER',
+  'cluster-manager': 'CLUSTER_MANAGER',
+  hod: 'HOD',
+  hr: 'HR',
+  committee: 'COMMITTEE',
+  employee: 'EMPLOYEE',
+}
 
 const getSecret = () => {
   const secret = process.env.JWT_SECRET
@@ -54,12 +73,37 @@ export async function middleware(request: NextRequest) {
   // Verify token
   try {
     const { payload } = await jwtVerify(token, getSecret())
+    const sessionRole = String(payload.role || '')
+
+    // Dashboard URL isolation: each /dashboard/<segment> belongs to exactly one
+    // role. If the user's JWT role doesn't match the segment, redirect them to
+    // their own dashboard (never silently render the wrong shell). API routes
+    // are NOT gated here — they enforce role at the handler level via
+    // withRole([...]) — so this only affects browser-facing /dashboard/* pages.
+    if (pathname.startsWith('/dashboard/')) {
+      const segment = pathname.split('/')[2] || ''
+      const requiredRole = DASHBOARD_ROLE_BY_PREFIX[segment]
+      if (requiredRole && sessionRole !== requiredRole) {
+        const home = (DASHBOARD_HOME as Record<string, string>)[sessionRole]
+        if (home) {
+          return NextResponse.redirect(new URL(home, request.url))
+        }
+        // Unknown role on the token — safest is to drop them at /login rather
+        // than land them on a default dashboard.
+        const loginUrl = new URL('/login', request.url)
+        loginUrl.searchParams.set('error', 'Your account has no valid role. Please sign in again.')
+        const resp = NextResponse.redirect(loginUrl)
+        resp.cookies.delete('token')
+        resp.cookies.delete('refreshToken')
+        return resp
+      }
+    }
 
     // Add user info to request headers for downstream use
     const response = NextResponse.next()
     response.headers.set('x-user-id', String(payload.userId || ''))
     response.headers.set('x-user-empcode', String(payload.empCode || ''))
-    response.headers.set('x-user-role', String(payload.role || ''))
+    response.headers.set('x-user-role', sessionRole)
 
     // departmentIds as JSON array string
     const departmentIds = Array.isArray(payload.departmentIds) ? payload.departmentIds : []

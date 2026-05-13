@@ -115,6 +115,9 @@ model User {
   cmBranchAssignments        ClusterManagerBranchAssignment[]
   bmAssignment               BranchManagerAssignment?
 
+  // Audit trail of role/department/branch changes
+  assignmentHistory EmployeeAssignmentHistory[]
+
   @@index([departmentId])
   @@index([role])
   @@index([departmentId, role])
@@ -768,6 +771,36 @@ model BranchManagerAssignment {
   branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
 
   @@map("bm_branch_assignments")
+}
+
+/// EmployeeAssignmentHistory — audit row written every time a user's
+/// role, department, or branch changes via the admin edit flow.
+/// Snapshotted (denormalized) names so history survives dept/branch rename
+/// or deletion. user FK uses SetNull so removed-user history stays readable.
+model EmployeeAssignmentHistory {
+  id                String   @id @default(cuid())
+  userId            String?
+  empCode           String?
+  employeeName      String?
+  changedAt         DateTime @default(now())
+  changedById       String
+  changedByEmpCode  String?
+  oldRole           Role?
+  newRole           Role?
+  oldDepartmentId   String?
+  newDepartmentId   String?
+  oldDepartmentName String?
+  newDepartmentName String?
+  oldBranchId       String?
+  newBranchId       String?
+  oldBranchName     String?
+  newBranchName     String?
+  user              User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, changedAt])
+  @@index([newBranchId, changedAt])
+  @@index([changedAt])
+  @@map("employee_assignment_history")
 }
 
 // ═══════════════════════════════════════════════════════════════

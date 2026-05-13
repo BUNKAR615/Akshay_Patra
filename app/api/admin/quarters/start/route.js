@@ -8,6 +8,7 @@ import { startQuarterSchema } from "../../../../../lib/validators";
 import { notifyAllEmployees, createNotification } from "../../../../../lib/notifications";
 import { getDepartmentSize, logSmallDepartmentRule } from "../../../../../lib/department-rules";
 import { assignQuestionsToEmployees } from "../../../../../lib/questionAssigner";
+import { resetHodStateForQuarters } from "../../../../../lib/auth/quarterReset";
 
 // ── Fisher-Yates (Knuth) shuffle — true O(n) randomness ──
 function fisherYatesShuffle(arr) {
@@ -101,6 +102,26 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         const existing = await prisma.quarter.findUnique({ where: { name: data.quarterName } });
         if (existing) return conflict(`Quarter "${data.quarterName}" already exists`);
 
+        // ── Defensive HOD reset: clear any stale HodAssignment /
+        //    EmployeeHodAssignment / role-mapping rows left behind by
+        //    previously-closed quarters. This catches data from any quarter
+        //    that was closed BEFORE the quarterReset hook landed on the
+        //    close route (e.g. Rishpal's Q02-2026 leftovers). Failure here
+        //    is logged but doesn't block starting the new quarter.
+        let priorHodReset = null;
+        try {
+            const closedQuarters = await prisma.quarter.findMany({
+                where: { status: "CLOSED" },
+                select: { id: true },
+            });
+            const closedIds = closedQuarters.map((q) => q.id);
+            if (closedIds.length > 0) {
+                priorHodReset = await resetHodStateForQuarters(closedIds);
+            }
+        } catch (resetErr) {
+            console.error("[QUARTER-START] Defensive HOD reset failed:", resetErr);
+        }
+
         // ── Check if question bank is EMPTY ──
         const totalQuestions = await prisma.question.count({ where: { isActive: true } });
         if (totalQuestions === 0) {
@@ -153,10 +174,8 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             return { quarter: q, assignmentStats: stats };
         });
 
-        console.log("Saved to DB (Quarter):", quarter);
-
         await prisma.auditLog.create({
-            data: { userId: user.userId, action: "QUARTER_STARTED", details: { quarterId: quarter.id, name: quarter.name, questionCount: data.questionCount, totalLocked: allSelectedIds.length, selfCount: selectedSelf.length, bmCount: selectedBm.length, cmCount: selectedCm.length } },
+            data: { userId: user.userId, action: "QUARTER_STARTED", details: { quarterId: quarter.id, name: quarter.name, questionCount: data.questionCount, totalLocked: allSelectedIds.length, selfCount: selectedSelf.length, bmCount: selectedBm.length, cmCount: selectedCm.length, priorHodReset } },
         });
 
         // Notify all employees

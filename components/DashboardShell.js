@@ -76,7 +76,11 @@ export default function DashboardShell({ user, currentQuarter, title, children }
         });
     };
 
-    const role = user?.role || "ADMIN";
+    // Pass through the session role exactly as /api/auth/me returns it. While
+    // user is still loading (null), pass null — the sidebar renders empty nav
+    // rather than silently falling back to the ADMIN tabset (the old bug that
+    // made every role briefly flash an admin sidebar on mount).
+    const role = user?.role || null;
 
     return (
         <div className="flex min-h-screen min-h-[100dvh] bg-[#F4F6FA]">

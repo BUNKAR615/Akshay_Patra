@@ -33,14 +33,37 @@ export const POST = withRole(["HOD"], async (request, { user }) => {
         if (!employee) return fail("Employee not found");
         if (employee.collarType !== "BLUE_COLLAR") return fail("HOD can only evaluate blue collar employees");
 
-        const hodAssignment = await prisma.hodAssignment.findFirst({
-            where: {
-                hodUserId: user.userId,
-                departmentId: employee.departmentId,
-                quarterId: quarter.id
-            }
+        // HOD-employee link check.
+        //
+        // In the new BM flow, the BM nominates an HOD (HodAssignment is on the
+        // HOD's WHITE_COLLAR home department) and then attaches BC employees
+        // to that HOD per-employee via EmployeeHodAssignment — so a BC
+        // employee's `departmentId` will almost never equal the HOD's
+        // HodAssignment.departmentId. The previous dept-level check therefore
+        // rejected every legitimate submission (e.g. Om Prakash → Ajay K R).
+        //
+        // We now consult EmployeeHodAssignment first (the BM's explicit
+        // per-employee link). If that row exists for the active quarter, it
+        // IS the source of truth; otherwise we fall back to the legacy
+        // dept-level HodAssignment so seeded / older data keeps working.
+        const empHodLink = await prisma.employeeHodAssignment.findUnique({
+            where: { employeeId_quarterId: { employeeId, quarterId: quarter.id } },
+            select: { hodUserId: true },
         });
-        if (!hodAssignment) return fail("You are not assigned as HOD for this employee's department");
+        if (empHodLink) {
+            if (empHodLink.hodUserId !== user.userId) {
+                return fail("You are not the HOD assigned to evaluate this employee");
+            }
+        } else {
+            const hodAssignment = await prisma.hodAssignment.findFirst({
+                where: {
+                    hodUserId: user.userId,
+                    departmentId: employee.departmentId,
+                    quarterId: quarter.id,
+                },
+            });
+            if (!hodAssignment) return fail("You are not assigned as HOD for this employee");
+        }
 
         // Verify employee is in Stage 1 shortlist
         const inShortlist = await prisma.branchShortlistStage1.findUnique({
@@ -54,10 +77,16 @@ export const POST = withRole(["HOD"], async (request, { user }) => {
         });
         if (existing) return fail("You have already evaluated this employee");
 
-        // Get HOD-level questions for this quarter
+        // HOD evaluators reuse the BRANCH_MANAGER question bank — there is
+        // no separate HOD bank loaded at quarter start (see
+        // app/api/admin/quarters/start/route.js and the comment on
+        // app/api/hod/questions/route.js). Validating against `level: "HOD"`
+        // here was rejecting every submission because no HOD-level rows
+        // exist in QuarterQuestion. Align with the questions route so the
+        // IDs the dashboard renders are the IDs we accept.
         const hodQuestions = await prisma.quarterQuestion.findMany({
-            where: { quarterId: quarter.id, question: { level: "HOD" } },
-            select: { questionId: true }
+            where: { quarterId: quarter.id, question: { level: "BRANCH_MANAGER" } },
+            select: { questionId: true },
         });
         const validQIds = new Set(hodQuestions.map(q => q.questionId));
         for (const ans of answers) {
@@ -100,25 +129,34 @@ export const POST = withRole(["HOD"], async (request, { user }) => {
             }
         }).catch(() => {});
 
-        // Check if ALL HODs have evaluated ALL their assigned blue collar Stage 1 employees
+        // Check if ALL HODs have evaluated ALL their assigned blue collar Stage 1 employees.
+        //
+        // Same shift as above: with per-employee EmployeeHodAssignment we no
+        // longer match HOD ⇄ employee through `department`. For each BC
+        // Stage-1 employee we read their per-employee HOD link; only
+        // employees that ARE attached to some HOD count toward completion
+        // (unassigned ones legitimately stay with the BM and shouldn't
+        // block Stage-2 generation).
         const branchId = employee.department.branchId;
-        const allHodAssignments = await prisma.hodAssignment.findMany({
-            where: { branchId, quarterId: quarter.id }
-        });
-
-        // Get all BC employees in Stage 1 shortlist that should be evaluated by HODs
         const bcStage1 = await prisma.branchShortlistStage1.findMany({
             where: { branchId, quarterId: quarter.id, collarType: "BLUE_COLLAR" },
-            select: { userId: true, user: { select: { departmentId: true } } }
+            select: { userId: true },
         });
+        const bcUserIds = bcStage1.map((s) => s.userId);
+        const empHodRows = bcUserIds.length > 0
+            ? await prisma.employeeHodAssignment.findMany({
+                where: { quarterId: quarter.id, employeeId: { in: bcUserIds } },
+                select: { employeeId: true, hodUserId: true },
+            })
+            : [];
+        const hodByEmp = new Map(empHodRows.map((r) => [r.employeeId, r.hodUserId]));
 
-        // Count expected vs actual evaluations
         let allComplete = true;
         for (const emp of bcStage1) {
-            const hodForDept = allHodAssignments.find(h => h.departmentId === emp.user.departmentId);
-            if (!hodForDept) continue; // No HOD assigned for this dept
+            const hodUserId = hodByEmp.get(emp.userId);
+            if (!hodUserId) continue; // Not attached to any HOD — BM evaluates.
             const evalExists = await prisma.hodEvaluation.findUnique({
-                where: { hodId_employeeId_quarterId: { hodId: hodForDept.hodUserId, employeeId: emp.userId, quarterId: quarter.id } }
+                where: { hodId_employeeId_quarterId: { hodId: hodUserId, employeeId: emp.userId, quarterId: quarter.id } },
             });
             if (!evalExists) { allComplete = false; break; }
         }
@@ -162,7 +200,8 @@ export const POST = withRole(["HOD"], async (request, { user }) => {
 
             // Notify shortlisted employees
             for (const ev of topN) {
-                await createNotification(ev.employeeId, "You have been shortlisted to Stage 2 (HOD evaluation complete). Cluster Manager will evaluate next.").catch(() => {});
+                await createNotification(ev.employeeId, "You have been shortlisted to Stage 2 (HOD evaluation complete). Cluster Manager will evaluate next.")
+                    .catch((err) => { console.error(`[HOD-EVALUATE] Stage 2 notification failed for user ${ev.employeeId}:`, err); });
             }
         }
 

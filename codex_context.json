@@ -1,0 +1,601 @@
+{
+  "project": {
+    "name": "Akshaya Patra Employee Evaluation Platform",
+    "description": "Multi-stage quarterly employee performance evaluation system. Manages self-assessment through four evaluator stages to produce Best Employee per branch per collar type.",
+    "status": "Production (Jaipur pilot)",
+    "employees_seeded": 287
+  },
+  "stack": {
+    "framework": "Next.js 14.2.5 (App Router)",
+    "orm": "Prisma 5.16.0",
+    "database": "PostgreSQL",
+    "auth": "JWT (jose HS256) + bcryptjs — no NextAuth",
+    "styling": "Tailwind CSS 3.4.4",
+    "testing": "Vitest",
+    "file_storage": "Vercel Blob (@vercel/blob)",
+    "validation": "Zod",
+    "excel_parsing": "xlsx + papaparse",
+    "runtime": "Node.js (Next.js)"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && prisma db push --accept-data-loss && next build",
+    "start": "next start",
+    "test": "vitest run",
+    "lint": "next lint",
+    "seed": "ts-node -O \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/seed.ts",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:studio": "prisma studio",
+    "postinstall": "prisma generate",
+    "prepare": "husky"
+  },
+  "env_vars": [
+    {
+      "name": "DATABASE_URL",
+      "required": true,
+      "description": "Pooled PostgreSQL connection string. Include pgbouncer=true&connection_limit=1 for serverless."
+    },
+    {
+      "name": "DIRECT_URL",
+      "required": true,
+      "description": "Direct PostgreSQL connection string. Used by Prisma for migrations."
+    },
+    {
+      "name": "JWT_SECRET",
+      "required": true,
+      "description": "HS256 signing secret. Use a long random string (32+ chars)."
+    },
+    {
+      "name": "NODE_ENV",
+      "required": true,
+      "description": "production or development. Affects Prisma log level and Next.js optimizations."
+    },
+    {
+      "name": "NEXTAUTH_URL",
+      "required": true,
+      "description": "Canonical URL of the app (e.g., https://yourapp.vercel.app). Used for cookie domain."
+    },
+    {
+      "name": "BLOB_READ_WRITE_TOKEN",
+      "required": "likely",
+      "description": "Vercel Blob API token. Required for HR PDF uploads (attendancePdfUrl, punctualityPdfUrl). NOT in .env.example — needs verification."
+    },
+    {
+      "name": "ALLOW_FULL_SEED",
+      "required": false,
+      "description": "Set to '1' to allow the seed script to run. Without it, seed.ts is a no-op. DANGER: truncates users/departments/branches."
+    }
+  ],
+  "roles": [
+    {
+      "name": "ADMIN",
+      "description": "System administrator. Global access. Manages branches, employees, quarters, questions, assigns evaluators. No branch scope constraint.",
+      "default_password_formula": "Firstname_## (last 2 digits of empCode)"
+    },
+    {
+      "name": "BRANCH_MANAGER",
+      "description": "Manages exactly one branch. Evaluates Stage-1 shortlisted employees at Stage 2 (all on SMALL; WC only on BIG). Assigns HODs on BIG branches.",
+      "default_password_formula": "Firstname_##",
+      "uniqueness": "One per branch, one branch per manager (BranchManagerAssignment @unique on both bmUserId and branchId)"
+    },
+    {
+      "name": "HOD",
+      "description": "Head of Department. Evaluates blue-collar Stage-1 shortlisted employees at Stage 2 on BIG branches only. A HOD is a white-collar EMPLOYEE with a secondary password (passwordHod).",
+      "default_password_formula": "Firstname_## stored in User.passwordHod",
+      "note": "User.role may remain EMPLOYEE; HOD role is granted via secondary password + active HodAssignment"
+    },
+    {
+      "name": "CLUSTER_MANAGER",
+      "description": "Evaluates Stage-2 shortlisted employees at Stage 3. Oversees one or more branches via ClusterManagerBranchAssignment.",
+      "default_password_formula": "Firstname_##",
+      "branch_scope": "One CM per branch (branchId @unique in cm_branch_assignments); CM can have multiple branches"
+    },
+    {
+      "name": "HR",
+      "description": "Evaluates Stage-3 shortlisted employees at Stage 4 using attendance and punctuality data. Uploads PDFs to Vercel Blob.",
+      "default_password_formula": "Firstname_##",
+      "branch_scope": "Multi-branch via HrBranchAssignment"
+    },
+    {
+      "name": "COMMITTEE",
+      "description": "Final review committee. Views Stage-4 results and declares Best Employee. No evaluation form — manual review via dashboard.",
+      "default_password_formula": "Firstname_##",
+      "branch_scope": "Multi-branch via CommitteeBranchAssignment"
+    },
+    {
+      "name": "EMPLOYEE",
+      "description": "Regular employee. Submits self-assessment (Stage 1 only).",
+      "default_password_formula": "empCode (verbatim)"
+    },
+    {
+      "name": "SUPERVISOR",
+      "description": "DEPRECATED. Legacy role. In enum for historical data only. No active routes use it.",
+      "status": "deprecated"
+    }
+  ],
+  "branch_types": [
+    {
+      "name": "BIG",
+      "description": "Large branch. Blue-collar employees evaluated by HOD at Stage 2. White-collar evaluated by BM. WC stage limits: 3/2/1. BC stage limits: 10/5/3."
+    },
+    {
+      "name": "SMALL",
+      "description": "Standard branch. BM evaluates all collar types at Stage 2. Stage limits: 10/5/3 for all."
+    }
+  ],
+  "collar_types": [
+    {
+      "name": "WHITE_COLLAR",
+      "description": "Office/administrative staff. On BIG branches, evaluated by BM at Stage 2. Tighter limits (3/2/1)."
+    },
+    {
+      "name": "BLUE_COLLAR",
+      "description": "Operations/kitchen staff. On BIG branches, evaluated by HOD at Stage 2. Higher limits (10/5/3)."
+    }
+  ],
+  "evaluation_stages": [
+    {
+      "stage": 1,
+      "name": "Self-Assessment",
+      "actor": "EMPLOYEE",
+      "table": "SelfAssessment",
+      "shortlist_table": "BranchShortlistStage1",
+      "cutoff": "Top 50% by normalizedScore (overridable via BranchEvalConfig.stage1CutoffPct)"
+    },
+    {
+      "stage": 2,
+      "name": "Evaluator Assessment",
+      "actor": "BRANCH_MANAGER (WC everywhere; BC on SMALL) or HOD (BC on BIG)",
+      "table": "BranchManagerEvaluation or HodEvaluation",
+      "shortlist_table": "BranchShortlistStage2",
+      "score_formula": "60% self + 40% evaluator",
+      "limits": {
+        "BIG_WHITE_COLLAR": 3,
+        "BIG_BLUE_COLLAR": 10,
+        "SMALL_ALL": 10
+      }
+    },
+    {
+      "stage": 3,
+      "name": "Cluster Manager Evaluation",
+      "actor": "CLUSTER_MANAGER",
+      "table": "ClusterManagerEvaluation",
+      "shortlist_table": "BranchShortlistStage3",
+      "limits": {
+        "BIG_WHITE_COLLAR": 2,
+        "BIG_BLUE_COLLAR": 5,
+        "SMALL_ALL": 5
+      }
+    },
+    {
+      "stage": 4,
+      "name": "HR Evaluation",
+      "actor": "HR",
+      "table": "HrEvaluation",
+      "shortlist_table": "BranchShortlistStage4",
+      "limits": {
+        "BIG_WHITE_COLLAR": 1,
+        "BIG_BLUE_COLLAR": 3,
+        "SMALL_ALL": 3
+      }
+    },
+    {
+      "stage": "final",
+      "name": "Committee Review",
+      "actor": "COMMITTEE",
+      "table": "BranchBestEmployee",
+      "note": "No evaluation form. Committee views Stage-4 results and manually declares winners."
+    }
+  ],
+  "quarter_lifecycle": [
+    "Admin calls POST /api/admin/quarters/start",
+    "Questions assigned per employee; auto-winners declared for single-employee departments",
+    "Quarter.status = ACTIVE",
+    "Evaluation stages run: employees submit self-assessment; evaluators assess shortlisted employees",
+    "Admin calls POST /api/admin/quarters/close",
+    "Quarter.status = CLOSED; results visible to admin and committee"
+  ],
+  "default_password_rules": {
+    "EMPLOYEE": "empCode (verbatim)",
+    "BM_CM_HR_COMMITTEE_ADMIN": "Firstname_## — first word of full name + underscore + last 2 chars of empCode",
+    "HOD_secondary": "Same Firstname_## formula; stored in User.passwordHod",
+    "fallback": "empCode used if name parsing fails",
+    "hashing": "bcrypt with 10 salt rounds",
+    "implementation": "lib/auth/defaultPassword.js + lib/auth/applyStaffPassword.js"
+  },
+  "login_flows": {
+    "single_step": "EMPLOYEE and ADMIN — empCode + password → JWT issued",
+    "two_step_branch_pick": "CM/HR/COMMITTEE with multiple branches — empCode + password → branchSelectToken → POST /api/auth/select-branch → JWT with chosen branchId",
+    "two_step_role_pick": "User who is both ADMIN and active HOD — empCode + HOD-password → roleSelectToken → POST /api/auth/select-role → JWT with chosen role",
+    "hod_dual_password": "Employee with active HodAssignment can login with primary password (→ EMPLOYEE) or secondary passwordHod (→ HOD)"
+  },
+  "token_config": {
+    "access_token_ttl": "8 hours",
+    "refresh_token_ttl": "7 days",
+    "branch_select_token_ttl": "5 minutes",
+    "role_select_token_ttl": "5 minutes",
+    "algorithm": "HS256",
+    "blacklist_table": "BlacklistedToken",
+    "blacklist_cleanup": "Manual: POST /api/admin/maintenance/prune-blacklist (not automated)"
+  },
+  "critical_files": [
+    {
+      "path": "middleware.ts",
+      "purpose": "JWT verification and user-context header injection for all requests",
+      "risk": "high — all requests flow through this"
+    },
+    {
+      "path": "lib/auth.ts",
+      "purpose": "JWT sign/verify utilities (access, refresh, branch-select, role-select tokens)",
+      "risk": "high — token payload shape change is breaking"
+    },
+    {
+      "path": "lib/withRole.js",
+      "purpose": "RBAC higher-order function wrapping API route handlers",
+      "risk": "high — every protected route depends on it"
+    },
+    {
+      "path": "lib/auth/requireBranchScope.js",
+      "purpose": "Validates user has access to the branchId in the URL",
+      "risk": "high — cross-branch access prevention"
+    },
+    {
+      "path": "lib/auth/resolveScopeBranch.js",
+      "purpose": "Verifies JWT branchId against assignment table for CM/HR/COMMITTEE",
+      "risk": "high — prevents stale-token branch leakage"
+    },
+    {
+      "path": "lib/auth/defaultPassword.js",
+      "purpose": "Generates default plain-text passwords for employees and staff",
+      "risk": "medium — change affects all new account creation"
+    },
+    {
+      "path": "lib/auth/applyStaffPassword.js",
+      "purpose": "Hashes and writes staff default password to User.password",
+      "risk": "medium"
+    },
+    {
+      "path": "lib/auth/bmAssignment.js",
+      "purpose": "Atomic BM assignment with uniqueness validation and old-BM demotion",
+      "risk": "high — non-atomic BM changes cause constraint violations"
+    },
+    {
+      "path": "lib/auth/bulkUploadDemotionGuard.js",
+      "purpose": "Detects BM/CM/HR/COMMITTEE role-holders in bulk upload sheet",
+      "risk": "high — removing this guard allows silent role demotion"
+    },
+    {
+      "path": "app/api/auth/login/route.js",
+      "purpose": "Main login handler: single-step, branch-pick, role-pick, dual-password HOD",
+      "risk": "high — bugs here lock users out"
+    },
+    {
+      "path": "app/api/auth/select-branch/route.js",
+      "purpose": "Stage-2 branch selection for multi-branch CM/HR/COMMITTEE users",
+      "risk": "medium"
+    },
+    {
+      "path": "app/api/auth/select-role/route.js",
+      "purpose": "Stage-2 role selection for ADMIN+HOD users",
+      "risk": "medium"
+    },
+    {
+      "path": "app/api/admin/quarters/start/route.js",
+      "purpose": "Quarter initialization: question assignment, auto-winners, notifications",
+      "risk": "high — not idempotent; auto-winners are irreversible"
+    },
+    {
+      "path": "app/api/admin/quarters/close/route.js",
+      "purpose": "Closes active quarter; no confirmed re-open route exists",
+      "risk": "medium"
+    },
+    {
+      "path": "app/api/admin/branches/[branchId]/employees/bulk-upload/route.js",
+      "purpose": "Excel employee import with merge/replace modes and demotion guard",
+      "risk": "high — replace mode permanently archives employees"
+    },
+    {
+      "path": "app/api/branch-manager/evaluate/route.js",
+      "purpose": "BM Stage-2 evaluation submission",
+      "risk": "medium"
+    },
+    {
+      "path": "app/api/branch-manager/hod/assign/route.js",
+      "purpose": "HOD assignment to department (BIG branches only)",
+      "risk": "medium — generates passwordHod; creates assignment rows"
+    },
+    {
+      "path": "app/api/hod/evaluate/route.js",
+      "purpose": "HOD Stage-2 evaluation for blue-collar employees (BIG branches)",
+      "risk": "medium"
+    },
+    {
+      "path": "app/api/cluster-manager/evaluate/route.js",
+      "purpose": "CM Stage-3 evaluation submission",
+      "risk": "medium"
+    },
+    {
+      "path": "app/api/hr/evaluate/route.js",
+      "purpose": "HR Stage-4 evaluation with PDF upload — active status needs verification",
+      "risk": "medium"
+    },
+    {
+      "path": "app/api/assessment/submit/route.js",
+      "purpose": "Employee self-assessment submission; triggers Stage-1 shortlist recalculation",
+      "risk": "medium"
+    },
+    {
+      "path": "lib/scoreCalculator.ts",
+      "purpose": "Score normalization and stage weighting formulas",
+      "risk": "high — used by every evaluation route; wrong math corrupts all rankings"
+    },
+    {
+      "path": "lib/branchRules.ts",
+      "purpose": "Stage-wise shortlist limits by branch type and collar type",
+      "risk": "high — consumed by shortlist manager and all evaluation routes"
+    },
+    {
+      "path": "lib/department-rules.js",
+      "purpose": "Small-department auto-winner rule (4 cases) — legacy department-level path",
+      "risk": "low — legacy path"
+    },
+    {
+      "path": "lib/shortlistManager.ts",
+      "purpose": "Recalculates and upserts BranchShortlistStage* after each evaluation",
+      "risk": "high — stage cascades; wrong rank = broken pipeline"
+    },
+    {
+      "path": "lib/questionAssigner.js",
+      "purpose": "Per-employee randomized question assignment at quarter start",
+      "risk": "medium — called once at quarter start; errors skip employee silently"
+    },
+    {
+      "path": "lib/notifications.js",
+      "purpose": "createNotification, notifyAllEmployees",
+      "risk": "low"
+    },
+    {
+      "path": "lib/api-response.js",
+      "purpose": "Standardized HTTP response helpers and validateBody (Zod + XSS sanitization)",
+      "risk": "low"
+    },
+    {
+      "path": "lib/validators.js",
+      "purpose": "Zod schemas for all request bodies",
+      "risk": "low"
+    },
+    {
+      "path": "lib/prisma.ts",
+      "purpose": "Prisma singleton client with dev-reuse and health-check",
+      "risk": "low"
+    },
+    {
+      "path": "lib/dashboardNav.js",
+      "purpose": "Role-aware sidebar navigation structure",
+      "risk": "low — must stay in sync with app/dashboard/ page paths"
+    },
+    {
+      "path": "prisma/schema.prisma",
+      "purpose": "Complete database schema: 25 models, 7 enums, all constraints",
+      "risk": "high — @unique constraints are load-bearing; db push can drop data"
+    },
+    {
+      "path": "prisma/seed.ts",
+      "purpose": "Seeds DB with branch, departments, employees (requires ALLOW_FULL_SEED=1)",
+      "risk": "high — truncates tables before seeding"
+    },
+    {
+      "path": "scripts/run-bulk-uploads.js",
+      "purpose": "CLI bulk employee import from Excel per branch",
+      "risk": "medium"
+    },
+    {
+      "path": "scripts/sync-question-bank.js",
+      "purpose": "Idempotent sync of question bank from seed file to DB",
+      "risk": "low"
+    },
+    {
+      "path": "components/DashboardShell.js",
+      "purpose": "Main layout wrapper: sidebar + topbar + content for all protected pages",
+      "risk": "low"
+    },
+    {
+      "path": "components/shell/Sidebar.jsx",
+      "purpose": "Role-aware collapsible sidebar, reads from lib/dashboardNav.js",
+      "risk": "low"
+    },
+    {
+      "path": "components/shell/TopBar.jsx",
+      "purpose": "Top bar with current quarter name and logout button",
+      "risk": "low"
+    },
+    {
+      "path": "components/EvaluationForm.js",
+      "purpose": "Shared evaluation form used for BM, HOD, CM, self-assessment",
+      "risk": "medium — shared across multiple evaluator types"
+    },
+    {
+      "path": "components/ui/",
+      "purpose": "Design tokens (tokens.js), icons (Icons.jsx), primitive UI components (index.jsx)",
+      "risk": "low"
+    }
+  ],
+  "api_routes": {
+    "auth": [
+      {"method": "POST", "path": "/api/auth/login", "roles": ["public"], "description": "Main login: empCode + password. Returns JWT or stage-1 token for multi-step flows."},
+      {"method": "POST", "path": "/api/auth/logout", "roles": ["all"], "description": "Blacklists token, clears cookies."},
+      {"method": "GET",  "path": "/api/auth/me", "roles": ["all"], "description": "Returns current user profile + active quarter name."},
+      {"method": "POST", "path": "/api/auth/refresh", "roles": ["all"], "description": "Refreshes access token via refresh token cookie."},
+      {"method": "POST", "path": "/api/auth/select-branch", "roles": ["public"], "description": "Stage-2: CM/HR/COMMITTEE pick branch after initial login."},
+      {"method": "POST", "path": "/api/auth/select-role", "roles": ["public"], "description": "Stage-2: ADMIN+HOD pick role after initial login."}
+    ],
+    "admin": [
+      {"method": "GET",  "path": "/api/admin/branches", "roles": ["ADMIN"], "description": "List all branches with dept/employee counts."},
+      {"method": "POST", "path": "/api/admin/branches", "roles": ["ADMIN"], "description": "Create or update branch."},
+      {"method": "POST", "path": "/api/admin/branches/bulk-upload", "roles": ["ADMIN"], "description": "Bulk create branches from JSON."},
+      {"method": "GET",  "path": "/api/admin/branches/[branchId]/summary", "roles": ["ADMIN"], "description": "Branch statistics summary."},
+      {"method": "GET",  "path": "/api/admin/branches/[branchId]/employees", "roles": ["ADMIN"], "description": "List employees in branch."},
+      {"method": "POST", "path": "/api/admin/branches/[branchId]/employees", "roles": ["ADMIN"], "description": "Add employee to branch."},
+      {"method": "POST", "path": "/api/admin/branches/[branchId]/employees/bulk-upload", "roles": ["ADMIN", "BRANCH_MANAGER"], "description": "Excel bulk import. Modes: merge (default) or replace."},
+      {"method": "GET",  "path": "/api/admin/branches/[branchId]/departments", "roles": ["ADMIN"], "description": "List departments in branch."},
+      {"method": "POST", "path": "/api/admin/branches/[branchId]/departments", "roles": ["ADMIN"], "description": "Create department."},
+      {"method": "GET",  "path": "/api/admin/branches/[branchId]/bm-assign", "roles": ["ADMIN"], "description": "Get current BM assignment."},
+      {"method": "POST", "path": "/api/admin/branches/[branchId]/bm-assign", "roles": ["ADMIN"], "description": "Assign BM to branch (atomic)."},
+      {"method": "DELETE","path": "/api/admin/branches/[branchId]/bm-assign", "roles": ["ADMIN"], "description": "Remove BM from branch."},
+      {"method": "GET",  "path": "/api/admin/branches/[branchId]/cm-assign", "roles": ["ADMIN"], "description": "Get CM assignment."},
+      {"method": "POST", "path": "/api/admin/branches/[branchId]/cm-assign", "roles": ["ADMIN"], "description": "Assign CM to branch."},
+      {"method": "DELETE","path": "/api/admin/branches/[branchId]/cm-assign", "roles": ["ADMIN"], "description": "Remove CM from branch."},
+      {"method": "GET",  "path": "/api/admin/branches/[branchId]/hr-assign", "roles": ["ADMIN"], "description": "List HR assignments."},
+      {"method": "POST", "path": "/api/admin/branches/[branchId]/hr-assign", "roles": ["ADMIN"], "description": "Assign HR to branch."},
+      {"method": "DELETE","path": "/api/admin/branches/[branchId]/hr-assign", "roles": ["ADMIN"], "description": "Remove HR from branch."},
+      {"method": "GET",  "path": "/api/admin/branches/[branchId]/committee-assign", "roles": ["ADMIN"], "description": "List committee assignments."},
+      {"method": "POST", "path": "/api/admin/branches/[branchId]/committee-assign", "roles": ["ADMIN"], "description": "Assign committee member to branch."},
+      {"method": "DELETE","path": "/api/admin/branches/[branchId]/committee-assign", "roles": ["ADMIN"], "description": "Remove committee member from branch."},
+      {"method": "POST", "path": "/api/admin/branches/[branchId]/eval-config", "roles": ["ADMIN"], "description": "Set custom stage limits for branch+quarter (BranchEvalConfig)."},
+      {"method": "GET",  "path": "/api/admin/branches/[branchId]/audit-logs", "roles": ["ADMIN"], "description": "Branch-scoped audit trail."},
+      {"method": "GET",  "path": "/api/admin/employees", "roles": ["ADMIN"], "description": "Paginated employee directory (searchable, filterable, exportable)."},
+      {"method": "POST", "path": "/api/admin/employees", "roles": ["ADMIN"], "description": "Add individual employee. Restricted to HR_ALLOWED empCodes: 1800349, 5100029."},
+      {"method": "GET",  "path": "/api/admin/employees/[id]", "roles": ["ADMIN"], "description": "Get employee by ID."},
+      {"method": "PUT",  "path": "/api/admin/employees/[id]", "roles": ["ADMIN"], "description": "Update employee."},
+      {"method": "DELETE","path": "/api/admin/employees/[id]", "roles": ["ADMIN"], "description": "Archive and delete employee."},
+      {"method": "GET",  "path": "/api/admin/employees/history", "roles": ["ADMIN"], "description": "Employee assignment change history."},
+      {"method": "GET",  "path": "/api/admin/employees/archived", "roles": ["ADMIN"], "description": "View archived employees."},
+      {"method": "POST", "path": "/api/admin/quarters/start", "roles": ["ADMIN"], "description": "Initialize quarter: assign questions, declare auto-winners. NOT idempotent."},
+      {"method": "POST", "path": "/api/admin/quarters/close", "roles": ["ADMIN"], "description": "Close active quarter. Results become visible."},
+      {"method": "GET",  "path": "/api/admin/quarter-progress", "roles": ["ADMIN"], "description": "Evaluation stage progress across branches."},
+      {"method": "GET",  "path": "/api/admin/results", "roles": ["ADMIN"], "description": "Final results (CLOSED quarter only)."},
+      {"method": "GET",  "path": "/api/admin/questions", "roles": ["ADMIN"], "description": "List questions."},
+      {"method": "POST", "path": "/api/admin/questions", "roles": ["ADMIN"], "description": "Create question."},
+      {"method": "PUT",  "path": "/api/admin/questions/[id]", "roles": ["ADMIN"], "description": "Update question."},
+      {"method": "DELETE","path": "/api/admin/questions/[id]", "roles": ["ADMIN"], "description": "Delete/deactivate question."},
+      {"method": "POST", "path": "/api/admin/departments/assign-role", "roles": ["ADMIN"], "description": "Assign evaluator role to user per department."},
+      {"method": "POST", "path": "/api/admin/departments/remove-role", "roles": ["ADMIN"], "description": "Remove evaluator role."},
+      {"method": "GET",  "path": "/api/admin/departments/roles", "roles": ["ADMIN"], "description": "List all role assignments."},
+      {"method": "POST", "path": "/api/admin/users/[id]/reset-password", "roles": ["ADMIN"], "description": "Force reset user password to default."},
+      {"method": "GET",  "path": "/api/admin/audit-logs", "roles": ["ADMIN"], "description": "Global audit trail."},
+      {"method": "POST", "path": "/api/admin/maintenance/prune-blacklist", "roles": ["ADMIN"], "description": "Delete expired BlacklistedToken rows."},
+      {"method": "POST", "path": "/api/admin/export/quarter-report", "roles": ["ADMIN"], "description": "Export quarter results report."}
+    ],
+    "branch_manager": [
+      {"method": "GET",  "path": "/api/branch-manager/departments", "roles": ["BRANCH_MANAGER"], "description": "Departments in assigned branch."},
+      {"method": "GET",  "path": "/api/branch-manager/stats", "roles": ["BRANCH_MANAGER"], "description": "BM dashboard statistics."},
+      {"method": "GET",  "path": "/api/branch-manager/questions", "roles": ["BRANCH_MANAGER"], "description": "BM evaluation questions for current quarter."},
+      {"method": "GET",  "path": "/api/branch-manager/shortlist", "roles": ["BRANCH_MANAGER"], "description": "Stage-2 evaluation queue (shuffled)."},
+      {"method": "POST", "path": "/api/branch-manager/evaluate", "roles": ["BRANCH_MANAGER"], "description": "Submit Stage-2 evaluation for shortlisted employee."},
+      {"method": "POST", "path": "/api/branch-manager/employees/bulk-upload", "roles": ["BRANCH_MANAGER"], "description": "Branch-scoped employee Excel import."},
+      {"method": "POST", "path": "/api/branch-manager/hod/assign", "roles": ["BRANCH_MANAGER"], "description": "Assign HOD to department (BIG branches only)."},
+      {"method": "GET",  "path": "/api/branch-manager/hod/list", "roles": ["BRANCH_MANAGER"], "description": "List assigned HODs."},
+      {"method": "POST", "path": "/api/branch-manager/hod/remove", "roles": ["BRANCH_MANAGER"], "description": "Remove HOD assignment."},
+      {"method": "GET",  "path": "/api/branch-manager/hod/search", "roles": ["BRANCH_MANAGER"], "description": "Search potential HOD candidates (WC employees)."},
+      {"method": "GET",  "path": "/api/branch-manager/hod/employees", "roles": ["BRANCH_MANAGER"], "description": "BC employees needing HOD evaluation."},
+      {"method": "GET",  "path": "/api/branch-manager/hod/blue-collar-pool", "roles": ["BRANCH_MANAGER"], "description": "Pool of WC employees eligible to be HODs."}
+    ],
+    "hod": [
+      {"method": "GET",  "path": "/api/hod/questions", "roles": ["HOD"], "description": "HOD evaluation questions for current quarter."},
+      {"method": "GET",  "path": "/api/hod/shortlist", "roles": ["HOD"], "description": "HOD evaluation queue (BC employees in assigned departments)."},
+      {"method": "POST", "path": "/api/hod/evaluate", "roles": ["HOD"], "description": "Submit Stage-2 HOD evaluation (BIG branches only)."}
+    ],
+    "cluster_manager": [
+      {"method": "GET",  "path": "/api/cluster-manager/departments", "roles": ["CLUSTER_MANAGER"], "description": "Departments across assigned branches."},
+      {"method": "GET",  "path": "/api/cluster-manager/questions", "roles": ["CLUSTER_MANAGER"], "description": "CM evaluation questions."},
+      {"method": "GET",  "path": "/api/cluster-manager/shortlist", "roles": ["CLUSTER_MANAGER"], "description": "Stage-3 evaluation queue."},
+      {"method": "POST", "path": "/api/cluster-manager/evaluate", "roles": ["CLUSTER_MANAGER"], "description": "Submit Stage-3 evaluation."}
+    ],
+    "hr": [
+      {"method": "GET",  "path": "/api/hr/shortlist", "roles": ["HR"], "description": "Stage-4 evaluation queue."},
+      {"method": "POST", "path": "/api/hr/evaluate", "roles": ["HR"], "description": "Submit Stage-4 evaluation with attendance/punctuality data. Status: needs verification (may be legacy)."},
+      {"method": "POST", "path": "/api/hr/upload", "roles": ["HR"], "description": "HR-specific file upload."}
+    ],
+    "committee": [
+      {"method": "GET",  "path": "/api/committee/results", "roles": ["COMMITTEE"], "description": "View final Stage-4 results to declare Best Employee."}
+    ],
+    "assessment": [
+      {"method": "GET",  "path": "/api/assessment/questions", "roles": ["EMPLOYEE"], "description": "Fetch per-employee randomized SELF questions for current quarter."},
+      {"method": "POST", "path": "/api/assessment/submit", "roles": ["EMPLOYEE"], "description": "Submit self-assessment. Triggers Stage-1 shortlist recalculation."}
+    ],
+    "employee": [
+      {"method": "GET",  "path": "/api/employee/current-status", "roles": ["EMPLOYEE"], "description": "Employee's current evaluation status in the pipeline."},
+      {"method": "GET",  "path": "/api/employee/history", "roles": ["EMPLOYEE"], "description": "Employee's historical evaluation records."},
+      {"method": "GET",  "path": "/api/employee/status", "roles": ["EMPLOYEE"], "description": "Current status summary."}
+    ],
+    "system": [
+      {"method": "GET",  "path": "/api/health", "roles": ["public"], "description": "Health check."},
+      {"method": "GET",  "path": "/api/notifications", "roles": ["all"], "description": "List user notifications."},
+      {"method": "POST", "path": "/api/notifications/[id]/read", "roles": ["all"], "description": "Mark notification read."},
+      {"method": "POST", "path": "/api/notifications/read-all", "roles": ["all"], "description": "Mark all notifications read."},
+      {"method": "GET",  "path": "/api/user/profile", "roles": ["all"], "description": "User profile."}
+    ]
+  },
+  "models": [
+    {"name": "Branch", "table": "branches", "key_fields": "id, name, slug, location, branchType(SMALL|BIG)", "key_constraints": "name @unique, slug @unique"},
+    {"name": "Department", "table": "departments", "key_fields": "id, name, branchId(FK), collarType(WHITE_COLLAR|BLUE_COLLAR)", "key_constraints": "(name, branchId) composite unique"},
+    {"name": "User", "table": "users", "key_fields": "id, empCode, name, password, passwordHod, role, departmentId(nullable), branchId(nullable), collarType, designation, mobile", "key_constraints": "empCode @unique"},
+    {"name": "Quarter", "table": "quarters", "key_fields": "id, name, status(ACTIVE|CLOSED), startDate, endDate, questionCount, bmQuestionCount, hodQuestionCount, cmQuestionCount", "key_constraints": "name @unique"},
+    {"name": "Question", "table": "questions", "key_fields": "id, text, textHindi, category(7 values), level(6 values), isActive", "key_constraints": "none unique"},
+    {"name": "QuarterQuestion", "table": "quarter_questions", "key_fields": "id, quarterId(FK), questionId(FK)", "key_constraints": "(quarterId, questionId) composite unique"},
+    {"name": "EmployeeQuarterQuestions", "table": "employee_quarter_questions", "key_fields": "id, employeeId(FK), quarterId(FK), questionId(FK), orderIndex", "key_constraints": "(employeeId, quarterId, questionId) composite unique"},
+    {"name": "SelfAssessment", "table": "self_assessments", "key_fields": "id, userId, quarterId, answers(JSON), rawScore, maxScore, normalizedScore, completionTimeSeconds", "key_constraints": "(userId, quarterId) composite unique"},
+    {"name": "BranchManagerEvaluation", "table": "branch_manager_evaluations", "key_fields": "id, managerId, employeeId, quarterId, answers(JSON), bmRawScore, bmNormalized, bmContribution, stage3CombinedScore", "key_constraints": "(managerId, employeeId, quarterId) composite unique"},
+    {"name": "HodEvaluation", "table": "hod_evaluations", "key_fields": "id, hodId, employeeId, quarterId, answers(JSON), hodRawScore, hodNormalized, hodContribution, stage2CombinedScore", "key_constraints": "(hodId, employeeId, quarterId) composite unique"},
+    {"name": "ClusterManagerEvaluation", "table": "cluster_manager_evaluations", "key_fields": "id, clusterId, employeeId, quarterId, answers(JSON), cmRawScore, cmNormalized, cmContribution, finalScore", "key_constraints": "(clusterId, employeeId, quarterId) composite unique"},
+    {"name": "HrEvaluation", "table": "hr_evaluations", "key_fields": "id, hrUserId, employeeId, quarterId, attendancePct, workingHours, attendancePdfUrl, punctualityPdfUrl, hrScore, stage4CombinedScore", "key_constraints": "(hrUserId, employeeId, quarterId) composite unique"},
+    {"name": "SupervisorEvaluation", "table": "supervisor_evaluations", "key_fields": "DEPRECATED — legacy Stage-2 supervisor path", "status": "deprecated"},
+    {"name": "BranchShortlistStage1", "table": "branch_shortlist_stage1", "key_fields": "userId, quarterId, branchId, collarType, selfScore, rank", "key_constraints": "(userId, quarterId) composite unique"},
+    {"name": "BranchShortlistStage2", "table": "branch_shortlist_stage2", "key_fields": "userId, quarterId, branchId, collarType, selfScore, evaluatorScore, combinedScore, rank", "key_constraints": "(userId, quarterId) composite unique"},
+    {"name": "BranchShortlistStage3", "table": "branch_shortlist_stage3", "key_fields": "userId, quarterId, branchId, collarType, cmScore, combinedScore, rank", "key_constraints": "(userId, quarterId) composite unique"},
+    {"name": "BranchShortlistStage4", "table": "branch_shortlist_stage4", "key_fields": "userId, quarterId, branchId, collarType, hrScore, attendancePct, combinedScore, rank", "key_constraints": "(userId, quarterId) composite unique"},
+    {"name": "BranchBestEmployee", "table": "branch_best_employees", "key_fields": "userId, quarterId, branchId, collarType, finalScore"},
+    {"name": "BranchManagerAssignment", "table": "bm_branch_assignments", "key_fields": "bmUserId, branchId, assignedBy", "key_constraints": "bmUserId @unique, branchId @unique — enforces 1:1"},
+    {"name": "ClusterManagerBranchAssignment", "table": "cm_branch_assignments", "key_fields": "cmUserId, branchId, assignedBy", "key_constraints": "branchId @unique (one CM per branch); (cmUserId, branchId) composite unique"},
+    {"name": "HrBranchAssignment", "table": "hr_branch_assignments", "key_fields": "hrUserId, branchId, assignedBy", "key_constraints": "(hrUserId, branchId) composite unique"},
+    {"name": "CommitteeBranchAssignment", "table": "committee_branch_assignments", "key_fields": "memberUserId, branchId, assignedBy", "key_constraints": "(memberUserId, branchId) composite unique"},
+    {"name": "HodAssignment", "table": "hod_assignments", "key_fields": "hodUserId, branchId, departmentId, quarterId, assignedBy", "key_constraints": "(hodUserId, departmentId, quarterId) composite unique"},
+    {"name": "EmployeeHodAssignment", "table": "employee_hod_assignments", "key_fields": "hodUserId, employeeId, quarterId, assignedBy", "key_constraints": "(employeeId, quarterId) composite unique"},
+    {"name": "DepartmentRoleMapping", "table": "department_role_mappings", "key_fields": "userId, departmentId, role", "key_constraints": "(userId, departmentId, role) composite unique"},
+    {"name": "BranchEvalConfig", "table": "branch_eval_configs", "key_fields": "branchId, quarterId, stage1CutoffPct, stage2Limit, stage3Limit, stage4Limit", "key_constraints": "(branchId, quarterId) composite unique"},
+    {"name": "AuditLog", "table": "audit_logs", "key_fields": "userId, action, details(JSON), ipAddress, createdAt"},
+    {"name": "EmployeeAssignmentHistory", "table": "employee_assignment_history", "key_fields": "userId(SetNull FK), empCode, oldRole, newRole, oldDepartmentName, newDepartmentName, oldBranchName, newBranchName, changedBy"},
+    {"name": "ArchivedEmployee", "table": "archived_employees", "key_fields": "empCode, name, department, removalDate, reasonLeaving, archivedBy, originalUserId"},
+    {"name": "Notification", "table": "notifications", "key_fields": "userId, message, isRead, createdAt"},
+    {"name": "BlacklistedToken", "table": "blacklisted_tokens", "key_fields": "token @unique, expiresAt", "note": "Must be pruned periodically via /api/admin/maintenance/prune-blacklist"}
+  ],
+  "business_rules": [
+    {"rule": "BM_UNIQUENESS", "value": "One BM per branch and one branch per BM. Enforced by BranchManagerAssignment with @unique on both bmUserId and branchId. Use lib/auth/bmAssignment.js for atomic assignment."},
+    {"rule": "CM_PER_BRANCH", "value": "One CM per branch (ClusterManagerBranchAssignment.branchId @unique). A CM can oversee multiple branches."},
+    {"rule": "HOD_ONLY_BIG_BRANCH", "value": "HOD assignment only available when Branch.branchType === 'BIG'. Returns 403 on SMALL branches."},
+    {"rule": "HOD_IS_WHITE_COLLAR_EMPLOYEE", "value": "HOD must be a WHITE_COLLAR employee in the same branch. BM picks from white-collar pool."},
+    {"rule": "HOD_DUAL_PASSWORD", "value": "HOD logs in with passwordHod (Firstname_##). Primary password (empCode) gives EMPLOYEE role. Both stored on same User record."},
+    {"rule": "STAGE2_ROUTING_BY_COLLAR_AND_BRANCH", "value": "BIG branch: WC → BM evaluates (limit 3). BIG branch: BC → HOD evaluates (limit 10). SMALL branch: all → BM evaluates (limit 10)."},
+    {"rule": "STAGE1_CUTOFF", "value": "Top 50% by normalizedScore. Overridable via BranchEvalConfig.stage1CutoffPct per branch+quarter."},
+    {"rule": "SCORE_FORMULA_STAGE2", "value": "combinedScore = (selfNormalized × 0.60) + (evaluatorNormalized × 0.40)"},
+    {"rule": "AUTO_WINNER", "value": "Department with exactly 1 EMPLOYEE is declared auto-winner at quarter start. Logged to AuditLog."},
+    {"rule": "DEFAULT_PASSWORD_EMPLOYEE", "value": "empCode (verbatim, used as initial password)"},
+    {"rule": "DEFAULT_PASSWORD_STAFF", "value": "Firstname_## — first word of full name + '_' + last 2 chars of empCode. Bcrypt-hashed with 10 rounds."},
+    {"rule": "BULK_UPLOAD_ADMIN_PRESERVED", "value": "ADMIN users are never overwritten or demoted in any bulk upload mode."},
+    {"rule": "BULK_UPLOAD_ROLE_HOLDER_GUARD", "value": "Merge mode: rejects entire upload if BM/CM/HR/COMMITTEE role-holder found in sheet. Replace mode: skips those rows."},
+    {"rule": "REPLACE_MODE_ARCHIVES", "value": "Bulk upload replace mode archives all employees not in the sheet to ArchivedEmployee and deletes them from User."},
+    {"rule": "ADMIN_EMPLOYEE_CREATION_RESTRICTED", "value": "Only empCodes 1800349 (Rishpal Kumawat) and 5100029 (Chetan Singh Bhati) can create individual employees via POST /api/admin/employees."},
+    {"rule": "QUARTER_NOT_IDEMPOTENT", "value": "POST /api/admin/quarters/start must not be called twice. No confirmed re-open route for closed quarters."},
+    {"rule": "TOKEN_BLACKLIST", "value": "Every logout adds a row to BlacklistedToken. Table must be manually pruned via /api/admin/maintenance/prune-blacklist."},
+    {"rule": "BRANCH_TYPE_IMMUTABLE_DURING_QUARTER", "value": "Changing Branch.branchType during an active quarter will orphan BC employees routed to HOD and break Stage-2."},
+    {"rule": "MULTI_BRANCH_JWT_VALIDATION", "value": "For CM/HR/COMMITTEE, JWT branchId is validated against the assignment table on every request by resolveScopeBranch(). Do not rely on JWT alone."},
+    {"rule": "SCORE_PRECISION", "value": "normalizedScore = Math.round((rawScore / maxScore) * 100 × 100) / 100. Must use consistent rounding; float storage means tied ranks are possible."},
+    {"rule": "SEED_REQUIRES_ENV", "value": "prisma/seed.ts requires ALLOW_FULL_SEED=1 env var. Without it, runs as no-op."}
+  ],
+  "known_pitfalls": [
+    "Branch leakage: multi-branch roles (CM/HR/COMMITTEE) must validate JWT branchId against DB assignment table (resolveScopeBranch). Do not skip this check.",
+    "HOD role overlap: changing User.role or clearing User.passwordHod without removing HodAssignment + DepartmentRoleMapping will break HOD auth.",
+    "Login regression: three code paths in login/route.js. Fix to one path may silently break another. Test all three after any change.",
+    "Import overwrite: bulk upload replace mode permanently archives employees not in sheet. Test with merge mode first.",
+    "Collar type mismatch: User.collarType overrides Department.collarType. Moving user to new dept without updating collarType routes them to wrong evaluator.",
+    "BIG/SMALL branch divergence: HOD path only exists for BIG. Changing branchType mid-quarter orphans BC employees.",
+    "Quarter start not idempotent: calling twice creates duplicate question assignments and re-sends auto-winner notifications.",
+    "CM reassignment: whether ClusterManagerBranchAssignment has an atomic-clear function like BM is unconfirmed. Direct assignment may throw unique constraint error.",
+    "Token blacklist growth: BlacklistedToken never auto-pruned. prune-blacklist must be called on a schedule.",
+    "Score precision: float ranks can tie; shortlist rank assignment must handle ties consistently.",
+    "db push in build: build command uses 'prisma db push --accept-data-loss' which can silently drop columns. Use 'prisma migrate deploy' in production.",
+    "Admin route scoping: ADMIN uses URL [branchId] for branch scope, not JWT. Do not add JWT branch checks to admin routes.",
+    "HR PDF token: BLOB_READ_WRITE_TOKEN not in .env.example. Missing token silently fails HR PDF uploads."
+  ]
+}

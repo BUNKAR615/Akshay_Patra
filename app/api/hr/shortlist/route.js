@@ -3,66 +3,122 @@ export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
-import { ok, fail, serverError } from "../../../../lib/api-response";
+import { ok, fail, forbidden, serverError } from "../../../../lib/api-response";
+import { resolveScopeBranch, resolveAllScopeBranches } from "../../../../lib/auth/resolveScopeBranch";
 
 /**
  * GET /api/hr/shortlist
- * HR sees Stage 3 candidates for their branch to evaluate.
+ *
+ * Branch-scope semantics (mirrors the CM departments route):
+ *   - ?branchId=<id>  → focus on that branch (must be in the HR's
+ *                       HrBranchAssignment table).
+ *   - omitted / empty / "ALL" → Total mode: merge Stage 3 shortlists across
+ *                       every branch this HR is assigned to. Each employee
+ *                       carries branchId/branchName for in-row labeling.
+ *
+ * Total is the default — the pre-login branch picker has been removed.
+ * The returned `assignedBranches` array drives the dashboard dropdown
+ * (with per-branch progress counts).
  */
 export const GET = withRole(["HR", "ADMIN"], async (request, { user }) => {
     try {
         const quarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
         if (!quarter) return fail("No active quarter");
 
-        // Get branch from query or user
         const { searchParams } = new URL(request.url);
-        let branchId = searchParams.get("branchId");
+        const requested = (searchParams.get("branchId") || "").trim();
+        const isTotal = !requested || requested.toUpperCase() === "ALL";
 
-        if (!branchId) {
-            const hrUser = await prisma.user.findUnique({
-                where: { id: user.userId },
-                select: { department: { select: { branchId: true } } }
-            });
-            branchId = hrUser?.department?.branchId;
-        }
-        if (!branchId) return fail("Could not determine branch");
-
-        const branch = await prisma.branch.findUnique({
-            where: { id: branchId },
-            select: { id: true, name: true, branchType: true }
+        // All branches this HR is assigned to — source of truth for both
+        // the dropdown and the data scope in Total mode.
+        const allAssignedBranches = await resolveAllScopeBranches({
+            userId: user.userId,
+            role: "HR",
         });
 
-        // Get Stage 3 shortlisted employees
+        // ADMIN bypass: when an admin hits this route (e.g. for QA) without
+        // explicit branchId, fall back to user.branchId to avoid touching
+        // every branch in the system. HR users always have at least one
+        // assignment by the time they reach a dashboard (login guards it).
+        if (allAssignedBranches.length === 0 && user.role !== "ADMIN") {
+            return forbidden("You are not assigned to any branch. Please contact your administrator.");
+        }
+
+        let targetBranches;
+        if (isTotal) {
+            if (allAssignedBranches.length === 0 && user.role === "ADMIN") {
+                // ADMIN with no explicit branch and no HR assignments — keep
+                // legacy fallback to the JWT branch so audit screens work.
+                const fallback = await resolveScopeBranch(user);
+                if (!fallback.branchId) return fail("Could not determine branch.");
+                targetBranches = [
+                    { id: fallback.branchId, name: fallback.branch?.name || "", branchType: fallback.branch?.branchType || "" },
+                ];
+            } else {
+                targetBranches = allAssignedBranches.map((b) => ({ id: b.id, name: b.name, branchType: b.branchType }));
+            }
+        } else {
+            // Validate the requested branch against the HR's assignment table.
+            const { branch } = await resolveScopeBranch({
+                userId: user.userId,
+                role: "HR",
+                branchId: requested,
+            });
+            if (!branch) {
+                // ADMIN can still focus on any branch — surface a softer 404
+                // for HR users so the dashboard renders the empty-state
+                // rather than booting them to login.
+                if (user.role === "ADMIN") {
+                    const adminBranch = await prisma.branch.findUnique({
+                        where: { id: requested },
+                        select: { id: true, name: true, branchType: true },
+                    });
+                    if (!adminBranch) return fail("Branch not found", 404);
+                    targetBranches = [adminBranch];
+                } else {
+                    return forbidden("You are not authorized for this branch. Please sign in again.");
+                }
+            } else {
+                targetBranches = [branch];
+            }
+        }
+
+        const targetBranchIds = targetBranches.map((b) => b.id);
+        const branchById = new Map(targetBranches.map((b) => [b.id, b]));
+
+        // Stage 3 shortlisted employees across the target branches.
         const shortlisted = await prisma.branchShortlistStage3.findMany({
-            where: { branchId, quarterId: quarter.id },
+            where: { branchId: { in: targetBranchIds }, quarterId: quarter.id },
             include: {
                 user: {
                     select: {
                         id: true, name: true, empCode: true, designation: true, collarType: true,
-                        department: { select: { name: true } }
-                    }
-                }
+                        department: { select: { name: true, branchId: true } },
+                    },
+                },
             },
-            orderBy: [{ collarType: "asc" }, { rank: "asc" }]
+            orderBy: [{ branchId: "asc" }, { collarType: "asc" }, { rank: "asc" }],
         });
 
-        // Check which employees HR has already evaluated
+        // HR's already-submitted evaluations across the active quarter.
         const evaluations = await prisma.hrEvaluation.findMany({
             where: { hrUserId: user.userId, quarterId: quarter.id },
-            select: { employeeId: true, attendancePct: true, workingHours: true, referenceSheetUrl: true, hrScore: true, notes: true }
+            select: { employeeId: true, attendancePct: true, workingHours: true, referenceSheetUrl: true, hrScore: true, notes: true },
         });
-        const evalMap = new Map(evaluations.map(e => [e.employeeId, e]));
+        const evalMap = new Map(evaluations.map((e) => [e.employeeId, e]));
 
-        const employees = shortlisted.map(s => {
+        // HR must not see stage-wise or combined scores — those are restricted
+        // to the Committee view. We deliberately omit selfScore, evaluatorScore,
+        // cmScore, combinedScore, and rank so the data never reaches the
+        // browser, even via dev-tools.
+        const employees = shortlisted.map((s) => {
             const ev = evalMap.get(s.user.id);
+            const b = branchById.get(s.branchId);
             return {
                 ...s.user,
                 collarType: s.collarType,
-                selfScore: s.selfScore,
-                evaluatorScore: s.evaluatorScore,
-                cmScore: s.cmScore,
-                combinedScore: s.combinedScore,
-                rank: s.rank,
+                branchId: s.branchId,
+                branchName: b?.name || "",
                 hrEvaluated: !!ev,
                 attendancePct: ev?.attendancePct ?? null,
                 workingHours: ev?.workingHours ?? null,
@@ -71,12 +127,45 @@ export const GET = withRole(["HR", "ADMIN"], async (request, { user }) => {
             };
         });
 
+        // Per-branch progress strip for the dropdown — always show every
+        // assigned branch so the dashboard's dropdown options are stable
+        // regardless of which branch is currently focused.
+        const assignedBranches = await Promise.all(
+            allAssignedBranches.map(async (b) => {
+                const stage3Count = await prisma.branchShortlistStage3.count({
+                    where: { branchId: b.id, quarterId: quarter.id },
+                });
+                const evaluatedHere = stage3Count > 0
+                    ? await prisma.hrEvaluation.count({
+                        where: {
+                            hrUserId: user.userId,
+                            quarterId: quarter.id,
+                            employee: { department: { branchId: b.id } },
+                        },
+                    })
+                    : 0;
+                return {
+                    id: b.id,
+                    name: b.name,
+                    branchType: b.branchType,
+                    totalToEvaluate: stage3Count,
+                    evaluated: evaluatedHere,
+                };
+            })
+        );
+
+        // Totals across all assigned branches (for the Total tile / progress).
+        const totalToEvaluateAll = assignedBranches.reduce((n, b) => n + b.totalToEvaluate, 0);
+        const totalEvaluatedAll = assignedBranches.reduce((n, b) => n + b.evaluated, 0);
+
         return ok({
             employees,
-            branch,
+            branch: isTotal ? null : targetBranches[0],
+            mode: isTotal ? "TOTAL" : "BRANCH",
             quarterId: quarter.id,
-            totalEvaluated: evaluations.length,
-            totalToEvaluate: shortlisted.length
+            assignedBranches,
+            totalEvaluated: isTotal ? totalEvaluatedAll : employees.filter((e) => e.hrEvaluated).length,
+            totalToEvaluate: isTotal ? totalToEvaluateAll : employees.length,
         });
     } catch (err) {
         console.error("[HR-SHORTLIST] Error:", err.message);

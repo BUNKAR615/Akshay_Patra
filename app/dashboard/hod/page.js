@@ -223,7 +223,15 @@ export default function HodDashboard() {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                 </svg>
                                 {selectedEmployee.designation} | {selectedEmployee.empCode}
-                                {selectedEmployee.department && ` | ${selectedEmployee.department}`}
+                                {/* `department` from /api/hod/shortlist is the
+                                    relation object { name }. Render its .name
+                                    safely so the page never crashes if the
+                                    shape ever changes. */}
+                                {(() => {
+                                    const d = selectedEmployee.department;
+                                    const dn = typeof d === "string" ? d : d?.name;
+                                    return dn ? ` | ${dn}` : "";
+                                })()}
                             </p>
                         </div>
                         <div
@@ -307,9 +315,21 @@ export default function HodDashboard() {
                                             <p className="text-[#666666] text-[13px] font-medium bg-[#F5F5F5] px-2 py-0.5 rounded-md inline-block border border-[#E0E0E0]">
                                                 {entry.designation} | {entry.empCode}
                                             </p>
-                                            {entry.department && (
-                                                <p className="text-[#999999] text-[12px] font-medium mt-1">{entry.department}</p>
-                                            )}
+                                            {/* `entry.department` is the
+                                                relation object { name } from
+                                                /api/hod/shortlist. We render
+                                                .name only — passing the bare
+                                                object into JSX would throw
+                                                "Objects are not valid as a
+                                                React child (found: object
+                                                with keys {name})". */}
+                                            {(() => {
+                                                const d = entry.department;
+                                                const dn = typeof d === "string" ? d : d?.name;
+                                                return dn ? (
+                                                    <p className="text-[#999999] text-[12px] font-medium mt-1">{dn}</p>
+                                                ) : null;
+                                            })()}
                                         </div>
                                     </div>
                                     <div className="mt-2 sm:mt-0">

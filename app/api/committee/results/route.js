@@ -3,19 +3,29 @@ export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
-import { ok, fail, serverError } from "../../../../lib/api-response";
+import { ok, fail, forbidden, serverError } from "../../../../lib/api-response";
+import { resolveAllScopeBranches } from "../../../../lib/auth/resolveScopeBranch";
 
 /**
  * GET /api/committee/results
- * Committee sees final best employees with PDF links.
- * Small branch: name, empCode, self score, BM score, CM score, attendance PDF, punctuality PDF
- * Big branch: name, empCode, PDFs only (no scoring breakdown)
+ *
+ * Branch-scope semantics:
+ *   - ?branchId=<id>  → return winners for that specific branch (must be in
+ *                       the committee member's CommitteeBranchAssignment;
+ *                       ADMIN may target any branch).
+ *   - omitted / empty / "ALL" → Total mode: every branch the user is
+ *                       assigned to (ADMIN sees every branch with results).
+ *
+ * Source of truth for COMMITTEE branch scope is the
+ * CommitteeBranchAssignment table — `user.department.branchId` is NOT
+ * consulted (that was the multi-branch leak path).
  */
 export const GET = withRole(["COMMITTEE", "ADMIN"], async (request, { user }) => {
     try {
         const { searchParams } = new URL(request.url);
         const quarterId = searchParams.get("quarterId");
-        const branchId = searchParams.get("branchId");
+        const requestedBranchId = (searchParams.get("branchId") || "").trim();
+        const isTotal = !requestedBranchId || requestedBranchId.toUpperCase() === "ALL";
 
         // Get quarter (active or specific)
         let quarter;
@@ -27,19 +37,30 @@ export const GET = withRole(["COMMITTEE", "ADMIN"], async (request, { user }) =>
         }
         if (!quarter) return fail("No quarter found");
 
-        // Get committee member's branch if not provided
-        let targetBranchId = branchId;
-        if (!targetBranchId && user.role !== "ADMIN") {
-            const committeUser = await prisma.user.findUnique({
-                where: { id: user.userId },
-                select: { department: { select: { branchId: true } } }
-            });
-            targetBranchId = committeUser?.department?.branchId;
+        // Resolve the committee member's assigned branches (drives Total
+        // mode and validates a specific-branch focus).
+        let assignedBranchIds = [];
+        if (user.role !== "ADMIN") {
+            const rows = await resolveAllScopeBranches({ userId: user.userId, role: "COMMITTEE" });
+            assignedBranchIds = rows.map((r) => r.id);
+            if (assignedBranchIds.length === 0) {
+                return forbidden("You are not assigned to any branch. Please contact your administrator.");
+            }
         }
 
-        // Build where clause
+        // Build the `where.branchId` filter.
         const where = { quarterId: quarter.id };
-        if (targetBranchId) where.branchId = targetBranchId;
+        if (!isTotal) {
+            // Non-admin: branch must be in the assignment set.
+            if (user.role !== "ADMIN" && !assignedBranchIds.includes(requestedBranchId)) {
+                return forbidden("You are not authorized for this branch.");
+            }
+            where.branchId = requestedBranchId;
+        } else if (user.role !== "ADMIN") {
+            // Total mode for a committee member — scope to their assigned branches.
+            where.branchId = { in: assignedBranchIds };
+        }
+        // ADMIN + Total: no branch filter, returns every branch with results.
 
         // Fetch all branch best employees for target branches
         const bestEmployees = await prisma.branchBestEmployee.findMany({
@@ -120,11 +141,30 @@ export const GET = withRole(["COMMITTEE", "ADMIN"], async (request, { user }) =>
         // Flat list (backward compat with existing page)
         const results = branches.flatMap((b) => b.winners);
 
+        // `assignedBranches` drives the dashboard's Total + per-branch
+        // dropdown so it stays stable even for branches that don't yet have
+        // results in this quarter. For ADMIN we fall back to the set of
+        // branches that DO have results (no global "every-branch" listing
+        // here — that would balloon the response).
+        let assignedBranches;
+        if (user.role === "ADMIN") {
+            assignedBranches = branches.map((b) => ({
+                id: b.branchId,
+                name: b.branchName,
+                branchType: b.branchType,
+            }));
+        } else {
+            const rows = await resolveAllScopeBranches({ userId: user.userId, role: "COMMITTEE" });
+            assignedBranches = rows.map((b) => ({ id: b.id, name: b.name, branchType: b.branchType }));
+        }
+
         return ok({
             quarter: { id: quarter.id, name: quarter.name, status: quarter.status },
             branches,
             results,
-            total: results.length
+            assignedBranches,
+            mode: isTotal ? "TOTAL" : "BRANCH",
+            total: results.length,
         });
     } catch (err) {
         console.error("[COMMITTEE-RESULTS] Error:", err.message);

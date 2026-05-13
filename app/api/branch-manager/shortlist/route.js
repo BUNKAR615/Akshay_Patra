@@ -4,6 +4,7 @@ export const runtime = 'nodejs'
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { ok, notFound, fail, serverError } from "../../../../lib/api-response";
+import { resolveScopeBranch } from "../../../../lib/auth/resolveScopeBranch";
 
 function shuffleArray(array) {
     for (let i = array.length - 1; i > 0; i--) {
@@ -18,8 +19,11 @@ function shuffleArray(array) {
  * Branch-wide Stage 2 evaluation queue for the Branch Manager.
  *
  * Rules (per Project_Documentation.md §7):
- *   - BIG branches: BM evaluates only WHITE_COLLAR employees.
- *     BLUE_COLLAR is evaluated by HODs.
+ *   - BIG branches: BM evaluates WHITE_COLLAR employees PLUS any BLUE_COLLAR
+ *     employees who do not currently have an active EmployeeHodAssignment
+ *     (orphaned BCs — e.g. after the BM removed their HOD). Per the HOD spec:
+ *     "When an HOD is removed, all blue-collar employees under that HOD must
+ *     automatically go back to the Branch Manager."
  *   - SMALL branches: BM evaluates every Stage 1 shortlisted employee
  *     regardless of collar type.
  *
@@ -34,19 +38,8 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         });
         if (!activeQuarter) return notFound("No active quarter found");
 
-        const bmUser = await prisma.user.findUnique({
-            where: { id: user.userId },
-            select: {
-                department: {
-                    select: {
-                        branchId: true,
-                        branch: { select: { id: true, name: true, branchType: true } },
-                    },
-                },
-            },
-        });
-        const branch = bmUser?.department?.branch;
-        if (!branch) return fail("Branch not found for this Branch Manager");
+        const { branch } = await resolveScopeBranch(user);
+        if (!branch) return fail("No branch is assigned to this Branch Manager. Please contact admin.");
 
         const stage1 = await prisma.branchShortlistStage1.findMany({
             where: { branchId: branch.id, quarterId: activeQuarter.id },
@@ -66,10 +59,27 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
             },
         });
 
+        // BIG branches: BC employees only count as the BM's responsibility when
+        // they're orphaned (no active EmployeeHodAssignment). HOD-covered BCs
+        // are filtered out so the BM doesn't double-evaluate them.
+        let assignedBcIds = new Set();
+        if (branch.branchType === "BIG") {
+            const empHodRows = await prisma.employeeHodAssignment.findMany({
+                where: {
+                    quarterId: activeQuarter.id,
+                    employee: { department: { branchId: branch.id } },
+                },
+                select: { employeeId: true },
+            });
+            assignedBcIds = new Set(empHodRows.map((r) => r.employeeId));
+        }
+
         const candidates = stage1.filter((s) => {
             if (branch.branchType === "BIG") {
                 const collar = s.collarType || s.user.collarType || s.user.department?.collarType;
-                return collar === "WHITE_COLLAR";
+                if (collar === "WHITE_COLLAR") return true;
+                // Blue-collar (or unknown) — only include orphaned ones (no active HOD).
+                return !assignedBcIds.has(s.userId);
             }
             return true;
         });

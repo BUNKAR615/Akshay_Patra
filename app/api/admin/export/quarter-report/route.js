@@ -39,52 +39,70 @@ export const GET = withRole(["ADMIN"], async (request) => {
             orderBy: { name: "asc" },
         });
 
-        // ── Gather all employee data ──
-        const employees = await prisma.user.findMany({
-            where: { role: "EMPLOYEE" },
-            select: { id: true, name: true, departmentId: true, department: { select: { name: true } } },
-            orderBy: { name: "asc" },
-        });
+        // ── Gather all employee data via batch queries (no N+1) ──
+        const [
+            employees,
+            selfAssessments,
+            supEvals,
+            bmEvals,
+            cmEvals,
+            shortlist1s,
+            shortlist2s,
+            shortlist3s,
+            bestEmpList,
+        ] = await Promise.all([
+            prisma.user.findMany({
+                where: { role: "EMPLOYEE" },
+                select: { id: true, name: true, departmentId: true, department: { select: { name: true } } },
+                orderBy: { name: "asc" },
+            }),
+            prisma.selfAssessment.findMany({
+                where: { quarterId },
+                select: { userId: true, normalizedScore: true, submittedAt: true },
+            }),
+            prisma.supervisorEvaluation.findMany({
+                where: { quarterId },
+                select: { employeeId: true, supervisorNormalized: true, selfContribution: true, supervisorContribution: true, stage2CombinedScore: true },
+            }),
+            prisma.branchManagerEvaluation.findMany({
+                where: { quarterId },
+                select: { employeeId: true, bmNormalized: true, selfContribution: true, supervisorContribution: true, bmContribution: true, stage3CombinedScore: true },
+            }),
+            prisma.clusterManagerEvaluation.findMany({
+                where: { quarterId },
+                select: { employeeId: true, cmNormalized: true, selfContribution: true, supervisorContribution: true, bmContribution: true, cmContribution: true, finalScore: true },
+            }),
+            prisma.shortlistStage1.findMany({ where: { quarterId }, select: { userId: true } }),
+            prisma.shortlistStage2.findMany({ where: { quarterId }, select: { userId: true } }),
+            prisma.shortlistStage3.findMany({ where: { quarterId }, select: { userId: true } }),
+            prisma.bestEmployee.findMany({ where: { quarterId }, select: { userId: true } }),
+        ]);
+
+        // Build lookup maps
+        const selfMap = new Map(selfAssessments.map(s => [s.userId, s]));
+        const supMap = new Map(supEvals.map(e => [e.employeeId, e]));
+        const bmMap = new Map(bmEvals.map(e => [e.employeeId, e]));
+        const cmMap = new Map(cmEvals.map(e => [e.employeeId, e]));
+        const s1Set = new Set(shortlist1s.map(s => s.userId));
+        const s2Set = new Set(shortlist2s.map(s => s.userId));
+        const s3Set = new Set(shortlist3s.map(s => s.userId));
+        const bestSet = new Set(bestEmpList.map(s => s.userId));
 
         const report = [];
 
         for (const emp of employees) {
-            const selfA = await prisma.selfAssessment.findUnique({
-                where: { userId_quarterId: { userId: emp.id, quarterId } },
-                select: { normalizedScore: true, submittedAt: true },
-            });
-
+            const selfA = selfMap.get(emp.id);
             if (!selfA) continue; // Didn't participate
 
-            const supEval = await prisma.supervisorEvaluation.findFirst({
-                where: { employeeId: emp.id, quarterId },
-                select: { supervisorNormalized: true, selfContribution: true, supervisorContribution: true, stage2CombinedScore: true },
-            });
+            const supEval = supMap.get(emp.id) || null;
+            const bmEval = bmMap.get(emp.id) || null;
+            const cmEval = cmMap.get(emp.id) || null;
 
-            const bmEval = await prisma.branchManagerEvaluation.findFirst({
-                where: { employeeId: emp.id, quarterId },
-                select: { bmNormalized: true, selfContribution: true, supervisorContribution: true, bmContribution: true, stage3CombinedScore: true },
-            });
-
-            const cmEval = await prisma.clusterManagerEvaluation.findFirst({
-                where: { employeeId: emp.id, quarterId },
-                select: { cmNormalized: true, selfContribution: true, supervisorContribution: true, bmContribution: true, cmContribution: true, finalScore: true },
-            });
-
-            // Determine highest stage
             let stageReached = 1;
-            const s1 = await prisma.shortlistStage1.findFirst({ where: { userId: emp.id, quarterId } });
-            const s2 = await prisma.shortlistStage2.findFirst({ where: { userId: emp.id, quarterId } });
-            const s3 = await prisma.shortlistStage3.findFirst({ where: { userId: emp.id, quarterId } });
-            const best = await prisma.bestEmployee.findFirst({ where: { userId: emp.id, quarterId } });
-
-            if (s1) stageReached = 1;
-            if (supEval) stageReached = 2;
-            if (s2) stageReached = 2;
-            if (bmEval) stageReached = 3;
-            if (s3) stageReached = 3;
-            if (cmEval) stageReached = 4;
-            if (best) stageReached = 4;
+            if (s1Set.has(emp.id)) stageReached = 1;
+            if (supEval || s2Set.has(emp.id)) stageReached = 2;
+            if (bmEval || s3Set.has(emp.id)) stageReached = 3;
+            if (cmEval || bestSet.has(emp.id)) stageReached = 4;
 
             const activeEval = cmEval || bmEval || supEval;
             report.push({
@@ -99,7 +117,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
                 cmContrib: cmEval?.cmContribution || null,
                 finalScore: cmEval?.finalScore || bmEval?.stage3CombinedScore || supEval?.stage2CombinedScore || selfA.normalizedScore,
                 stageReached,
-                isBestEmployee: !!best,
+                isBestEmployee: bestSet.has(emp.id),
             });
         }
 

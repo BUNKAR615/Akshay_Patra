@@ -4,7 +4,7 @@ export const maxDuration = 15
 
 import bcrypt from "bcryptjs";
 import prisma from "../../../../lib/prisma";
-import { signToken, signRefreshToken } from "../../../../lib/auth";
+import { signToken, signRefreshToken, signBranchSelectToken, signRoleSelectToken } from "../../../../lib/auth";
 import { ok, fail, serverError, validateBody } from "../../../../lib/api-response";
 import { loginSchema } from "../../../../lib/validators";
 import { getClientIp, withDbRetry } from "../../../../lib/http";
@@ -16,14 +16,24 @@ import { checkAndRecord, clear as clearRateLimit } from "../../../../lib/rate-li
  *
  * Single-role auth (no /select-role). Every user has exactly one primary role.
  *
+ * Branch resolution policy (post multi-branch fix):
+ *   - BM:                  one-per-user (BranchManagerAssignment.bmUserId @unique).
+ *   - CM / HR / COMMITTEE: many-per-user. Login lists all branch assignments
+ *                          and either auto-picks (1 row) or returns a stage1
+ *                          token + branch list for the user to pick (2+ rows).
+ *   - HOD / EMPLOYEE:      branch comes from user.department.branchId.
+ *   - ADMIN:               no branch scope.
+ *
+ * IMPORTANT: User.branchId is NOT consulted for CM/HR/COMMITTEE — the
+ * assignment table is the single source of truth. This prevents the
+ * "last assigned branch wins" branch-leak bug for multi-branch staff.
+ *
  * Dual-password HOD flow (big-branch blue-collar):
  *   - Try bcrypt(data.password, user.password) first → issue token with user.role.
  *   - If that fails AND user.passwordHod is set AND the user has an active
  *     HodAssignment, try bcrypt(data.password, user.passwordHod) → issue token
  *     with role=HOD.
  *   - Otherwise 401.
- *
- * The login form sends only { empCode, password }. No role toggle.
  */
 export async function POST(request) {
     try {
@@ -32,9 +42,6 @@ export async function POST(request) {
 
         const empCode = sanitize(data.empCode);
 
-        // Rate-limit: per-IP and per-empCode, before any DB call.
-        // Checked BEFORE recording so the IP key isn't poisoned by a legitimate
-        // user's first wrong attempt; the per-empCode key carries that.
         const ip = getClientIp(request);
         const ipKey = `login:ip:${ip}`;
         const userKey = `login:emp:${empCode}`;
@@ -69,14 +76,12 @@ export async function POST(request) {
             return fail("Invalid employee code or password", 401);
         }
 
-        // Attempt 1 — primary password → user.role
         let resolvedRole = null;
         if (user.password) {
             const ok1 = await bcrypt.compare(data.password, user.password);
-            if (ok1) resolvedRole = user.role;
+            if (ok1) resolvedRole = user.role === "HOD" ? "EMPLOYEE" : user.role;
         }
 
-        // Attempt 2 — HOD secondary password, only if user has an active HOD assignment
         if (!resolvedRole && user.passwordHod) {
             const hasHodAssignment = await prisma.hodAssignment.findFirst({
                 where: { hodUserId: user.id, quarter: { status: "ACTIVE" } },
@@ -95,7 +100,6 @@ export async function POST(request) {
             return fail("Invalid employee code or password", 401);
         }
 
-        // Audit successful login
         await prisma.auditLog.create({
             data: {
                 userId: user.id,
@@ -105,18 +109,86 @@ export async function POST(request) {
             },
         }).catch(() => {});
 
-        // Success — clear rate-limit counters for this IP + empCode.
         clearRateLimit(ipKey);
         clearRateLimit(userKey);
 
-        // Branch resolution: prefer User.branchId, fall back to department.branchId
-        const branchId = user.branchId || user.department?.branchId || "";
-        const branchType = user.department?.branch?.branchType || "";
-        const branchName = user.department?.branch?.name || "";
+        // Admin+HOD role picker — spec: "If a person is both Admin and HOD, the
+        // system must show a role selection screen after login when both roles
+        // exist." Both passwords resolve to `Firstname_##` (defaultPasswordFor
+        // for ADMIN === defaultHodSecondaryPasswordFor for HOD), so when the
+        // primary password matched and the user is ADMIN with an active HOD
+        // assignment, we surface the picker. Otherwise the resolved role is
+        // used as-is.
+        if (resolvedRole === "ADMIN" && user.passwordHod) {
+            const hasHodAssignment = await prisma.hodAssignment.findFirst({
+                where: { hodUserId: user.id, quarter: { status: "ACTIVE" } },
+                select: { id: true },
+            });
+            if (hasHodAssignment) {
+                const offered = ["ADMIN", "HOD"];
+                const stage1 = await signRoleSelectToken({ userId: user.id, roles: offered });
+                const response = ok({
+                    needsRoleSelection: true,
+                    roles: offered,
+                    user: {
+                        id: user.id,
+                        empCode: user.empCode,
+                        name: user.name,
+                    },
+                });
+                response.cookies.set("roleSelectToken", stage1, {
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV === "production",
+                    sameSite: "lax",
+                    maxAge: 5 * 60,
+                    path: "/",
+                });
+                // Clear any stale stage1 branch-select cookie too.
+                response.cookies.set("branchSelectToken", "", {
+                    httpOnly: true, sameSite: "lax", path: "/", maxAge: 0,
+                });
+                return response;
+            }
+        }
 
-        // departmentIds for downstream routes — keep empty for pure evaluators (BM/CM/HR/COMMITTEE)
+        // Branch resolution — role-aware, assignment-table-authoritative for staff.
+        let branchId = "";
+        let branchType = user.department?.branch?.branchType || "";
+        let branchName = user.department?.branch?.name || "";
+
+        if (resolvedRole === "BRANCH_MANAGER") {
+            const bm = await prisma.branchManagerAssignment.findUnique({
+                where: { bmUserId: user.id },
+                select: { branch: { select: { id: true, name: true, branchType: true } } },
+            });
+            if (bm?.branch) {
+                branchId = bm.branch.id;
+                branchType = bm.branch.branchType;
+                branchName = bm.branch.name;
+            }
+        } else if (resolvedRole === "CLUSTER_MANAGER" || resolvedRole === "HR" || resolvedRole === "COMMITTEE") {
+            // Multi-branch staff (CM / HR / COMMITTEE) — the spec changed:
+            // the dashboard now owns branch selection via an in-page Total /
+            // per-branch dropdown. We MUST NOT show the pre-dashboard branch
+            // picker anymore. The JWT still carries one branchId (the first
+            // assignment, deterministically ordered by `assignedAt`) so any
+            // legacy code path that reads `user.branchId` keeps working; the
+            // dashboard then drives the in-page filter by calling its API
+            // with no `?branchId=` for Total, or `?branchId=<id>` to focus.
+            const branches = await listStaffBranches(user.id, resolvedRole);
+            if (branches.length === 0) {
+                return fail("No branch assignment found for this account. Please contact your administrator.", 401);
+            }
+            branchId = branches[0].id;
+            branchType = branches[0].branchType || branchType;
+            branchName = branches[0].name || branchName;
+        } else {
+            // EMPLOYEE / HOD / ADMIN — fall back to user.department.branchId.
+            branchId = user.department?.branchId || "";
+        }
+
+        // departmentIds for downstream routes — keep empty for pure evaluators (BM/CM/HR/COMMITTEE).
         const departmentIds = user.departmentId ? [user.departmentId] : [];
-        // For HOD, include all departments the HOD is assigned to this quarter
         if (resolvedRole === "HOD") {
             const hodAssignments = await prisma.hodAssignment.findMany({
                 where: { hodUserId: user.id, quarter: { status: "ACTIVE" } },
@@ -167,6 +239,14 @@ export async function POST(request) {
             path: "/",
         });
 
+        // Clear any stale stage1 cookie from a prior login attempt.
+        response.cookies.set("branchSelectToken", "", {
+            httpOnly: true, sameSite: "lax", path: "/", maxAge: 0,
+        });
+        response.cookies.set("roleSelectToken", "", {
+            httpOnly: true, sameSite: "lax", path: "/", maxAge: 0,
+        });
+
         return response;
     } catch (err) {
         console.error("[LOGIN] Error:", err?.code, err?.message, err?.stack);
@@ -180,4 +260,36 @@ export async function POST(request) {
         }
         return serverError();
     }
+}
+
+/**
+ * List every branch a CM/HR/Committee user is assigned to. The assignment
+ * table is the single source of truth — User.branchId is NOT consulted.
+ */
+async function listStaffBranches(userId, role) {
+    if (role === "CLUSTER_MANAGER") {
+        const rows = await prisma.clusterManagerBranchAssignment.findMany({
+            where: { cmUserId: userId },
+            select: { branch: { select: { id: true, name: true, branchType: true } } },
+            orderBy: { assignedAt: "asc" },
+        });
+        return rows.map((r) => r.branch).filter(Boolean);
+    }
+    if (role === "HR") {
+        const rows = await prisma.hrBranchAssignment.findMany({
+            where: { hrUserId: userId },
+            select: { branch: { select: { id: true, name: true, branchType: true } } },
+            orderBy: { assignedAt: "asc" },
+        });
+        return rows.map((r) => r.branch).filter(Boolean);
+    }
+    if (role === "COMMITTEE") {
+        const rows = await prisma.committeeBranchAssignment.findMany({
+            where: { memberUserId: userId },
+            select: { branch: { select: { id: true, name: true, branchType: true } } },
+            orderBy: { assignedAt: "asc" },
+        });
+        return rows.map((r) => r.branch).filter(Boolean);
+    }
+    return [];
 }

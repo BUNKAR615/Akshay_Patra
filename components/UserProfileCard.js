@@ -23,7 +23,17 @@ const ROLE_COLORS = {
 export default function UserProfileCard({ user, extraInfo, roles }) {
     if (!user) return null;
 
-    const branch = user.department?.branch?.name || user.branch || "Jaipur";
+    // Branch sources, in priority order:
+    //   1. user.branchName  — the canonical post-login value (login route
+    //      derives this from the role-assignment table for BM/CM/HR/COMMITTEE,
+    //      so it's the only correct source for promoted multi-branch staff).
+    //   2. user.department.branch.name  — for EMPLOYEE/HOD whose branch is
+    //      derived from their department.
+    //   3. user.branch  — legacy fallback for older callsites.
+    // No hardcoded default — if we don't know the branch, show "—" rather
+    // than fabricating one (the previous "Jaipur" default was the source of
+    // the dual-role display bug).
+    const branch = user.branchName || user.department?.branch?.name || user.branch || "—";
     const dept = user.department?.name || user.departmentName || (user.departmentRoles?.length > 0 ? user.departmentRoles[0].department?.name : null) || "—";
     const firstName = user.name?.split(" ")[0];
     const greeting = firstName

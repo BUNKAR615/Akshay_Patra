@@ -8,6 +8,7 @@ import { ok, fail, created, conflict, serverError, notFound } from "../../../../
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
 import { defaultPasswordFor } from "../../../../../../lib/auth/defaultPassword";
+import { hashStaffDefaultPassword } from "../../../../../../lib/auth/applyStaffPassword";
 import { z } from "zod";
 
 const SALT_ROUNDS = 10;
@@ -99,9 +100,16 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             return fail("Either cmUserId or empCode is required");
         }
 
-        if (cmUser.role !== "CLUSTER_MANAGER") {
-            await prisma.user.update({ where: { id: cmUser.id }, data: { role: "CLUSTER_MANAGER" } });
-        }
+        // Reset password to the staff formula on every assign call so the
+        // admin-promised "Firstname_##" format always works, even for users
+        // who pre-existed as employees or were promoted before this policy.
+        // An explicit data.password in the request body still wins.
+        const passwordHash = await hashStaffDefaultPassword({
+            role: "CLUSTER_MANAGER",
+            empCode: cmUser.empCode,
+            name: cmUser.name,
+            override: data.password,
+        });
 
         // Spec rule 2: a branch can have only ONE Cluster Manager.
         // Re-saving the SAME CM on the same branch is still a no-op upsert below.
@@ -126,17 +134,37 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             return conflict("This branch already has a Cluster Manager assigned.");
         }
 
-        // Upsert assignment (one row per (cmUserId, branchId); the new
-        // @@unique([branchId]) also guarantees one CM per branch globally)
+        // Detach-on-promote + assignment upsert in one transaction so a
+        // failure can't leave a half-promoted user behind.
+        //   - role flipped to CLUSTER_MANAGER
+        //   - password reset to staff formula ("Firstname_##")
+        //   - departmentId / branchId / passwordHod / collarType nulled so
+        //     the user no longer appears in their old branch's employee list
+        //     and bulk-uploads of that branch can't silently demote them
+        //   - User.branchId is intentionally NOT written for CM —
+        //     ClusterManagerBranchAssignment is the single source of truth
         let assignment;
         try {
-            assignment = await prisma.clusterManagerBranchAssignment.upsert({
-                where: { cmUserId_branchId: { cmUserId: cmUser.id, branchId } },
-                update: { assignedBy: user.userId, assignedAt: new Date() },
-                create: { cmUserId: cmUser.id, branchId, assignedBy: user.userId },
-                include: {
-                    cm: { select: { id: true, empCode: true, name: true, mobile: true, role: true } },
-                },
+            assignment = await prisma.$transaction(async (tx) => {
+                await tx.user.update({
+                    where: { id: cmUser.id },
+                    data: {
+                        role: "CLUSTER_MANAGER",
+                        password: passwordHash,
+                        departmentId: null,
+                        branchId: null,
+                        passwordHod: null,
+                        collarType: null,
+                    },
+                });
+                return tx.clusterManagerBranchAssignment.upsert({
+                    where: { cmUserId_branchId: { cmUserId: cmUser.id, branchId } },
+                    update: { assignedBy: user.userId, assignedAt: new Date() },
+                    create: { cmUserId: cmUser.id, branchId, assignedBy: user.userId },
+                    include: {
+                        cm: { select: { id: true, empCode: true, name: true, mobile: true, role: true } },
+                    },
+                });
             });
         } catch (err) {
             // Concurrency safeguard: the unique index on branchId fires if a

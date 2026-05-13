@@ -7,24 +7,14 @@ import { withRole } from "../../../../../lib/withRole";
 import { NextResponse } from "next/server";
 import { assertBmAssignable, applyBmAssignment, clearBmAssignment } from "../../../../../lib/auth/bmAssignment";
 
-// Only these two empCodes can add/remove employees
-const HR_ALLOWED = ["1800349", "5100029"];
-
 /**
  * DELETE /api/admin/employees/[id]
- * Archive an employee — soft-delete with reason tracking.
- * Cleans up ALL references: evaluations, shortlists, notifications, role mappings, etc.
- * Only Rishpal Kumar and Chetan Singh Bhati can do this.
+ * Archive an employee — writes ArchivedEmployee row, then hard-deletes the
+ * User row. Open to any ADMIN; the existing role===ADMIN guard on the target
+ * still prevents demoting the system admin.
  */
 export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
     try {
-        if (!HR_ALLOWED.includes(user.empCode)) {
-            return NextResponse.json(
-                { success: false, message: "You are not authorized to remove employees" },
-                { status: 403 }
-            );
-        }
-
         const { id } = await params;
         const body = await request.json();
         const { reasonLeaving } = body;
@@ -147,7 +137,7 @@ export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
             { status: 500 }
         );
     }
-}, { allowedEmpCodes: HR_ALLOWED });
+});
 
 /**
  * PATCH /api/admin/employees/[id]
@@ -160,14 +150,15 @@ export const PATCH = withRole(["ADMIN"], async (request, { params, user }) => {
     try {
         const { id } = await params;
         const body = await request.json();
-        const { department, role, designation, password } = body;
+        const { department, role, designation, password, mobile, departmentId: bodyDepartmentId, branchId: bodyBranchId, collarType } = body;
 
-        // Fetch current employee data
+        // Fetch current employee data + their current branch (for history snapshot)
         const employee = await prisma.user.findUnique({
             where: { id },
             include: {
-                department: { select: { id: true, name: true, branchId: true } },
+                department: { select: { id: true, name: true, branchId: true, branch: { select: { id: true, name: true } } } },
                 departmentRoles: { select: { id: true, role: true, departmentId: true } },
+                scopedBranch: { select: { id: true, name: true } },
             },
         });
 
@@ -184,6 +175,26 @@ export const PATCH = withRole(["ADMIN"], async (request, { params, user }) => {
             changes.push(`Designation changed from "${employee.designation || "—"}" to "${designation || "—"}"`);
         }
 
+        // Mobile
+        if (mobile !== undefined && mobile !== (employee.mobile || "")) {
+            updateData.mobile = mobile || null;
+            changes.push(`Mobile changed from "${employee.mobile || "—"}" to "${mobile || "—"}"`);
+        }
+
+        // Collar type (employee category)
+        if (collarType !== undefined) {
+            const VALID_COLLAR = ["BLUE_COLLAR", "WHITE_COLLAR"];
+            const normalized = collarType === "" || collarType === null ? null : collarType;
+            if (normalized !== null && !VALID_COLLAR.includes(normalized)) {
+                return NextResponse.json({ success: false, message: `Invalid collarType "${collarType}". Must be BLUE_COLLAR or WHITE_COLLAR.` }, { status: 400 });
+            }
+            if (normalized !== (employee.collarType || null)) {
+                updateData.collarType = normalized;
+                const fmt = (c) => c === "WHITE_COLLAR" ? "White-collar" : c === "BLUE_COLLAR" ? "Blue-collar" : "—";
+                changes.push(`Category changed from "${fmt(employee.collarType)}" to "${fmt(normalized)}"`);
+            }
+        }
+
         // Role
         const validRoles = ["EMPLOYEE", "BRANCH_MANAGER", "CLUSTER_MANAGER", "HOD", "HR", "COMMITTEE", "ADMIN"];
         if (role !== undefined && role !== employee.role && validRoles.includes(role)) {
@@ -197,17 +208,40 @@ export const PATCH = withRole(["ADMIN"], async (request, { params, user }) => {
             changes.push("Password was updated");
         }
 
-        // Department
+        // Department — accept either `department` (name) or `departmentId` (FK)
         let oldDeptId = employee.departmentId;
         let newDeptId = null;
-        if (department !== undefined && department !== (employee.department?.name || "")) {
+        let resolvedNewDeptName = null;
+        if (bodyDepartmentId !== undefined && bodyDepartmentId !== employee.departmentId) {
+            const dept = await prisma.department.findUnique({ where: { id: bodyDepartmentId } });
+            if (!dept) {
+                return NextResponse.json({ success: false, message: "Department not found" }, { status: 400 });
+            }
+            newDeptId = dept.id;
+            resolvedNewDeptName = dept.name;
+            updateData.departmentId = newDeptId;
+            changes.push(`Department changed from "${employee.department?.name || "—"}" to "${dept.name}"`);
+        } else if (department !== undefined && department !== (employee.department?.name || "")) {
             const dept = await prisma.department.findFirst({ where: { name: department } });
             if (!dept) {
                 return NextResponse.json({ success: false, message: `Department "${department}" not found` }, { status: 400 });
             }
             newDeptId = dept.id;
+            resolvedNewDeptName = dept.name;
             updateData.departmentId = newDeptId;
             changes.push(`Department changed from "${employee.department?.name || "—"}" to "${department}"`);
+        }
+
+        // Branch — only honored when an admin explicitly passes branchId AND
+        // the new department's branch (if any) doesn't override. For non-dept
+        // roles (CM/HR/Committee), branchId is the only branch source.
+        if (bodyBranchId !== undefined && bodyBranchId !== employee.branchId) {
+            const newBranch = await prisma.branch.findUnique({ where: { id: bodyBranchId }, select: { id: true, name: true } });
+            if (!newBranch) {
+                return NextResponse.json({ success: false, message: "Branch not found" }, { status: 400 });
+            }
+            updateData.branchId = newBranch.id;
+            changes.push(`Branch changed from "${employee.scopedBranch?.name || employee.department?.branch?.name || "—"}" to "${newBranch.name}"`);
         }
 
         if (changes.length === 0) {
@@ -290,6 +324,61 @@ export const PATCH = withRole(["ADMIN"], async (request, { params, user }) => {
                 await tx.department.updateMany({
                     where: { id: oldDeptId, branchManagerId: id },
                     data: { branchManagerId: null },
+                });
+            }
+
+            // Assignment history — write a row when role/dept/branch changed,
+            // capturing both old and new snapshots so history survives later
+            // dept/branch rename or deletion.
+            const roleChanged       = updateData.role !== undefined && updateData.role !== employee.role;
+            const deptChanged       = updateData.departmentId !== undefined && updateData.departmentId !== employee.departmentId;
+            const branchChangedHist = updateData.branchId !== undefined && updateData.branchId !== employee.branchId;
+
+            if (roleChanged || deptChanged || branchChangedHist) {
+                let newDeptName = resolvedNewDeptName;
+                if (deptChanged && !newDeptName) {
+                    const d = await tx.department.findUnique({ where: { id: updateData.departmentId }, select: { name: true } });
+                    newDeptName = d?.name || null;
+                }
+
+                const oldBranchId   = employee.scopedBranch?.id || employee.department?.branch?.id || employee.branchId || null;
+                const oldBranchName = employee.scopedBranch?.name || employee.department?.branch?.name || null;
+
+                let newBranchId   = updateData.branchId !== undefined ? updateData.branchId : oldBranchId;
+                let newBranchName = null;
+                if (branchChangedHist) {
+                    const nb = await tx.branch.findUnique({ where: { id: updateData.branchId }, select: { name: true } });
+                    newBranchName = nb?.name || null;
+                } else if (deptChanged) {
+                    // Department change pulls branch with it
+                    const newDept = await tx.department.findUnique({
+                        where: { id: updateData.departmentId },
+                        select: { branchId: true, branch: { select: { name: true } } },
+                    });
+                    newBranchId = newDept?.branchId || newBranchId;
+                    newBranchName = newDept?.branch?.name || oldBranchName;
+                } else {
+                    newBranchName = oldBranchName;
+                }
+
+                await tx.employeeAssignmentHistory.create({
+                    data: {
+                        userId: id,
+                        empCode: employee.empCode,
+                        employeeName: employee.name,
+                        changedById: user.userId,
+                        changedByEmpCode: user.empCode || null,
+                        oldRole: roleChanged ? employee.role : null,
+                        newRole: roleChanged ? updateData.role : null,
+                        oldDepartmentId: deptChanged ? employee.departmentId : null,
+                        newDepartmentId: deptChanged ? updateData.departmentId : null,
+                        oldDepartmentName: deptChanged ? (employee.department?.name || null) : null,
+                        newDepartmentName: deptChanged ? newDeptName : null,
+                        oldBranchId: (deptChanged || branchChangedHist) ? oldBranchId : null,
+                        newBranchId: (deptChanged || branchChangedHist) ? newBranchId : null,
+                        oldBranchName: (deptChanged || branchChangedHist) ? oldBranchName : null,
+                        newBranchName: (deptChanged || branchChangedHist) ? newBranchName : null,
+                    },
                 });
             }
 

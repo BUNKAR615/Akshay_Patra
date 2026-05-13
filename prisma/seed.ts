@@ -17,6 +17,15 @@ async function main() {
   console.log('║  287 Employees | 16 Departments | 39 Roles  ║');
   console.log('╚══════════════════════════════════════════════╝\n');
 
+  // Guard: this script TRUNCATEs users/branches/departments and re-adds 287
+  // employees. Set ALLOW_FULL_SEED=1 only when you intend a full reset.
+  if (process.env.ALLOW_FULL_SEED !== '1') {
+    console.log('Refusing to seed: ALLOW_FULL_SEED=1 not set.');
+    console.log('This script TRUNCATEs users/branches/departments and re-adds 287 seed employees.');
+    console.log('Set ALLOW_FULL_SEED=1 only if you intend to re-populate from scratch.');
+    return;
+  }
+
   // ── Step 0: Clean existing data ──
   console.log('Cleaning database...');
   await prisma.$executeRawUnsafe('TRUNCATE TABLE department_role_mappings CASCADE');

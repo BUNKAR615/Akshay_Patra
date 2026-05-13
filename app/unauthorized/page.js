@@ -2,57 +2,30 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { DASHBOARD_HOME } from "../../lib/dashboardNav";
 
 export default function UnauthorizedPage() {
     const router = useRouter();
     const [userRole, setUserRole] = useState(null);
 
     useEffect(() => {
-        // Try to get the role from local storage or an API call if needed
-        // For now, we'll try to extract it from the token payload (if accessible) or just show a generic message
-        const role = localStorage.getItem("userRole"); // Assuming we save this on login, or we can just fetch /api/auth/me
-        if (role) setUserRole(role);
-        else {
-            fetch("/api/auth/me")
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success && data.user) {
-                        setUserRole(data.user.role);
-                        localStorage.setItem("userRole", data.user.role);
-                    }
-                })
-                .catch(() => { });
-        }
+        // Always fetch the live session role from /api/auth/me. We deliberately
+        // do NOT read localStorage.userRole — that key has historically held
+        // stale data across users on shared machines, which is precisely the
+        // kind of cross-role leak this page is supposed to avoid.
+        fetch("/api/auth/me")
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (data?.success && data?.user?.role) setUserRole(data.user.role);
+            })
+            .catch(() => {});
     }, []);
 
     const handleGoHome = () => {
-        if (!userRole) {
-            router.push("/login");
-            return;
-        }
-
-        switch (userRole) {
-            case "ADMIN":
-                router.push("/dashboard/admin");
-                break;
-            case "CLUSTER_MANAGER":
-                router.push("/dashboard/cluster-manager");
-                break;
-            case "BRANCH_MANAGER":
-                router.push("/dashboard/branch-manager");
-                break;
-            case "HOD":
-                router.push("/dashboard/hod");
-                break;
-            case "HR":
-                router.push("/dashboard/hr");
-                break;
-            case "COMMITTEE":
-                router.push("/dashboard/committee");
-                break;
-            default:
-                router.push("/dashboard/employee");
-        }
+        const home = userRole ? DASHBOARD_HOME[userRole] : null;
+        // Anything we can't safely route lands at /login — never on a default
+        // /dashboard/employee that the user may not actually have access to.
+        router.push(home || "/login");
     };
 
     return (

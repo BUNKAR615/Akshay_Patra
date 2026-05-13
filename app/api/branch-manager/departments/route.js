@@ -4,6 +4,7 @@ export const runtime = 'nodejs'
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { ok, notFound, fail, serverError } from "../../../../lib/api-response";
+import { resolveScopeBranch } from "../../../../lib/auth/resolveScopeBranch";
 
 /**
  * GET /api/branch-manager/departments
@@ -20,19 +21,8 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         });
         if (!activeQuarter) return notFound("No active quarter found");
 
-        const bmUser = await prisma.user.findUnique({
-            where: { id: user.userId },
-            select: {
-                department: {
-                    select: {
-                        branchId: true,
-                        branch: { select: { id: true, name: true, branchType: true, location: true } },
-                    },
-                },
-            },
-        });
-        const branch = bmUser?.department?.branch;
-        if (!branch) return fail("Branch not found for this Branch Manager");
+        const { branch } = await resolveScopeBranch(user);
+        if (!branch) return fail("No branch is assigned to this Branch Manager. Please contact admin.");
 
         const [depts, empGroups] = await Promise.all([
             prisma.department.findMany({

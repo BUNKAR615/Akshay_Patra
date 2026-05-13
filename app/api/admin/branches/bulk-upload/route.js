@@ -6,7 +6,8 @@ import bcrypt from "bcryptjs";
 import { withRole } from "../../../../../lib/withRole";
 import { ok, fail, conflict, serverError } from "../../../../../lib/api-response";
 import { applyBmAssignment } from "../../../../../lib/auth/bmAssignment";
-import { defaultPasswordFor } from "../../../../../lib/auth/defaultPassword";
+import { defaultPasswordFor, defaultHodSecondaryPasswordFor } from "../../../../../lib/auth/defaultPassword";
+import { findRoleHolderConflicts, buildRoleHolderConflictMessage } from "../../../../../lib/auth/bulkUploadDemotionGuard";
 import * as XLSX from "xlsx";
 
 const SALT_ROUNDS = 10;
@@ -38,6 +39,9 @@ const ROLE_MAP = {
     bm: "BRANCH_MANAGER",
     employee: "EMPLOYEE",
     emp: "EMPLOYEE",
+    hod: "HOD",
+    head_of_department: "HOD",
+    headofdepartment: "HOD",
 };
 
 const COLLAR_MAP = {
@@ -118,6 +122,12 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
                 if (!collarType) { errors.push(`Row ${rowNum}: EMPLOYEE row missing collar type`); continue; }
             }
 
+            if (role === "HOD") {
+                if (!department) { errors.push(`Row ${rowNum}: HOD row missing department`); continue; }
+                if (collarType !== "WHITE_COLLAR") { errors.push(`Row ${rowNum}: HOD must be WHITE_COLLAR`); continue; }
+                if (branchType !== "BIG") { errors.push(`Row ${rowNum}: HOD is only allowed on BIG branches`); continue; }
+            }
+
             rows.push({ rowNum, role, empCode: String(empCode), name, branchName, branchType, department, collarType, designation, mobile, password });
         }
 
@@ -133,24 +143,30 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         const cmRows = rows.filter(r => r.role === "CLUSTER_MANAGER");
         const bmRows = rows.filter(r => r.role === "BRANCH_MANAGER");
         const empRows = rows.filter(r => r.role === "EMPLOYEE");
+        const hodRows = rows.filter(r => r.role === "HOD");
 
         // Pre-hash passwords using the shared default-password rule:
-        //   EMPLOYEE                  → empCode
-        //   BRANCH/CLUSTER MANAGER    → `${Firstname}_${last 2 digits of empCode}`
-        // An explicit value in the `password` column always wins over the default.
+        //   EMPLOYEE / HOD            → primary = empCode
+        //   BRANCH/CLUSTER MANAGER    → primary = `${Firstname}_${last 2 digits of empCode}`
+        //   HOD also gets a SECONDARY password (passwordHod) = `${Firstname}_${last 2 digits}`,
+        //                              used to log in as HOD (vs the empCode primary which
+        //                              opens the employee self-assessment dashboard).
+        // An explicit value in the `password` column always wins over the primary default.
+        // The HOD secondary password is always derived from the name+empCode rule.
         const passwordHashes = new Map();
-        for (const r of [...cmRows, ...bmRows]) {
+        const passwordHodHashes = new Map();
+        for (const r of [...cmRows, ...bmRows, ...hodRows, ...empRows]) {
             const plain = r.password || defaultPasswordFor({ role: r.role, empCode: r.empCode, name: r.name });
             passwordHashes.set(r.empCode, await bcrypt.hash(plain, SALT_ROUNDS));
         }
-        for (const r of empRows) {
-            const plain = r.password || defaultPasswordFor({ role: r.role, empCode: r.empCode, name: r.name });
-            passwordHashes.set(r.empCode, await bcrypt.hash(plain, SALT_ROUNDS));
+        for (const r of hodRows) {
+            const plainHod = defaultHodSecondaryPasswordFor({ empCode: r.empCode, name: r.name });
+            passwordHodHashes.set(r.empCode, await bcrypt.hash(plainHod, SALT_ROUNDS));
         }
 
         // Validate department collar consistency
         const deptCollarMap = new Map();
-        for (const r of empRows) {
+        for (const r of [...empRows, ...hodRows]) {
             const existing = deptCollarMap.get(r.department);
             if (existing && existing !== r.collarType) {
                 return fail(`Department "${r.department}" has mixed collar types (${existing} and ${r.collarType}). Each department must have one collar type.`, 400);
@@ -210,6 +226,19 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             }
         }
 
+        // ── Refuse-to-demote guard.
+        //    EMPLOYEE / HOD rows in this sheet whose empCode already belongs
+        //    to a current role-holder (BM/CM/HR/COMMITTEE in any branch)
+        //    would, without this check, silently overwrite the role-holder's
+        //    role+password back to EMPLOYEE/HOD on this branch — exactly the
+        //    bug that lets a Jaipur re-upload clobber Rajesh's CM-of-Jodhpur
+        //    assignment. Reject the WHOLE upload so the admin must consciously
+        //    remove these rows or first un-assign the role via Org Structure.
+        const { blocked: roleHoldingUsers, offendingRows } = await findRoleHolderConflicts([...empRows, ...hodRows]);
+        if (roleHoldingUsers.length > 0) {
+            return conflict(buildRoleHolderConflictMessage(roleHoldingUsers, offendingRows));
+        }
+
         // Execute in a transaction
         const result = await prisma.$transaction(async (tx) => {
             // 1. Upsert Branch
@@ -219,16 +248,26 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
                 create: { name: branchName, location: branchName, branchType },
             });
 
-            // 2. Upsert CM users + maintain ClusterManagerBranchAssignment row
+            // 2. Upsert CM users + maintain ClusterManagerBranchAssignment row.
+            //    NOTE: We deliberately do NOT write User.branchId for CMs.
+            //    A CM may be assigned to multiple branches; the assignment
+            //    table is the single source of truth. Writing branchId here
+            //    used to overwrite a CM's branch on every re-upload, which
+            //    caused login to silently route the user to the wrong branch.
             const cmResult = [];
             for (const r of cmRows) {
                 const u = await tx.user.upsert({
                     where: { empCode: r.empCode },
-                    update: { name: r.name, role: "CLUSTER_MANAGER", branchId: branch.id, departmentId: null, designation: r.designation || "CM", mobile: r.mobile || null },
+                    update: {
+                        name: r.name, role: "CLUSTER_MANAGER", departmentId: null,
+                        designation: r.designation || "CM", mobile: r.mobile || null,
+                        password: passwordHashes.get(r.empCode),
+                        passwordHod: null,
+                    },
                     create: {
                         empCode: r.empCode, name: r.name, role: "CLUSTER_MANAGER",
                         password: passwordHashes.get(r.empCode),
-                        branchId: branch.id, designation: r.designation || "CM", mobile: r.mobile || null,
+                        designation: r.designation || "CM", mobile: r.mobile || null,
                     },
                 });
                 // Enforce one-CM-per-branch via the assignment table (the new
@@ -246,7 +285,12 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             for (const r of bmRows) {
                 const u = await tx.user.upsert({
                     where: { empCode: r.empCode },
-                    update: { name: r.name, role: "BRANCH_MANAGER", branchId: branch.id, departmentId: null, designation: r.designation || "BM", mobile: r.mobile || null },
+                    update: {
+                        name: r.name, role: "BRANCH_MANAGER", branchId: branch.id, departmentId: null,
+                        designation: r.designation || "BM", mobile: r.mobile || null,
+                        password: passwordHashes.get(r.empCode),
+                        passwordHod: null,
+                    },
                     create: {
                         empCode: r.empCode, name: r.name, role: "BRANCH_MANAGER",
                         password: passwordHashes.get(r.empCode),
@@ -275,7 +319,10 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
                 deptMap.set(deptName, dept.id);
             }
 
-            // 5. Upsert Employee users
+            // 5. Upsert Employee users. Re-uploads always refresh `password`
+            //    (sheet value if provided, else default-derived) and clear any
+            //    stale passwordHod — an EMPLOYEE row should never carry an HOD
+            //    secondary password.
             let employeesCreated = 0;
             let employeesUpdated = 0;
             for (const r of empRows) {
@@ -287,6 +334,8 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
                         data: {
                             name: r.name, role: "EMPLOYEE", branchId: branch.id, departmentId,
                             collarType: r.collarType, designation: r.designation || null, mobile: r.mobile || null,
+                            password: passwordHashes.get(r.empCode),
+                            passwordHod: null,
                         },
                     });
                     employeesUpdated++;
@@ -303,7 +352,42 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
                 }
             }
 
-            return { branch, cm: cmResult, bm: bmResult, departmentsCreated: deptsCreated, employeesCreated, employeesUpdated };
+            // 6. Upsert HOD users. HOD = WHITE_COLLAR user on a BIG branch.
+            //    Both `password` (= empCode → employee dashboard) and
+            //    `passwordHod` (= Firstname_## → HOD dashboard) are written.
+            //    Department is required — HODs are anchored to a department so
+            //    the login route can derive their branch context.
+            let hodsCreated = 0;
+            let hodsUpdated = 0;
+            for (const r of hodRows) {
+                const departmentId = deptMap.get(r.department);
+                const existing = await tx.user.findUnique({ where: { empCode: r.empCode } });
+                if (existing) {
+                    await tx.user.update({
+                        where: { empCode: r.empCode },
+                        data: {
+                            name: r.name, role: "HOD", branchId: branch.id, departmentId,
+                            collarType: r.collarType, designation: r.designation || null, mobile: r.mobile || null,
+                            password: passwordHashes.get(r.empCode),
+                            passwordHod: passwordHodHashes.get(r.empCode),
+                        },
+                    });
+                    hodsUpdated++;
+                } else {
+                    await tx.user.create({
+                        data: {
+                            empCode: r.empCode, name: r.name, role: "HOD",
+                            password: passwordHashes.get(r.empCode),
+                            passwordHod: passwordHodHashes.get(r.empCode),
+                            branchId: branch.id, departmentId, collarType: r.collarType,
+                            designation: r.designation || null, mobile: r.mobile || null,
+                        },
+                    });
+                    hodsCreated++;
+                }
+            }
+
+            return { branch, cm: cmResult, bm: bmResult, departmentsCreated: deptsCreated, employeesCreated, employeesUpdated, hodsCreated, hodsUpdated };
         });
 
         // Audit log (non-blocking)
@@ -319,6 +403,8 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
                     deptsCreated: result.departmentsCreated.length,
                     employeesCreated: result.employeesCreated,
                     employeesUpdated: result.employeesUpdated,
+                    hodsCreated: result.hodsCreated,
+                    hodsUpdated: result.hodsUpdated,
                     errorCount: errors.length,
                 },
             },
@@ -331,6 +417,8 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             departmentsCreated: result.departmentsCreated,
             employeesCreated: result.employeesCreated,
             employeesUpdated: result.employeesUpdated,
+            hodsCreated: result.hodsCreated,
+            hodsUpdated: result.hodsUpdated,
             errors,
         });
     } catch (err) {

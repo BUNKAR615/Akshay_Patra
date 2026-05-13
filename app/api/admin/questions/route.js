@@ -34,8 +34,6 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             data: { text: data.text.trim(), textHindi: (data.textHindi || "").trim(), category: data.category, level: data.level, isActive: true },
         });
 
-        console.log("Saved to DB:", question);
-
         await prisma.auditLog.create({
             data: { userId: user.userId, action: "QUESTION_CREATED", details: { questionId: question.id, text: question.text, category: question.category, level: question.level } },
         });

@@ -30,6 +30,279 @@ function StatBox({ label, value, color, compact }) {
     );
 }
 
+/**
+ * ManageBcPanel — inline panel under an HOD row for assigning blue-collar
+ * employees. Loads BC departments lazily, and a per-department employee
+ * picker on demand. Currently-assigned-to-this-HOD employees show "Remove",
+ * employees under another HOD show their current HOD and prompt before
+ * reassignment (the API enforces the "one HOD per BC at a time" rule via
+ * a unique constraint on EmployeeHodAssignment).
+ */
+function ManageBcPanel({ hodUserId, hodName, onChanged }) {
+    const [bcDepts, setBcDepts] = useState([]);
+    const [bcDeptsLoading, setBcDeptsLoading] = useState(false);
+    const [openDeptId, setOpenDeptId] = useState("");
+    const [deptEmployees, setDeptEmployees] = useState([]);
+    const [deptEmployeesLoading, setDeptEmployeesLoading] = useState(false);
+    const [selectedIds, setSelectedIds] = useState(new Set());
+    const [currentEmployees, setCurrentEmployees] = useState([]);
+    const [currentLoading, setCurrentLoading] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [panelError, setPanelError] = useState("");
+    const [panelSuccess, setPanelSuccess] = useState("");
+
+    const callApi = useCallback(async (url, opts) => {
+        const res = await fetch(url, opts);
+        const json = await res.json();
+        if (!res.ok || !json.success) throw new Error(json.message || "Request failed");
+        return json.data;
+    }, []);
+
+    const loadBcDepts = useCallback(async () => {
+        setBcDeptsLoading(true);
+        try {
+            const data = await callApi("/api/branch-manager/hod/blue-collar-pool");
+            setBcDepts(data.departments || []);
+        } catch (e) {
+            setPanelError(e.message);
+        } finally {
+            setBcDeptsLoading(false);
+        }
+    }, [callApi]);
+
+    const loadCurrentEmployees = useCallback(async () => {
+        setCurrentLoading(true);
+        try {
+            const data = await callApi(`/api/branch-manager/hod/employees?hodUserId=${encodeURIComponent(hodUserId)}`);
+            setCurrentEmployees(data.employees || []);
+        } catch (e) {
+            setPanelError(e.message);
+        } finally {
+            setCurrentLoading(false);
+        }
+    }, [callApi, hodUserId]);
+
+    const loadDeptEmployees = useCallback(async (deptId) => {
+        setDeptEmployeesLoading(true);
+        setSelectedIds(new Set());
+        try {
+            const data = await callApi(`/api/branch-manager/hod/blue-collar-pool?departmentId=${encodeURIComponent(deptId)}`);
+            setDeptEmployees(data.employees || []);
+        } catch (e) {
+            setPanelError(e.message);
+            setDeptEmployees([]);
+        } finally {
+            setDeptEmployeesLoading(false);
+        }
+    }, [callApi]);
+
+    useEffect(() => {
+        loadBcDepts();
+        loadCurrentEmployees();
+    }, [loadBcDepts, loadCurrentEmployees]);
+
+    const handleToggle = (id) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+
+    const handleAssignSelected = async () => {
+        const ids = Array.from(selectedIds);
+        if (ids.length === 0) return;
+        // Warn if any selected employee is currently under a different HOD.
+        const collisions = deptEmployees.filter(e =>
+            ids.includes(e.id) && e.currentHod && e.currentHod.id !== hodUserId
+        );
+        if (collisions.length > 0) {
+            const names = collisions.map(e => `${e.name} (currently under ${e.currentHod.name})`).join("\n");
+            if (!window.confirm(`Reassign these employees to ${hodName}?\n\n${names}`)) return;
+        }
+        setPanelError("");
+        setPanelSuccess("");
+        setBusy(true);
+        try {
+            const data = await callApi("/api/branch-manager/hod/employees", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ hodUserId, employeeIds: ids }),
+            });
+            setPanelSuccess(data?.message || "Assigned.");
+            setSelectedIds(new Set());
+            await Promise.all([
+                openDeptId ? loadDeptEmployees(openDeptId) : Promise.resolve(),
+                loadCurrentEmployees(),
+            ]);
+            if (typeof onChanged === "function") onChanged();
+        } catch (e) {
+            setPanelError(e.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const handleUnassign = async (employeeId, employeeName) => {
+        if (!window.confirm(`Return ${employeeName} to the Branch Manager's evaluation queue?`)) return;
+        setPanelError("");
+        setPanelSuccess("");
+        setBusy(true);
+        try {
+            const data = await callApi("/api/branch-manager/hod/employees", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ employeeId }),
+            });
+            setPanelSuccess(data?.message || "Removed.");
+            await Promise.all([
+                openDeptId ? loadDeptEmployees(openDeptId) : Promise.resolve(),
+                loadCurrentEmployees(),
+            ]);
+            if (typeof onChanged === "function") onChanged();
+        } catch (e) {
+            setPanelError(e.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const openDept = (deptId) => {
+        setOpenDeptId(deptId);
+        loadDeptEmployees(deptId);
+    };
+
+    return (
+        <div className="border-t border-[#E0E0E0] bg-white p-4 space-y-4">
+            {/* Currently-under-this-HOD list */}
+            <div>
+                <p className="text-[12px] font-bold uppercase tracking-wider text-[#666666] mb-2">Blue-collar employees under {hodName} ({currentEmployees.length})</p>
+                {currentLoading ? (
+                    <p className="text-[12px] text-[#666666]">Loading...</p>
+                ) : currentEmployees.length === 0 ? (
+                    <p className="text-[12px] text-[#999999] italic">None yet — pick a blue-collar department below to attach employees.</p>
+                ) : (
+                    <div className="flex flex-wrap gap-2">
+                        {currentEmployees.map(e => (
+                            <span key={e.id} className="inline-flex items-center gap-2 bg-[#F1F8E9] border border-[#C5E1A5] rounded-full pl-3 pr-1.5 py-1 text-[12px]">
+                                <span className="font-bold text-[#1B5E20]">{e.name}</span>
+                                <span className="text-[#558B2F]">({e.empCode})</span>
+                                <span className="text-[#558B2F]">· {e.departmentName}</span>
+                                <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => handleUnassign(e.id, e.name)}
+                                    className="ml-1 w-5 h-5 rounded-full bg-white border border-[#C5E1A5] text-[#1B5E20] hover:bg-[#D32F2F] hover:text-white hover:border-[#D32F2F] cursor-pointer flex items-center justify-center disabled:opacity-50"
+                                    title="Remove from this HOD"
+                                >
+                                    ×
+                                </button>
+                            </span>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* BC department picker */}
+            <div>
+                <p className="text-[12px] font-bold uppercase tracking-wider text-[#666666] mb-2">Add employees from a blue-collar department</p>
+                {bcDeptsLoading ? (
+                    <p className="text-[12px] text-[#666666]">Loading departments...</p>
+                ) : bcDepts.length === 0 ? (
+                    <p className="text-[12px] text-[#999999] italic">No blue-collar departments in your branch.</p>
+                ) : (
+                    <div className="flex flex-wrap gap-2">
+                        {bcDepts.map(d => (
+                            <button
+                                key={d.id}
+                                type="button"
+                                onClick={() => openDept(d.id)}
+                                className={`min-h-[34px] px-3 py-1.5 text-[12px] font-bold rounded-md border transition-colors cursor-pointer ${
+                                    openDeptId === d.id
+                                        ? "bg-[#003087] text-white border-[#003087]"
+                                        : "bg-white text-[#003087] border-[#003087]/30 hover:bg-[#003087] hover:text-white"
+                                }`}
+                            >
+                                {d.name} <span className="font-normal opacity-80">({d.employeeCount})</span>
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Per-dept employee list */}
+            {openDeptId && (
+                <div className="bg-[#FAFAFA] border border-[#E0E0E0] rounded-lg p-3">
+                    {deptEmployeesLoading ? (
+                        <p className="text-[12px] text-[#666666]">Loading employees...</p>
+                    ) : deptEmployees.length === 0 ? (
+                        <p className="text-[12px] text-[#999999] italic">No employees in this department.</p>
+                    ) : (
+                        <>
+                            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                                {deptEmployees.map(e => {
+                                    const checked = selectedIds.has(e.id);
+                                    const underThis = e.currentHod && e.currentHod.id === hodUserId;
+                                    const underOther = e.currentHod && e.currentHod.id !== hodUserId;
+                                    return (
+                                        <label
+                                            key={e.id}
+                                            className={`flex items-center gap-3 px-3 py-2 rounded-md border cursor-pointer transition-colors ${
+                                                checked ? "bg-[#E3F2FD] border-[#90CAF9]" : "bg-white border-[#E0E0E0] hover:border-[#003087]/40"
+                                            } ${underThis ? "opacity-70" : ""}`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => handleToggle(e.id)}
+                                                disabled={underThis}
+                                                className="w-4 h-4 accent-[#003087]"
+                                            />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-[13px] font-bold text-[#333333] truncate">{e.name} <span className="text-[#666666] font-medium">({e.empCode})</span></p>
+                                                {e.designation && <p className="text-[11px] text-[#666666] truncate">{e.designation}</p>}
+                                            </div>
+                                            {underThis && (
+                                                <span className="text-[10px] font-bold text-[#1B5E20] bg-[#E8F5E9] border border-[#A5D6A7] px-2 py-0.5 rounded">Already assigned</span>
+                                            )}
+                                            {underOther && (
+                                                <span className="text-[10px] font-bold text-[#E65100] bg-[#FFF3E0] border border-[#FFCC80] px-2 py-0.5 rounded" title={`Currently under ${e.currentHod.name}`}>
+                                                    Under {e.currentHod.name}
+                                                </span>
+                                            )}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                            <div className="flex items-center gap-2 mt-3">
+                                <button
+                                    type="button"
+                                    disabled={busy || selectedIds.size === 0}
+                                    onClick={handleAssignSelected}
+                                    className="min-h-[36px] px-4 py-1.5 text-[13px] font-bold bg-[#003087] text-white rounded-md hover:bg-[#00843D] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {busy ? "Assigning..." : `Assign ${selectedIds.size} to ${hodName}`}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedIds(new Set())}
+                                    disabled={busy || selectedIds.size === 0}
+                                    className="min-h-[36px] px-3 py-1.5 text-[13px] font-bold text-[#666666] hover:text-[#003087] cursor-pointer disabled:opacity-50"
+                                >
+                                    Clear
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+
+            {panelError && <p className="text-[12px] text-[#D32F2F] font-bold">{panelError}</p>}
+            {panelSuccess && <p className="text-[12px] text-[#2E7D32] font-bold">{panelSuccess}</p>}
+        </div>
+    );
+}
+
 export default function BranchManagerDashboard() {
     const [user, setUser] = useState(null);
     const [currentQuarterName, setCurrentQuarterName] = useState("");
@@ -56,6 +329,14 @@ export default function BranchManagerDashboard() {
     const [hodLoading, setHodLoading] = useState(false);
     const [hodSuccess, setHodSuccess] = useState("");
     const [hodError, setHodError] = useState("");
+    const [removingHodId, setRemovingHodId] = useState("");
+    // Which HOD's "Manage Employees" panel is open (hodUserId), or "" if none.
+    const [manageHodId, setManageHodId] = useState("");
+    // Browse mode: "search" | "browse". Spec wants BM to be able to either
+    // click a WC department and pick from its employees, OR type to search
+    // freely. Both share the same candidate list below.
+    const [hodPickMode, setHodPickMode] = useState("search");
+    const [hodBrowseDeptId, setHodBrowseDeptId] = useState("");
 
     // Branch-wide stats
     const [bmStats, setBmStats] = useState(null);
@@ -148,23 +429,59 @@ export default function BranchManagerDashboard() {
         };
     }, [refreshLive]);
 
-    // Debounced HOD search
+    // Debounced HOD search.
+    //   - "search" mode: by free text. Empty query keeps the list empty.
+    //   - "browse" mode: by selected WC department. Query is optional.
+    // The server already filters to WHITE_COLLAR; we still client-filter as
+    // a defensive belt-and-braces in case the response ever drifts.
     useEffect(() => {
         const q = hodSearchQuery.trim();
-        if (q.length === 0) { setHodCandidates([]); return; }
+        // No query AND no department = nothing to show.
+        if (hodPickMode === "search" && q.length === 0) { setHodCandidates([]); return; }
+        if (hodPickMode === "browse" && !hodBrowseDeptId) { setHodCandidates([]); return; }
+
         setHodSearching(true);
         const t = setTimeout(async () => {
             try {
-                const data = await api(`/api/branch-manager/hod/search?q=${encodeURIComponent(q)}`);
-                setHodCandidates(data.candidates || []);
+                const params = new URLSearchParams();
+                if (q) params.set("q", q);
+                if (hodPickMode === "browse" && hodBrowseDeptId) params.set("departmentId", hodBrowseDeptId);
+                const data = await api(`/api/branch-manager/hod/search?${params.toString()}`);
+                const wcOnly = (data.candidates || []).filter(c => {
+                    const eff = c.effectiveCollar || c.departmentCollar;
+                    return eff === "WHITE_COLLAR";
+                });
+                setHodCandidates(wcOnly);
             } catch {
                 setHodCandidates([]);
             } finally {
                 setHodSearching(false);
             }
-        }, 300);
+        }, hodPickMode === "browse" ? 0 : 300);
         return () => clearTimeout(t);
-    }, [hodSearchQuery]);
+    }, [hodSearchQuery, hodPickMode, hodBrowseDeptId]);
+
+    const handleRemoveHod = async (assignment) => {
+        const hodName = assignment.hod?.name || "this HOD";
+        if (!window.confirm(`Remove ${hodName} as HOD? All blue-collar employees assigned to them will return to your evaluation queue.`)) return;
+        setHodError("");
+        setHodSuccess("");
+        setRemovingHodId(assignment.hodUserId);
+        try {
+            const data = await api("/api/branch-manager/hod/remove", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ hodUserId: assignment.hodUserId }),
+            });
+            setHodSuccess(data?.message || `${hodName} removed.`);
+            if (manageHodId === assignment.hodUserId) setManageHodId("");
+            await Promise.all([fetchHodAssignments(), fetchShortlist(), fetchBmStats()]);
+        } catch (e) {
+            setHodError(e.message);
+        } finally {
+            setRemovingHodId("");
+        }
+    };
 
     const handleAssignHod = async () => {
         setHodError("");
@@ -183,6 +500,7 @@ export default function BranchManagerDashboard() {
             setHodSelected(null);
             setHodCandidates([]);
             setHodDeptId("");
+            setHodBrowseDeptId("");
             fetchHodAssignments();
         } catch (e) {
             setHodError(e.message);
@@ -213,6 +531,14 @@ export default function BranchManagerDashboard() {
             throw e; // Rethrow so EvaluationForm catches it
         }
     };
+
+    // White-collar departments — drive the "Browse by WC department" mode of
+    // the HOD picker. Departments come from /api/branch-manager/departments
+    // which already scopes to the BM's own branch.
+    const wcDepartments = useMemo(
+        () => (departments || []).filter((d) => d.collarType === "WHITE_COLLAR"),
+        [departments]
+    );
 
     // Group the branch-wide shortlist by department for the Evaluate tab render.
     const groupedShortlist = useMemo(() => {
@@ -376,18 +702,52 @@ export default function BranchManagerDashboard() {
                         <div className="mb-5">
                             <p className="text-[13px] text-[#666666] font-bold uppercase tracking-wider mb-2">Current Assignments</p>
                             <div className="space-y-2">
-                                {hodAssignments.map((a, idx) => (
-                                    <div key={idx} className="flex items-center gap-3 bg-[#F5F5F5] rounded-lg px-4 py-3 border border-[#E0E0E0]">
-                                        <div className="w-8 h-8 rounded-full bg-[#00843D]/10 flex items-center justify-center text-[#00843D] font-bold text-[13px] shrink-0">
-                                            {a.hod?.name?.charAt(0) || "H"}
+                                {Array.from(new Map(hodAssignments.map(a => [a.hodUserId, a])).values()).map((a) => {
+                                    const hodUserId = a.hodUserId;
+                                    const isManaging = manageHodId === hodUserId;
+                                    const departments = hodAssignments
+                                        .filter(x => x.hodUserId === hodUserId)
+                                        .map(x => x.department?.name)
+                                        .filter(Boolean);
+                                    return (
+                                        <div key={hodUserId} className="bg-[#F5F5F5] rounded-lg border border-[#E0E0E0] overflow-hidden">
+                                            <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+                                                <div className="w-8 h-8 rounded-full bg-[#00843D]/10 flex items-center justify-center text-[#00843D] font-bold text-[13px] shrink-0">
+                                                    {a.hod?.name?.charAt(0) || "H"}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[14px] font-bold text-[#333333] truncate">{a.hod?.name || "Unknown"} <span className="text-[#666666] font-medium">({a.hod?.empCode})</span></p>
+                                                    <p className="text-[13px] text-[#666666] truncate">{departments.join(", ") || "Department"}</p>
+                                                </div>
+                                                <span className="text-[12px] font-bold text-[#00843D] bg-[#E8F5E9] px-2 py-1 rounded border border-[#A5D6A7] shrink-0">Active</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setManageHodId(isManaging ? "" : hodUserId)}
+                                                    className="min-h-[34px] px-3 py-1.5 text-[12px] font-bold text-[#003087] bg-white border border-[#003087]/30 rounded-md hover:bg-[#003087] hover:text-white transition-colors cursor-pointer"
+                                                >
+                                                    {isManaging ? "Close" : "Manage Employees"}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={removingHodId === hodUserId}
+                                                    onClick={() => handleRemoveHod({ hodUserId, hod: a.hod })}
+                                                    className="min-h-[34px] px-3 py-1.5 text-[12px] font-bold text-[#D32F2F] bg-white border border-[#D32F2F]/40 rounded-md hover:bg-[#D32F2F] hover:text-white transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                                                >
+                                                    {removingHodId === hodUserId ? "Removing..." : "Remove HOD"}
+                                                </button>
+                                            </div>
+                                            {isManaging && (
+                                                <ManageBcPanel
+                                                    hodUserId={hodUserId}
+                                                    hodName={a.hod?.name || ""}
+                                                    onChanged={async () => {
+                                                        await Promise.all([fetchShortlist(), fetchBmStats()]);
+                                                    }}
+                                                />
+                                            )}
                                         </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-[14px] font-bold text-[#333333] truncate">{a.hod?.name || "Unknown"} <span className="text-[#666666] font-medium">({a.hod?.empCode})</span></p>
-                                            <p className="text-[13px] text-[#666666]">{a.department?.name || "Department"}</p>
-                                        </div>
-                                        <span className="text-[12px] font-bold text-[#00843D] bg-[#E8F5E9] px-2 py-1 rounded border border-[#A5D6A7] shrink-0">Active</span>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
@@ -416,14 +776,76 @@ export default function BranchManagerDashboard() {
                                 </div>
                             </div>
                             <div className="flex-1">
-                                <label className="text-[12px] text-[#666666] font-bold uppercase tracking-wider block mb-1">Search HOD (Emp Code, Name, Department)</label>
-                                <input
-                                    type="text"
-                                    value={hodSearchQuery}
-                                    onChange={(e) => { setHodSearchQuery(e.target.value); setHodSelected(null); }}
-                                    placeholder="Type employee code, name, or department..."
-                                    className="w-full px-3 py-2.5 bg-white border border-[#E0E0E0] rounded-lg text-[14px] text-[#333333] font-medium focus:outline-none focus:ring-2 focus:ring-[#003087] placeholder:text-[#AAAAAA]"
-                                />
+                                <label className="text-[12px] text-[#666666] font-bold uppercase tracking-wider block mb-1">Find HOD candidate</label>
+                                {/* Two ways to find a candidate, side-by-side:
+                                    "Search" (existing) or "Browse WC depts"
+                                    (spec: BM should view WC departments, click
+                                    one, see WC employees, pick one). */}
+                                <div className="flex gap-1 mb-2 bg-[#F0F0F0] rounded-md p-0.5 w-fit">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setHodPickMode("search");
+                                            setHodBrowseDeptId("");
+                                            setHodCandidates([]);
+                                            setHodSelected(null);
+                                        }}
+                                        className={`px-3 py-1 text-[12px] font-bold rounded transition-colors cursor-pointer ${
+                                            hodPickMode === "search" ? "bg-white text-[#003087] shadow-sm" : "bg-transparent text-[#666666] hover:text-[#003087]"
+                                        }`}
+                                    >
+                                        Search
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setHodPickMode("browse");
+                                            setHodSearchQuery("");
+                                            setHodCandidates([]);
+                                            setHodSelected(null);
+                                        }}
+                                        className={`px-3 py-1 text-[12px] font-bold rounded transition-colors cursor-pointer ${
+                                            hodPickMode === "browse" ? "bg-white text-[#003087] shadow-sm" : "bg-transparent text-[#666666] hover:text-[#003087]"
+                                        }`}
+                                    >
+                                        Browse WC Depts
+                                    </button>
+                                </div>
+                                {hodPickMode === "search" ? (
+                                    <input
+                                        type="text"
+                                        value={hodSearchQuery}
+                                        onChange={(e) => { setHodSearchQuery(e.target.value); setHodSelected(null); }}
+                                        placeholder="Type employee code, name, or department..."
+                                        className="w-full px-3 py-2.5 bg-white border border-[#E0E0E0] rounded-lg text-[14px] text-[#333333] font-medium focus:outline-none focus:ring-2 focus:ring-[#003087] placeholder:text-[#AAAAAA]"
+                                    />
+                                ) : (
+                                    <div className="bg-white border border-[#E0E0E0] rounded-lg p-2">
+                                        {wcDepartments.length === 0 ? (
+                                            <p className="text-[12px] text-[#999999] italic p-2">No white-collar departments in your branch.</p>
+                                        ) : (
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {wcDepartments.map((d) => (
+                                                    <button
+                                                        key={d.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setHodBrowseDeptId(d.id);
+                                                            setHodSelected(null);
+                                                        }}
+                                                        className={`min-h-[32px] px-3 py-1 text-[12px] font-bold rounded-md border transition-colors cursor-pointer ${
+                                                            hodBrowseDeptId === d.id
+                                                                ? "bg-[#003087] text-white border-[#003087]"
+                                                                : "bg-white text-[#003087] border-[#003087]/30 hover:bg-[#003087] hover:text-white"
+                                                        }`}
+                                                    >
+                                                        {d.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                             <div className="flex items-end">
                                 <button
@@ -436,26 +858,54 @@ export default function BranchManagerDashboard() {
                             </div>
                         </div>
 
-                        {hodSearchQuery && !hodSelected && (
+                        {/* Candidate list — shows when there's a query OR a
+                            browse-department selected, AND nothing is yet
+                            picked. Each row is clickable. Already-HOD
+                            candidates stay in the list but carry a clear
+                            badge so the BM doesn't double-nominate by
+                            accident (spec §1). */}
+                        {((hodPickMode === "search" && hodSearchQuery && !hodSelected) ||
+                          (hodPickMode === "browse" && hodBrowseDeptId && !hodSelected)) && (
                             <div className="mt-3 bg-white border border-[#E0E0E0] rounded-lg max-h-64 overflow-y-auto">
                                 {hodSearching && <p className="text-[13px] text-[#666666] p-3">Searching...</p>}
                                 {!hodSearching && hodCandidates.length === 0 && (
-                                    <p className="text-[13px] text-[#666666] p-3">No matching employees in your branch.</p>
+                                    <p className="text-[13px] text-[#666666] p-3">
+                                        {hodPickMode === "browse"
+                                            ? "No white-collar employees in this department."
+                                            : "No matching employees in your branch."}
+                                    </p>
                                 )}
-                                {!hodSearching && hodCandidates.map((c) => (
-                                    <button
-                                        key={c.id}
-                                        type="button"
-                                        onClick={() => { setHodSelected(c); setHodSearchQuery(`${c.name} (${c.empCode})`); }}
-                                        className="w-full text-left px-4 py-2.5 border-b border-[#F0F0F0] last:border-b-0 hover:bg-[#F5F7FA] cursor-pointer"
-                                    >
-                                        <p className="text-[14px] font-bold text-[#333333]">{c.name} <span className="text-[#666666] font-medium">({c.empCode})</span></p>
-                                        <p className="text-[12px] text-[#666666]">
-                                            {c.designation ? `${c.designation} · ` : ""}{c.departmentName}
-                                            {c.departmentCollar && <span className="ml-2 text-[11px] font-bold text-[#003087]">[{c.departmentCollar === "WHITE_COLLAR" ? "WC" : "BC"}]</span>}
-                                        </p>
-                                    </button>
-                                ))}
+                                {!hodSearching && hodCandidates.map((c) => {
+                                    const alreadyHodIn = c.currentHodDepartments || [];
+                                    const isAlreadyHod = alreadyHodIn.length > 0;
+                                    return (
+                                        <button
+                                            key={c.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setHodSelected(c);
+                                                if (hodPickMode === "search") setHodSearchQuery(`${c.name} (${c.empCode})`);
+                                            }}
+                                            className="w-full text-left px-4 py-2.5 border-b border-[#F0F0F0] last:border-b-0 hover:bg-[#F5F7FA] cursor-pointer"
+                                        >
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <p className="text-[14px] font-bold text-[#333333]">
+                                                    {c.name} <span className="text-[#666666] font-medium">({c.empCode})</span>
+                                                </p>
+                                                {isAlreadyHod && (
+                                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-[#FFF3E0] text-[#E65100] border-[#FFCC80]"
+                                                          title={`Already HOD of: ${alreadyHodIn.map(d => d.name).filter(Boolean).join(", ")}`}>
+                                                        Already HOD{alreadyHodIn[0]?.name ? ` · ${alreadyHodIn.map(d => d.name).filter(Boolean).join(", ")}` : ""}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-[12px] text-[#666666]">
+                                                {c.designation ? `${c.designation} · ` : ""}{c.departmentName}
+                                                {c.departmentCollar && <span className="ml-2 text-[11px] font-bold text-[#003087]">[{c.departmentCollar === "WHITE_COLLAR" ? "WC" : "BC"}]</span>}
+                                            </p>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         )}
 
@@ -476,7 +926,7 @@ export default function BranchManagerDashboard() {
                         )}
 
                         <p className="text-[12px] text-[#999999] mt-2">
-                            Search for any employee in your branch by employee code, name, or department. Blue-collar employees in the selected department will be evaluated by the chosen HOD.
+                            Only white-collar employees in your branch can be nominated. After nominating, click <span className="font-bold">Manage Employees</span> on the HOD's row to attach blue-collar employees from any department.
                         </p>
                         {hodError && <p className="text-[13px] text-[#D32F2F] font-bold mt-2">{hodError}</p>}
                         {hodSuccess && <p className="text-[13px] text-[#2E7D32] font-bold mt-2">{hodSuccess}</p>}

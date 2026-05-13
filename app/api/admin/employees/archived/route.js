@@ -8,12 +8,33 @@ import { NextResponse } from "next/server";
 /**
  * GET /api/admin/employees/archived
  * Returns list of archived (removed) employees with their details.
+ *
+ * Optional ?branchId — restricts to employees archived from the given branch.
+ *   Resolution: ArchivedEmployee doesn't carry branchId, so we resolve via
+ *   department names that belong to the branch. Best-effort, since the
+ *   archived row's `department` is a free-form snapshot string.
+ *
+ * Open to any ADMIN; no longer gated by HR_ALLOWED.
  */
-const HR_ALLOWED = ["1800349", "5100029"];
-
-export const GET = withRole(["ADMIN"], async () => {
+export const GET = withRole(["ADMIN"], async (request) => {
     try {
+        const { searchParams } = new URL(request.url);
+        const branchId = searchParams.get("branchId");
+
+        let where = {};
+        if (branchId) {
+            const branchDepts = await prisma.department.findMany({
+                where: { branchId },
+                select: { name: true },
+            });
+            const deptNames = branchDepts.map((d) => d.name);
+            // Restrict to archived rows whose snapshotted department name
+            // matches any of this branch's departments.
+            where = { department: { in: deptNames } };
+        }
+
         const archived = await prisma.archivedEmployee.findMany({
+            where,
             orderBy: { removalDate: "desc" },
         });
 
@@ -28,4 +49,4 @@ export const GET = withRole(["ADMIN"], async () => {
             { status: 500 }
         );
     }
-}, { allowedEmpCodes: HR_ALLOWED });
+});

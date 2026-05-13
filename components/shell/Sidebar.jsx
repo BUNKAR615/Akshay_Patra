@@ -35,7 +35,9 @@ export default function Sidebar({
     const searchParams = useSearchParams();
     const view = searchParams.get("view");
     const activeId = resolveActive(role, pathname, view);
-    const groups = NAV[role] || NAV.ADMIN;
+    // Strict per-role nav. If role is unknown (loading / unrecognized) render
+    // empty groups — never silently fall back to the ADMIN tabset.
+    const groups = NAV[role] || [];
 
     // On mobile we always render in expanded mode; the desktop collapsed flag
     // is ignored so users still get readable labels on a small screen.
@@ -45,6 +47,9 @@ export default function Sidebar({
     const handleLogout = async (e) => {
         e.preventDefault();
         await fetch("/api/auth/logout", { method: "POST" });
+        // Clear the legacy localStorage.userRole hint so a different user
+        // signing in on this device doesn't inherit the previous user's role.
+        try { localStorage.removeItem("userRole"); } catch {}
         window.location.replace("/login");
     };
 
@@ -85,7 +90,7 @@ export default function Sidebar({
                     style={{ padding: isCollapsed ? "0 17px" : "0 18px" }}
                 >
                     <Link
-                        href={DASHBOARD_HOME[role] || "/dashboard/admin"}
+                        href={DASHBOARD_HOME[role] || "/login"}
                         className="flex items-center gap-3 no-underline flex-1 min-w-0"
                     >
                         <div
@@ -145,30 +150,41 @@ export default function Sidebar({
                     className="border-t border-white/10 shrink-0"
                     style={{ padding: isCollapsed ? "12px 0" : "12px 14px" }}
                 >
-                    {isCollapsed ? (
-                        <div className="flex justify-center">
-                            <Avatar name={user?.name || "U"} size={30} color={AP.blue} />
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-2.5">
-                            <Avatar name={user?.name || "User"} size={30} color={AP.blue} />
-                            <div className="flex-1 min-w-0">
-                                <p className="m-0 text-xs font-bold text-white whitespace-nowrap overflow-hidden text-ellipsis">
-                                    {user?.name || "User"}
-                                </p>
-                                <p className="m-0 text-[10.5px] text-white/40 font-medium">
-                                    {ROLE_LABEL[role] || role?.replace(/_/g, " ")}
-                                </p>
+                    {(() => {
+                        // Trim trailing whitespace from DB-stored names so the
+                        // sidebar never shows a bogus "U" avatar initial or a
+                        // dangling space. Fall back to empty during the brief
+                        // /api/auth/me load — better than a stale "User"
+                        // placeholder + an empty role line under it.
+                        const displayName = user?.name?.trim() || "";
+                        const displayRole = role
+                            ? (ROLE_LABEL[role] || role.replace(/_/g, " "))
+                            : "";
+                        return isCollapsed ? (
+                            <div className="flex justify-center">
+                                <Avatar name={displayName || "?"} size={30} color={AP.blue} />
                             </div>
-                            <button
-                                onClick={handleLogout}
-                                aria-label="Logout"
-                                className="bg-transparent border-none cursor-pointer text-white/35 hover:text-white/80 flex p-2 -m-1 transition-colors"
-                            >
-                                {Ic.logout}
-                            </button>
-                        </div>
-                    )}
+                        ) : (
+                            <div className="flex items-center gap-2.5">
+                                <Avatar name={displayName || "?"} size={30} color={AP.blue} />
+                                <div className="flex-1 min-w-0">
+                                    <p className="m-0 text-xs font-bold text-white whitespace-nowrap overflow-hidden text-ellipsis uppercase">
+                                        {displayName || " "}
+                                    </p>
+                                    <p className="m-0 text-[10.5px] text-white/60 font-medium">
+                                        {displayRole || " "}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={handleLogout}
+                                    aria-label="Logout"
+                                    className="bg-transparent border-none cursor-pointer text-white/35 hover:text-white/80 flex p-2 -m-1 transition-colors"
+                                >
+                                    {Ic.logout}
+                                </button>
+                            </div>
+                        );
+                    })()}
                 </div>
             </aside>
         </>

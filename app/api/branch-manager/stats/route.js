@@ -4,6 +4,7 @@ export const runtime = 'nodejs'
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { ok, fail, serverError } from "../../../../lib/api-response";
+import { resolveScopeBranch } from "../../../../lib/auth/resolveScopeBranch";
 
 /**
  * GET /api/branch-manager/stats
@@ -23,13 +24,9 @@ export const GET = withRole(["BRANCH_MANAGER", "ADMIN"], async (request, { user 
         const quarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
         if (!quarter) return fail("No active quarter");
 
-        // BM's branch
-        const bmUser = await prisma.user.findUnique({
-            where: { id: user.userId },
-            select: { department: { select: { branchId: true, branch: { select: { id: true, name: true, branchType: true } } } } },
-        });
-        const branch = bmUser?.department?.branch;
-        if (!branch) return fail("Branch not found for user");
+        // BM's branch — JWT first, then BranchManagerAssignment fallback.
+        const { branch } = await resolveScopeBranch(user);
+        if (!branch) return fail("No branch is assigned to this user. Please contact admin.");
 
         // All employees in this branch (role EMPLOYEE).
         // Match the admin branch-summary filter so BM counts stay in sync.

@@ -28,12 +28,33 @@ function getAutoQuarterName() {
     return `Q${qNum}-${fyYear}`;
 }
 
+// Date-only formatter for the ongoing-evaluation export.
+function fmtDate(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toISOString().slice(0, 10);
+}
+
+// Score formatter — round to 2dp, preserve null/undefined as blank.
+function fmtScore(v) {
+    if (v === null || v === undefined) return "";
+    const n = Number(v);
+    if (Number.isNaN(n)) return "";
+    return Math.round(n * 100) / 100;
+}
+
+// Share payload built so the admin can send a single link to staff that
+// drops them on the LOGIN page (not the admin dashboard). The accompanying
+// message names the active quarter so recipients know which evaluation to
+// complete.
 function buildAdminSharePayload(quarter) {
-    const url = typeof window !== "undefined" ? window.location.href : "";
-    const quarterText = quarter?.name ? ` for ${quarter.name}` : "";
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const url = origin ? `${origin}/login` : "/login";
+    const quarterName = quarter?.name ? quarter.name : "the current quarter";
     return {
-        title: "Akshaya Patra Admin Dashboard",
-        text: `Akshaya Patra admin dashboard${quarterText}`,
+        title: "Akshaya Patra — Evaluation Portal",
+        text: `The ${quarterName} quarter has started. Please complete your evaluation.`,
         url,
     };
 }
@@ -118,63 +139,6 @@ export default function AdminDashboard() {
     const [bulkLoading, setBulkLoading] = useState(false);
     const [bulkResult, setBulkResult] = useState(null);
     const [bulkMsg, setBulkMsg] = useState({ type: "", text: "" });
-
-    // HOD Assignment state
-    const [hodAssignData, setHodAssignData] = useState(null);
-    const [hodAssignLoading, setHodAssignLoading] = useState(false);
-    const [hodAssignView, setHodAssignView] = useState("BLUE_COLLAR"); // WHITE_COLLAR | BLUE_COLLAR
-    const [selectedHodId, setSelectedHodId] = useState(null);
-    const [hodAssignFilter, setHodAssignFilter] = useState({ search: "", branchId: "", departmentId: "" });
-    const [hodAssignMsg, setHodAssignMsg] = useState({ type: "", text: "" });
-    const [pendingAssignments, setPendingAssignments] = useState({}); // { employeeId: hodUserId }
-
-    const fetchHodAssignData = async () => {
-        setHodAssignLoading(true);
-        try {
-            const res = await fetch("/api/admin/employee-hod-assignments");
-            const json = await res.json();
-            if (!res.ok || !json.success) throw new Error(json.message || "Failed to load");
-            setHodAssignData(json.data);
-            if (!selectedHodId && json.data.hods?.length > 0) setSelectedHodId(json.data.hods[0].id);
-        } catch (err) {
-            setHodAssignMsg({ type: "error", text: err.message || "Failed to load HOD assignments" });
-        }
-        setHodAssignLoading(false);
-    };
-
-    const saveHodAssignments = async () => {
-        const assignments = Object.entries(pendingAssignments).map(([employeeId, hodUserId]) => ({ employeeId, hodUserId }));
-        if (assignments.length === 0) {
-            setHodAssignMsg({ type: "error", text: "No changes to save" });
-            return;
-        }
-        try {
-            const res = await fetch("/api/admin/employee-hod-assignments", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ assignments }),
-            });
-            const json = await res.json();
-            if (!res.ok || !json.success) throw new Error(json.message || "Save failed");
-            setHodAssignMsg({ type: "success", text: `Saved ${assignments.length} assignments.` });
-            setPendingAssignments({});
-            fetchHodAssignData();
-        } catch (err) {
-            setHodAssignMsg({ type: "error", text: err.message || "Save failed" });
-        }
-    };
-
-    const unassignEmployee = async (employeeId) => {
-        try {
-            const res = await fetch(`/api/admin/employee-hod-assignments?employeeId=${employeeId}`, { method: "DELETE" });
-            const json = await res.json();
-            if (!res.ok || !json.success) throw new Error(json.message || "Unassign failed");
-            setHodAssignMsg({ type: "success", text: "Unassigned." });
-            fetchHodAssignData();
-        } catch (err) {
-            setHodAssignMsg({ type: "error", text: err.message || "Unassign failed" });
-        }
-    };
 
     const handleBulkUpload = async () => {
         if (!bulkFile) {
@@ -344,12 +308,14 @@ export default function AdminDashboard() {
             if (empFilter.search) params.set("search", empFilter.search);
             if (empFilter.department) params.set("department", empFilter.department);
             if (empFilter.role) params.set("role", empFilter.role);
+            if (empFilter.branch) params.set("branch", empFilter.branch);
             const d = await api(`/api/admin/employees?${params}`);
             const rows = (d.employees || []).map((e, i) => ({
                 "S.No": i + 1,
                 "Emp Code": e.empCode || "—",
                 "Name": e.name,
                 "Department": e.department,
+                "Branch": e.departmentObj?.branch?.name || "—",
                 "Designation": e.designation || "—",
                 "Mobile": e.mobile || "",
                 "Role": (e.roles || [e.role]).join(", ").replace(/_/g, " "),
@@ -363,7 +329,7 @@ export default function AdminDashboard() {
             ws["!cols"] = colWidths;
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "Employees");
-            const filterLabel = [empFilter.department, empFilter.role?.replace(/_/g, " "), empFilter.search].filter(Boolean).join("_") || "All";
+            const filterLabel = [empFilter.branch, empFilter.department, empFilter.role?.replace(/_/g, " "), empFilter.search].filter(Boolean).join("_") || "All";
             XLSX.writeFile(wb, `Employees_${filterLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`);
         } catch (err) {
             console.error("Excel export error:", err);
@@ -386,7 +352,7 @@ export default function AdminDashboard() {
             setEmpPage(pg);
             if (d.departments) setEmpDepartments(d.departments);
             if (d.branches) setEmpBranches(d.branches);
-        } catch { }
+        } catch (err) { console.error("[Admin] fetchEmployees failed:", err); }
         setEmpLoading(false);
     };
 
@@ -402,7 +368,7 @@ export default function AdminDashboard() {
             try {
                 const d = await api("/api/auth/me");
                 setUser(d.user);
-            } catch { }
+            } catch (err) { console.error("[Admin] Auth fetch failed:", err); }
             setLoading(false);
         })();
     }, []);
@@ -424,6 +390,11 @@ export default function AdminDashboard() {
     const [quarterProgress, setQuarterProgress] = useState(null);
     const [progressLoading, setProgressLoading] = useState(true);
 
+    // Ongoing-evaluation download (Pipeline tab)
+    const [exportBranchId, setExportBranchId] = useState("");
+    const [exportLoading, setExportLoading] = useState(false);
+    const [exportError, setExportError] = useState("");
+
     const fetchProgress = async () => {
         setProgressLoading(true);
         try {
@@ -433,6 +404,105 @@ export default function AdminDashboard() {
             setQuarterProgress(null);
         }
         setProgressLoading(false);
+    };
+
+    // Build XLSX of the ongoing evaluation pipeline for a single branch.
+    // Reuses the same API + column shape as the per-branch sub-page so the
+    // file is identical regardless of which entry point admin uses.
+    const downloadOngoingForBranch = async () => {
+        if (!exportBranchId) {
+            setExportError("Please select a branch first.");
+            return;
+        }
+        setExportLoading(true);
+        setExportError("");
+        try {
+            const payload = await api(`/api/admin/branches/${exportBranchId}/export/ongoing`);
+            const rows = (payload.employees || []).map((e, i) => ({
+                "S.No": i + 1,
+                "Emp Code": e.empCode || "",
+                "Name": e.name,
+                "Department": e.department || "",
+                "Designation": e.designation || "",
+                "Collar": e.collarType || "",
+                "Current Stage": e.isWinner ? "WINNER" : (e.currentStage || 0),
+
+                "S1 Submitted": e.stage1.submitted ? "Yes" : "No",
+                "S1 Raw": fmtScore(e.stage1.rawScore),
+                "S1 Normalized": fmtScore(e.stage1.normalizedScore),
+                "S1 Submitted At": fmtDate(e.stage1.submittedAt),
+                "S1 Shortlisted": e.stage1.shortlisted ? "Yes" : "No",
+                "S1 Rank": e.stage1.shortlistRank ?? "",
+
+                "S2 BM Evaluator": e.stage2.bmEval ? `${e.stage2.bmEval.evaluatorName} (${e.stage2.bmEval.evaluatorEmpCode})` : "",
+                "S2 BM Raw": fmtScore(e.stage2.bmEval?.rawScore),
+                "S2 BM Normalized": fmtScore(e.stage2.bmEval?.normalizedScore),
+                "S2 BM Combined": fmtScore(e.stage2.bmEval?.combinedScore),
+                "S2 BM At": fmtDate(e.stage2.bmEval?.submittedAt),
+
+                "S2 HOD Evaluator": e.stage2.hodEval ? `${e.stage2.hodEval.evaluatorName} (${e.stage2.hodEval.evaluatorEmpCode})` : "",
+                "S2 HOD Raw": fmtScore(e.stage2.hodEval?.rawScore),
+                "S2 HOD Normalized": fmtScore(e.stage2.hodEval?.normalizedScore),
+                "S2 HOD Combined": fmtScore(e.stage2.hodEval?.combinedScore),
+                "S2 HOD At": fmtDate(e.stage2.hodEval?.submittedAt),
+
+                "S2 Shortlisted": e.stage2.shortlisted ? "Yes" : "No",
+                "S2 Rank": e.stage2.shortlistRank ?? "",
+                "S2 Combined Score": fmtScore(e.stage2.shortlistCombinedScore),
+
+                "S3 CM Evaluator": e.stage3.cmEval ? `${e.stage3.cmEval.evaluatorName} (${e.stage3.cmEval.evaluatorEmpCode})` : "",
+                "S3 CM Raw": fmtScore(e.stage3.cmEval?.rawScore),
+                "S3 CM Normalized": fmtScore(e.stage3.cmEval?.normalizedScore),
+                "S3 CM Final": fmtScore(e.stage3.cmEval?.finalScore),
+                "S3 CM At": fmtDate(e.stage3.cmEval?.submittedAt),
+
+                "S3 Shortlisted": e.stage3.shortlisted ? "Yes" : "No",
+                "S3 Rank": e.stage3.shortlistRank ?? "",
+                "S3 Combined Score": fmtScore(e.stage3.shortlistCombinedScore),
+
+                "S4 HR Evaluator": e.stage4.hrEval ? `${e.stage4.hrEval.evaluatorName} (${e.stage4.hrEval.evaluatorEmpCode})` : "",
+                "S4 HR Score": fmtScore(e.stage4.hrEval?.hrScore),
+                "S4 Attendance %": fmtScore(e.stage4.hrEval?.attendancePct),
+                "S4 Working Hours": fmtScore(e.stage4.hrEval?.workingHours),
+                "S4 Combined": fmtScore(e.stage4.hrEval?.combinedScore),
+                "S4 HR At": fmtDate(e.stage4.hrEval?.submittedAt),
+
+                "S4 Shortlisted": e.stage4.shortlisted ? "Yes" : "No",
+                "S4 Rank": e.stage4.shortlistRank ?? "",
+
+                "Winner": e.isWinner ? "Yes" : "",
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(rows);
+            if (rows.length > 0) {
+                ws["!cols"] = Object.keys(rows[0]).map(k => ({
+                    wch: Math.max(k.length, ...rows.map(r => String(r[k] ?? "").length)) + 2,
+                }));
+            }
+
+            const wsMeta = XLSX.utils.json_to_sheet([
+                { Field: "Branch", Value: payload.branch?.name || "" },
+                { Field: "Branch Type", Value: payload.branch?.branchType || "" },
+                { Field: "Quarter", Value: payload.quarter?.name || "" },
+                { Field: "Quarter Status", Value: payload.quarter?.status || "" },
+                { Field: "Exported At", Value: payload.exportedAt || "" },
+                { Field: "Total Employees", Value: rows.length },
+            ]);
+            wsMeta["!cols"] = [{ wch: 18 }, { wch: 40 }];
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, wsMeta, "Info");
+            XLSX.utils.book_append_sheet(wb, ws, "Pipeline");
+
+            const slug = payload.branch?.slug || payload.branch?.name?.replace(/\s+/g, "_") || "branch";
+            const qName = (payload.quarter?.name || "quarter").replace(/[^A-Za-z0-9_-]+/g, "_");
+            const today = new Date().toISOString().slice(0, 10);
+            XLSX.writeFile(wb, `OngoingEvaluation_${slug}_${qName}_${today}.xlsx`);
+        } catch (e) {
+            setExportError(e.message || "Download failed");
+        } finally {
+            setExportLoading(false);
+        }
     };
 
     const fetchReport = async () => {
@@ -458,7 +528,7 @@ export default function AdminDashboard() {
                 if (prev && branchesInResp.includes(prev)) return prev;
                 return branchesInResp[0] || "";
             });
-        } catch { }
+        } catch (err) { console.error("[Admin] fetchOrg failed:", err); }
         setOrgLoading(false);
     };
 
@@ -471,7 +541,7 @@ export default function AdminDashboard() {
             try {
                 const d = await api("/api/admin/employees?export=true");
                 setReassignAllEmps(d.employees || []);
-            } catch { }
+            } catch (err) { console.error("[Admin] fetchAllEmps failed:", err); }
         }
     };
 
@@ -504,7 +574,7 @@ export default function AdminDashboard() {
         try {
             const d = await api("/api/admin/questions");
             setQuestions(d.questions);
-        } catch { }
+        } catch (err) { console.error("[Admin] fetchQuestions failed:", err); }
     };
 
     useEffect(() => {
@@ -512,7 +582,7 @@ export default function AdminDashboard() {
             fetchProgress();
             fetchReport();
         }
-        if (tab === "pipeline" && !quarterProgress) fetchProgress();
+        if ((tab === "pipeline" || tab === "quarter") && !quarterProgress) fetchProgress();
         if (tab === "org" && orgStructure.length === 0) fetchOrg();
         if (tab === "questions" && questions.length === 0) fetchQuestions();
     }, [tab]);
@@ -535,7 +605,7 @@ export default function AdminDashboard() {
             try {
                 const d = await api("/api/admin/audit-logs?page=1&limit=5");
                 setActivity(d.logs || []);
-            } catch { }
+            } catch (err) { console.error("[Admin] Activity fetch failed:", err); }
         })();
     }, [tab]);
 
@@ -570,6 +640,11 @@ export default function AdminDashboard() {
     // Quarter actions — from Quarter tab (manual form)
     const requestStartQuarter = () => {
         if (!quarterName || !startDate || !endDate) return;
+        if (new Date(endDate) <= new Date(startDate)) {
+            setQuarterMsg({ type: "error", text: "End date must be after start date." });
+            return;
+        }
+        setQuarterMsg({ type: "", text: "" });
         setConfirm({ open: true, type: "start", autoMode: false });
     };
 
@@ -614,6 +689,7 @@ export default function AdminDashboard() {
             setQuarterProgress(null);
             setReport(null);
             if (tab === "dashboard") { fetchProgress(); fetchReport(); }
+            if (tab === "quarter") fetchProgress();
         } catch (e) { setQuarterMsg({ type: "error", text: e.message }); }
         setQuarterLoading(false);
     };
@@ -631,6 +707,7 @@ export default function AdminDashboard() {
             setQuarterProgress(null);
             setReport(null);
             if (tab === "dashboard") { fetchProgress(); fetchReport(); }
+            if (tab === "quarter") fetchProgress();
         } catch (e) { setQuarterMsg({ type: "error", text: e.message }); }
         setQuarterLoading(false);
     };
@@ -655,7 +732,7 @@ export default function AdminDashboard() {
         try {
             const d = await api(`/api/admin/questions/${id}`, { method: "PATCH" });
             setQuestions((prev) => prev.map((q) => (q.id === id ? d.question : q)));
-        } catch { }
+        } catch (err) { console.error("[Admin] toggleQuestion failed:", err); }
     };
 
     const saveEditQuestion = async () => {
@@ -693,7 +770,7 @@ export default function AdminDashboard() {
             const d = await api(`/api/admin/audit-logs?${params}`);
             setLogs(d.logs); setLogTotal(d.pagination.totalPages); setLogPage(page);
             if (d.actions) setLogActions(d.actions);
-        } catch { }
+        } catch (err) { console.error("[Admin] fetchLogs failed:", err); }
     };
 
     useEffect(() => { if (tab === "employees") fetchEmployees(1); }, [tab]);
@@ -742,7 +819,6 @@ export default function AdminDashboard() {
     };
 
     useEffect(() => { if (tab === "branches") fetchBranches(); }, [tab]);
-    useEffect(() => { if (tab === "hodassign" && !hodAssignData) fetchHodAssignData(); }, [tab]);
 
     // Always load branches on mount so the Global/Branch dropdown is populated
     useEffect(() => { fetchBranches(); }, []);
@@ -891,7 +967,7 @@ export default function AdminDashboard() {
                     ) : quarterProgress ? (
                         <>
                             {/* SECTION A — Quarter Status Bar */}
-                            <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-3 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                            <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-3 sm:p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 sm:gap-4">
                                 <div>
                                     <h2 className="text-lg sm:text-xl font-bold text-[#003087] flex items-center gap-2 sm:gap-3 flex-wrap">
                                         {quarterProgress.quarter.name}
@@ -1029,48 +1105,6 @@ export default function AdminDashboard() {
                                 )}
                             </div>
 
-                            {/* SECTION — Legacy Department Winners (hidden placeholder) */}
-                            <div className="hidden">
-                                <h3 className="text-lg font-bold text-[#F57C00] mb-3 flex items-center gap-2">
-                                    <span className="text-xl">🏆</span> Department Winners
-                                </h3>
-                                {quarterProgress.overallStats.quarterWinners && quarterProgress.overallStats.quarterWinners.length > 0 ? (
-                                    <div className="overflow-hidden rounded-lg border border-[#FFE0B2]">
-                                        <table className="w-full text-sm">
-                                            <thead>
-                                                <tr className="bg-[#FFF3E0] border-b border-[#FFE0B2]">
-                                                    <th className="text-left font-medium text-[#F57C00] px-4 py-2 text-xs">#</th>
-                                                    <th className="text-left font-medium text-[#F57C00] px-4 py-2 text-xs">Employee Name</th>
-                                                    <th className="text-left font-medium text-[#F57C00] px-4 py-2 text-xs">Department</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-[#FFE0B2]">
-                                                {quarterProgress.overallStats.quarterWinners.map((w, i) => (
-                                                    <tr key={i} className="bg-white/80 hover:bg-[#FFF8E1] transition-colors">
-                                                        <td className="px-4 py-2.5 text-[#F7941D] font-bold">{i + 1}</td>
-                                                        <td className="px-4 py-2.5 font-bold text-[#1A1A2E]">{w.name}</td>
-                                                        <td className="px-4 py-2.5 text-[#666666]">{w.department}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                ) : (
-                                    <p className="text-sm text-[#999999] italic">No winners declared yet. Evaluation in progress.</p>
-                                )}
-                                {/* Show departments still pending */}
-                                {quarterProgress.overallStats.quarterWinners && (() => {
-                                    const winnerDepts = new Set(quarterProgress.overallStats.quarterWinners.map(w => w.department));
-                                    const pendingDepts = quarterProgress.departments.filter(d => d.totalEmployees > 0 && !winnerDepts.has(d.departmentName));
-                                    if (pendingDepts.length === 0) return null;
-                                    return (
-                                        <p className="text-xs text-[#999999] mt-3 italic">
-                                            Pending: {pendingDepts.map(d => d.departmentName).join(", ")}
-                                        </p>
-                                    );
-                                })()}
-                            </div>
-
                             {/* SECTION E — Quick Actions */}
                             <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 pb-2">
                                 <button onClick={() => setTab("questions")} className="px-3 sm:px-4 py-2 bg-white border border-[#CCCCCC] hover:bg-[#F5F5F5] hover:text-[#003087] text-[#333333] font-bold rounded-lg text-xs sm:text-sm transition-colors cursor-pointer shadow-sm">
@@ -1115,7 +1149,7 @@ export default function AdminDashboard() {
                             {/* Department-level progress now lives in the per-branch dashboard */}
                             <div className="bg-[#F5F5F5] border border-[#E0E0E0] rounded-xl p-5 text-center">
                                 <p className="text-sm text-[#666666]">
-                                    Department-level progress has moved into each branch's dashboard. Pick a branch from the dropdown at the top to see its evaluation pipeline.
+                                    Department-level progress has moved into each branch&apos;s dashboard. Pick a branch from the dropdown at the top to see its evaluation pipeline.
                                 </p>
                             </div>
                         </>
@@ -1157,6 +1191,42 @@ export default function AdminDashboard() {
             {/* ═══════ PIPELINE TAB — per-branch drill-down ═══════ */}
             {tab === "pipeline" && (
                 <div className="space-y-6">
+                    {/* Download Ongoing Evaluation — branch picker + Excel export */}
+                    <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 shadow-sm">
+                        <div className="flex items-start sm:items-center gap-3 flex-col sm:flex-row sm:justify-between">
+                            <div>
+                                <h3 className="text-[16px] font-bold text-[#003087]">Download Ongoing Evaluation</h3>
+                                <p className="text-[12px] text-[#666666] mt-0.5">
+                                    Select a branch to download the live evaluation pipeline (Stage 1–4 scores, evaluator names, shortlist status) as an Excel file.
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <select
+                                    value={exportBranchId}
+                                    onChange={e => { setExportBranchId(e.target.value); setExportError(""); }}
+                                    className="min-h-[40px] border border-[#CCCCCC] rounded-lg px-3 py-2 text-[13px] font-medium bg-white"
+                                >
+                                    <option value="">Select a branch…</option>
+                                    {branches.map(b => (
+                                        <option key={b.id} value={b.slug || b.id}>{b.name}</option>
+                                    ))}
+                                </select>
+                                <button
+                                    onClick={downloadOngoingForBranch}
+                                    disabled={exportLoading || !exportBranchId}
+                                    className="min-h-[40px] px-4 py-2 bg-[#00843D] hover:bg-[#006B32] disabled:opacity-60 disabled:cursor-not-allowed text-white text-[13px] font-bold rounded-lg cursor-pointer transition-colors"
+                                >
+                                    {exportLoading ? "Preparing…" : "Download (.xlsx)"}
+                                </button>
+                            </div>
+                        </div>
+                        {exportError && (
+                            <div className="mt-3 p-2 rounded-lg text-[12px] border bg-[#FFEBEE] border-[#EF9A9A] text-[#D32F2F]">
+                                {exportError}
+                            </div>
+                        )}
+                    </div>
+
                     {!quarterProgress ? (
                         <div className="bg-white border border-[#E0E0E0] rounded-xl p-8 text-center text-sm text-[#666666]">
                             {progressLoading ? "Loading pipeline..." : "No active quarter."}
@@ -1423,215 +1493,6 @@ export default function AdminDashboard() {
                                 </div>
                                 );
                             })}
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* ═══════ ASSIGN HODs TAB ═══════ */}
-            {tab === "hodassign" && (
-                <div className="space-y-4">
-                    {hodAssignMsg.text && (
-                        <div className={`p-3 rounded-lg text-sm border ${hodAssignMsg.type === "success" ? "bg-[#E8F5E9] border-[#A5D6A7] text-[#1B5E20]" : "bg-[#FFEBEE] border-[#EF9A9A] text-[#D32F2F]"}`}>
-                            {hodAssignMsg.text}
-                        </div>
-                    )}
-
-                    {/* WC / BC Split toggle */}
-                    <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-5">
-                        <h3 className="text-[16px] font-bold text-[#003087] mb-3">Employee Evaluation Assignment</h3>
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => setHodAssignView("WHITE_COLLAR")}
-                                className={`flex-1 min-h-[48px] px-4 py-3 rounded-lg text-[14px] font-bold border-2 transition-all ${hodAssignView === "WHITE_COLLAR" ? "bg-[#003087] text-white border-[#003087]" : "bg-white text-[#003087] border-[#90CAF9] hover:bg-[#E3F2FD]"}`}
-                            >
-                                White Collar
-                                <span className="block text-[11px] font-medium opacity-90 mt-0.5">Evaluated by Branch Manager</span>
-                            </button>
-                            <button
-                                onClick={() => setHodAssignView("BLUE_COLLAR")}
-                                className={`flex-1 min-h-[48px] px-4 py-3 rounded-lg text-[14px] font-bold border-2 transition-all ${hodAssignView === "BLUE_COLLAR" ? "bg-[#00843D] text-white border-[#00843D]" : "bg-white text-[#00843D] border-[#A5D6A7] hover:bg-[#E8F5E9]"}`}
-                            >
-                                Blue Collar · Assign HODs
-                                <span className="block text-[11px] font-medium opacity-90 mt-0.5">Admin assigns employees to HODs</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    {hodAssignLoading && !hodAssignData && (
-                        <div className="flex items-center justify-center h-32"><div className="animate-spin h-8 w-8 border-2 border-[#003087] border-t-transparent rounded-full" /></div>
-                    )}
-
-                    {hodAssignData && hodAssignView === "WHITE_COLLAR" && (
-                        <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-5">
-                            <h3 className="text-[15px] font-bold text-[#003087] mb-3">White Collar Employees</h3>
-                            <p className="text-[12px] text-[#666666] mb-3">These employees are evaluated directly by the Branch Manager. HODs with white-collar designation are also listed here.</p>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-[12px] border-collapse">
-                                    <thead className="bg-[#F5F5F5]">
-                                        <tr>
-                                            <th className="text-left px-3 py-2 font-bold text-[#333333]">Emp Code</th>
-                                            <th className="text-left px-3 py-2 font-bold text-[#333333]">Name</th>
-                                            <th className="text-left px-3 py-2 font-bold text-[#333333]">Department</th>
-                                            <th className="text-left px-3 py-2 font-bold text-[#333333]">Branch</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {hodAssignData.employees.filter(e => e.collarType === "WHITE_COLLAR").map(e => (
-                                            <tr key={e.id} className="border-t border-[#E0E0E0] hover:bg-[#FAFCFF]">
-                                                <td className="px-3 py-2 font-medium">{e.empCode}</td>
-                                                <td className="px-3 py-2">{e.name}</td>
-                                                <td className="px-3 py-2 text-[#666666]">{e.department}</td>
-                                                <td className="px-3 py-2 text-[#666666]">{e.branch}</td>
-                                            </tr>
-                                        ))}
-                                        {hodAssignData.employees.filter(e => e.collarType === "WHITE_COLLAR").length === 0 && (
-                                            <tr><td colSpan={4} className="px-3 py-6 text-center text-[#999999]">No white collar employees found.</td></tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
-
-                    {hodAssignData && hodAssignView === "BLUE_COLLAR" && (
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                            {/* HOD list sidebar */}
-                            <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 lg:col-span-1">
-                                <h4 className="text-[13px] font-bold text-[#00843D] mb-3 uppercase tracking-wider">HODs ({hodAssignData.hods.length})</h4>
-                                <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                                    {hodAssignData.hods.length === 0 && <p className="text-[12px] text-[#999999] italic">No HODs assigned. Assign HOD role to users in Org Structure tab first.</p>}
-                                    {hodAssignData.hods.map(h => (
-                                        <button
-                                            key={h.id}
-                                            onClick={() => setSelectedHodId(h.id)}
-                                            className={`w-full text-left border rounded-lg p-3 transition-all ${selectedHodId === h.id ? "bg-[#E8F5E9] border-[#00843D] shadow-sm" : "bg-white border-[#E0E0E0] hover:bg-[#FAFCFF]"}`}
-                                        >
-                                            <p className="text-[13px] font-bold text-[#1A1A2E]">{h.name}</p>
-                                            <p className="text-[11px] text-[#666666]">{h.empCode} · {h.branchName || "—"}</p>
-                                            <div className="flex items-center gap-2 mt-2">
-                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#E3F2FD] text-[#003087]">Assigned: {h.assignedCount}</span>
-                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#E8F5E9] text-[#00843D]">Evaluated: {h.evaluatedCount}</span>
-                                            </div>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Employee list */}
-                            <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 lg:col-span-2">
-                                <div className="flex items-center justify-between mb-3">
-                                    <h4 className="text-[13px] font-bold text-[#003087] uppercase tracking-wider">Blue Collar Employees</h4>
-                                    <button
-                                        onClick={saveHodAssignments}
-                                        disabled={Object.keys(pendingAssignments).length === 0}
-                                        className="min-h-[36px] px-4 py-2 bg-[#00843D] hover:bg-[#006633] text-white text-[12px] font-bold rounded-lg disabled:bg-[#CCCCCC] disabled:cursor-not-allowed"
-                                    >
-                                        Save {Object.keys(pendingAssignments).length > 0 ? `(${Object.keys(pendingAssignments).length})` : ""}
-                                    </button>
-                                </div>
-
-                                {/* Filters */}
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
-                                    <input
-                                        type="text"
-                                        placeholder="Search name / code"
-                                        value={hodAssignFilter.search}
-                                        onChange={e => setHodAssignFilter({ ...hodAssignFilter, search: e.target.value })}
-                                        className="px-3 py-2 border border-[#CCCCCC] rounded-lg text-[12px] focus:outline-none focus:ring-2 focus:ring-[#003087]"
-                                    />
-                                    <select
-                                        value={hodAssignFilter.branchId}
-                                        onChange={e => setHodAssignFilter({ ...hodAssignFilter, branchId: e.target.value })}
-                                        className="px-3 py-2 border border-[#CCCCCC] rounded-lg text-[12px] focus:outline-none focus:ring-2 focus:ring-[#003087]"
-                                    >
-                                        <option value="">All Branches</option>
-                                        {[...new Map(hodAssignData.employees.map(e => [e.branchId, e.branch])).entries()].map(([id, name]) => (
-                                            <option key={id} value={id}>{name}</option>
-                                        ))}
-                                    </select>
-                                    <select
-                                        value={hodAssignFilter.departmentId}
-                                        onChange={e => setHodAssignFilter({ ...hodAssignFilter, departmentId: e.target.value })}
-                                        className="px-3 py-2 border border-[#CCCCCC] rounded-lg text-[12px] focus:outline-none focus:ring-2 focus:ring-[#003087]"
-                                    >
-                                        <option value="">All Departments</option>
-                                        {[...new Map(hodAssignData.employees.map(e => [e.departmentId, e.department])).entries()].map(([id, name]) => (
-                                            <option key={id} value={id}>{name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="overflow-x-auto max-h-[500px]">
-                                    <table className="w-full text-[12px] border-collapse">
-                                        <thead className="bg-[#F5F5F5] sticky top-0">
-                                            <tr>
-                                                <th className="text-left px-3 py-2 font-bold text-[#333333]">Emp Code</th>
-                                                <th className="text-left px-3 py-2 font-bold text-[#333333]">Name</th>
-                                                <th className="text-left px-3 py-2 font-bold text-[#333333]">Department</th>
-                                                <th className="text-left px-3 py-2 font-bold text-[#333333]">Branch</th>
-                                                <th className="text-left px-3 py-2 font-bold text-[#333333]">Current HOD</th>
-                                                <th className="text-left px-3 py-2 font-bold text-[#333333]">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {hodAssignData.employees
-                                                .filter(e => e.collarType === "BLUE_COLLAR")
-                                                .filter(e => {
-                                                    if (hodAssignFilter.search) {
-                                                        const s = hodAssignFilter.search.toLowerCase();
-                                                        if (!e.name.toLowerCase().includes(s) && !e.empCode.toLowerCase().includes(s)) return false;
-                                                    }
-                                                    if (hodAssignFilter.branchId && e.branchId !== hodAssignFilter.branchId) return false;
-                                                    if (hodAssignFilter.departmentId && e.departmentId !== hodAssignFilter.departmentId) return false;
-                                                    return true;
-                                                })
-                                                .map(e => {
-                                                    const pendingHod = pendingAssignments[e.id];
-                                                    const currentHodId = pendingHod !== undefined ? pendingHod : e.assignedHodId;
-                                                    const currentHod = hodAssignData.hods.find(h => h.id === currentHodId);
-                                                    const isPending = pendingHod !== undefined;
-                                                    return (
-                                                        <tr key={e.id} className={`border-t border-[#E0E0E0] ${isPending ? "bg-[#FFF8E1]" : "hover:bg-[#FAFCFF]"}`}>
-                                                            <td className="px-3 py-2 font-medium">{e.empCode}</td>
-                                                            <td className="px-3 py-2">{e.name}</td>
-                                                            <td className="px-3 py-2 text-[#666666]">{e.department}</td>
-                                                            <td className="px-3 py-2 text-[#666666]">{e.branch}</td>
-                                                            <td className="px-3 py-2">
-                                                                {currentHod ? (
-                                                                    <span className="text-[11px] font-bold text-[#00843D]">{currentHod.name}</span>
-                                                                ) : (
-                                                                    <span className="text-[11px] text-[#999999] italic">Unassigned</span>
-                                                                )}
-                                                            </td>
-                                                            <td className="px-3 py-2">
-                                                                <div className="flex items-center gap-2">
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            if (!selectedHodId) { setHodAssignMsg({ type: "error", text: "Select an HOD first" }); return; }
-                                                                            setPendingAssignments({ ...pendingAssignments, [e.id]: selectedHodId });
-                                                                        }}
-                                                                        className="px-2 py-1 bg-[#003087] hover:bg-[#00843D] text-white text-[10px] font-bold rounded"
-                                                                    >
-                                                                        Assign to selected
-                                                                    </button>
-                                                                    {e.assignedHodId && !isPending && (
-                                                                        <button
-                                                                            onClick={() => unassignEmployee(e.id)}
-                                                                            className="px-2 py-1 bg-[#FFEBEE] hover:bg-[#FFCDD2] text-[#D32F2F] text-[10px] font-bold rounded border border-[#EF9A9A]"
-                                                                        >
-                                                                            Unassign
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
                         </div>
                     )}
                 </div>

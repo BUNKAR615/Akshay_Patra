@@ -4,6 +4,7 @@ export const runtime = 'nodejs'
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { created, fail, notFound, conflict, serverError, validateBody } from "../../../../lib/api-response";
+import { resolveScopeBranch } from "../../../../lib/auth/resolveScopeBranch";
 import { evaluateSchema } from "../../../../lib/validators";
 import { createNotification } from "../../../../lib/notifications";
 import { normalizeScore, calculateBranchStage2Score } from "../../../../lib/scoreCalculator";
@@ -30,14 +31,11 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         const activeQuarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
         if (!activeQuarter) return notFound("No active quarter. Evaluations are closed.");
 
-        // Resolve BM's branch (source of truth for the ownership check)
-        const bmUser = await prisma.user.findUnique({
-            where: { id: user.userId },
-            select: { department: { select: { branchId: true, branch: { select: { branchType: true } } } } },
-        });
-        const bmBranchId = bmUser?.department?.branchId;
-        const bmBranchType = bmUser?.department?.branch?.branchType;
-        if (!bmBranchId) return fail("Branch not found for this Branch Manager");
+        // Resolve BM's branch (source of truth for the ownership check) —
+        // honors User.branchId from the JWT first, then BranchManagerAssignment.
+        const { branchId: bmBranchId, branch: bmBranch } = await resolveScopeBranch(user);
+        const bmBranchType = bmBranch?.branchType;
+        if (!bmBranchId) return fail("No branch is assigned to this Branch Manager. Please contact admin.");
 
         const employee = await prisma.user.findUnique({
             where: { id: data.employeeId },

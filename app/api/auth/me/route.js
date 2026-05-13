@@ -24,10 +24,39 @@ export async function GET(request) {
 
         const activeQuarter = await prisma.quarter.findFirst({
             where: { status: "ACTIVE" },
-            select: { name: true }
+            select: { id: true, name: true },
         });
 
-        return ok({ user, currentQuarter: activeQuarter?.name || null });
+        // HOD entries in `departmentRoles` are only meaningful while there's
+        // a corresponding HodAssignment in the ACTIVE quarter. Stale rows
+        // from closed quarters (e.g. Rishpal's Q02-2026 row that persisted
+        // after the quarter closed) would otherwise surface as an extra
+        // "HOD" pill on the profile and on lists that read departmentRoles.
+        // We drop those stale HOD rows here so the profile reflects the
+        // user's TRUE active-quarter roles only.
+        let activeHodDeptIds = new Set();
+        if (activeQuarter && (user.departmentRoles || []).some((dr) => dr.role === "HOD")) {
+            const rows = await prisma.hodAssignment.findMany({
+                where: { hodUserId: user.id, quarterId: activeQuarter.id },
+                select: { departmentId: true },
+            });
+            activeHodDeptIds = new Set(rows.map((r) => r.departmentId));
+        }
+        const filteredDepartmentRoles = (user.departmentRoles || []).filter((dr) => {
+            if (dr.role !== "HOD") return true;
+            return activeHodDeptIds.has(dr.departmentId);
+        });
+
+        // Return the *session* role from the JWT (set in headers by middleware),
+        // not the DB role. For Admin+HOD dual users who picked HOD at login,
+        // user.role in DB is "ADMIN" but the chosen session role is "HOD".
+        // Dashboard isolation depends on dashboards seeing the picked role.
+        const sessionRole = request.headers.get("x-user-role") || user.role;
+
+        return ok({
+            user: { ...user, role: sessionRole, departmentRoles: filteredDepartmentRoles },
+            currentQuarter: activeQuarter?.name || null,
+        });
     } catch (err) {
         console.error("Me error:", err);
         return serverError();

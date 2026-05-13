@@ -4,11 +4,15 @@ export const runtime = 'nodejs'
 import prisma from "../../../../lib/prisma";
 import { signToken, verifyRefreshToken } from "../../../../lib/auth";
 import { ok, fail, serverError } from "../../../../lib/api-response";
+import { resolveScopeBranch } from "../../../../lib/auth/resolveScopeBranch";
 
 /**
  * POST /api/auth/refresh
  * Uses the refresh token cookie to issue a new access token.
- * Includes empCode and departmentIds in the refreshed token.
+ * Includes empCode, departmentIds, branchId, and branchType in the
+ * refreshed token. Branch context is revalidated against the assignment
+ * tables — if the user's CM/HR/COMMITTEE assignment has been removed,
+ * the refresh fails so they have to log in again and re-pick a branch.
  */
 export async function POST(request) {
     try {
@@ -52,11 +56,37 @@ export async function POST(request) {
         // Use the role from the decoded token (preserves selected role for multi-role users)
         const activeRole = decoded.role || user.role;
 
+        // Re-validate branch context. The refresh token carries the branchId
+        // the user picked at login (or that was auto-picked for single-branch
+        // staff). For BM/CM/HR/COMMITTEE we re-check the assignment table —
+        // if the assignment has been removed since login, the refresh must
+        // fail so the user re-authenticates and picks a current branch.
+        let branchId = "";
+        let branchType = "";
+        if (activeRole === "BRANCH_MANAGER" || activeRole === "CLUSTER_MANAGER" || activeRole === "HR" || activeRole === "COMMITTEE") {
+            const { branch } = await resolveScopeBranch({
+                userId: user.id,
+                role: activeRole,
+                branchId: decoded.branchId || "",
+            });
+            if (!branch) {
+                return fail("Your branch assignment has changed. Please sign in again.", 401);
+            }
+            branchId = branch.id;
+            branchType = branch.branchType || "";
+        } else {
+            // EMPLOYEE / HOD / ADMIN — preserve whatever the prior token had.
+            branchId = decoded.branchId || "";
+            branchType = decoded.branchType || "";
+        }
+
         const newToken = await signToken({
             userId: user.id,
             empCode: user.empCode,
             role: activeRole,
             departmentIds,
+            branchId,
+            branchType,
         });
 
         const response = ok({ token: newToken });

@@ -4,19 +4,16 @@ export const runtime = 'nodejs'
 import prisma from "../../../../../lib/prisma";
 import { withRole } from "../../../../../lib/withRole";
 import { ok, fail, serverError } from "../../../../../lib/api-response";
+import { resolveScopeBranch } from "../../../../../lib/auth/resolveScopeBranch";
 
 /**
  * GET /api/branch-manager/hod/list
  * BM lists all HOD assignments for their branch in the active quarter.
  */
-export const GET = withRole(["BRANCH_MANAGER", "ADMIN"], async (request, { user }) => {
+export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
     try {
-        const bmUser = await prisma.user.findUnique({
-            where: { id: user.userId },
-            select: { department: { select: { branchId: true } } }
-        });
-        const branchId = user.role === "ADMIN" ? (new URL(request.url).searchParams.get("branchId") || bmUser?.department?.branchId) : bmUser?.department?.branchId;
-        if (!branchId) return fail("Could not determine branch");
+        const { branchId } = await resolveScopeBranch(user);
+        if (!branchId) return fail("Could not determine your branch");
 
         const quarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
         if (!quarter) return fail("No active quarter");

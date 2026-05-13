@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import DashboardShell from "../../../../components/DashboardShell";
 import BranchSideNav from "../../../../components/admin/BranchSideNav";
 import { SkeletonCard } from "../../../../components/Skeleton";
+import { DASHBOARD_HOME } from "../../../../lib/dashboardNav";
 
 async function api(url) {
     const res = await fetch(url);
@@ -28,10 +29,16 @@ export default function BranchLayout({ children }) {
     useEffect(() => {
         (async () => {
             try {
-                const [me, summary] = await Promise.all([
-                    api("/api/auth/me"),
-                    api(`/api/admin/branches/${branchId}/summary`),
-                ]);
+                const me = await api("/api/auth/me");
+                // Hard role gate. Middleware should already block non-admins
+                // from this URL prefix, but keep the explicit guard so this
+                // page does not depend on a single layer.
+                if (me?.user?.role !== "ADMIN") {
+                    const home = DASHBOARD_HOME[me?.user?.role] || "/login";
+                    window.location.replace(home);
+                    return;
+                }
+                const summary = await api(`/api/admin/branches/${branchId}/summary`);
                 setUser(me.user);
                 setCurrentQuarter(me.currentQuarter || "");
                 setBranchName(summary.branch.name);

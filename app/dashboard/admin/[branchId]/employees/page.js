@@ -1,8 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import * as XLSX from "xlsx";
+import ConfirmDialog from "../../../../../components/ConfirmDialog";
+
+const ROLE_OPTIONS = ["EMPLOYEE", "SUPERVISOR", "HOD", "BRANCH_MANAGER", "CLUSTER_MANAGER", "HR", "COMMITTEE"];
+
+function fmtDate(d) {
+    if (!d) return "—";
+    try {
+        return new Date(d).toLocaleString();
+    } catch { return String(d); }
+}
 
 async function api(url, opts) {
     const res = await fetch(url, opts);
@@ -26,6 +36,13 @@ const ROLE_COLORS = {
 
 export default function BranchEmployeesPage() {
     const { branchId } = useParams();
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const departmentIdFilter = searchParams.get("departmentId") || "";
+    const departmentNameFilter = searchParams.get("departmentName") || "";
+
+    const tab = searchParams.get("tab") || "active";   // "active" | "removed" | "history"
+
     const [employees, setEmployees] = useState([]);
     const [branch, setBranch] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -33,9 +50,32 @@ export default function BranchEmployeesPage() {
     const [search, setSearch] = useState("");
     const [roleFilter, setRoleFilter] = useState("");
 
+    // Edit-employee panel state
+    const [editId, setEditId] = useState(null);
+    const [editForm, setEditForm] = useState({ name: "", empCode: "", mobile: "", role: "EMPLOYEE", designation: "", departmentId: "", collarType: "" });
+    const [editMsg, setEditMsg] = useState({ type: "", text: "" });
+    const [editLoading, setEditLoading] = useState(false);
+    const [allDepartments, setAllDepartments] = useState([]);
+
+    // Remove-employee dialog state
+    const [removeTarget, setRemoveTarget] = useState(null);
+    const [removeReason, setRemoveReason] = useState("");
+    const [removeLoading, setRemoveLoading] = useState(false);
+
+    // Removed + History tab data
+    const [archived, setArchived] = useState([]);
+    const [history, setHistory] = useState([]);
+    const [tabLoading, setTabLoading] = useState(false);
+
+    const setTab = (next) => {
+        const params = new URLSearchParams(searchParams.toString());
+        if (next === "active") params.delete("tab"); else params.set("tab", next);
+        router.push(`/dashboard/admin/${branchId}/employees${params.toString() ? `?${params}` : ""}`);
+    };
+
     // Add-employee panel state
     const [showAddEmp, setShowAddEmp] = useState(false);
-    const [addForm, setAddForm] = useState({ name: "", mobile: "", departmentName: "", joiningDate: "", reason: "", empCode: "", designation: "" });
+    const [addForm, setAddForm] = useState({ name: "", mobile: "", departmentName: "", joiningDate: "", reason: "", empCode: "", designation: "", collarType: "" });
     const [addMsg, setAddMsg] = useState({ type: "", text: "" });
     const [addLoading, setAddLoading] = useState(false);
 
@@ -45,6 +85,8 @@ export default function BranchEmployeesPage() {
     const [bulkLoading, setBulkLoading] = useState(false);
     const [bulkResult, setBulkResult] = useState(null);
     const [bulkMsg, setBulkMsg] = useState({ type: "", text: "" });
+    const [bulkReplaceMode, setBulkReplaceMode] = useState(false);
+    const [showReplaceConfirm, setShowReplaceConfirm] = useState(false);
 
     // Unique department names seen in the currently loaded employees — used
     // to populate the add-employee dropdown without another request.
@@ -54,7 +96,10 @@ export default function BranchEmployeesPage() {
 
     const fetchEmployees = async () => {
         try {
-            const url = `/api/admin/branches/${branchId}/employees${roleFilter ? `?role=${roleFilter}` : ""}`;
+            const qs = new URLSearchParams();
+            if (roleFilter) qs.set("role", roleFilter);
+            if (departmentIdFilter) qs.set("departmentId", departmentIdFilter);
+            const url = `/api/admin/branches/${branchId}/employees${qs.toString() ? `?${qs}` : ""}`;
             const data = await api(url);
             setEmployees(data.employees || []);
             setBranch(data.branch);
@@ -65,7 +110,104 @@ export default function BranchEmployeesPage() {
         }
     };
 
-    useEffect(() => { fetchEmployees(); }, [branchId, roleFilter]);
+    useEffect(() => { fetchEmployees(); }, [branchId, roleFilter, departmentIdFilter]);
+
+    const clearDepartmentFilter = () => {
+        router.push(`/dashboard/admin/${branchId}/employees`);
+    };
+
+    // Branch departments — fetched once for the Edit form's dept dropdown
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const data = await api(`/api/admin/branches/${branchId}/departments`);
+                if (!cancelled) setAllDepartments(data.departments || []);
+            } catch { /* non-fatal */ }
+        })();
+        return () => { cancelled = true; };
+    }, [branchId]);
+
+    // Removed + History fetches (per active tab)
+    useEffect(() => {
+        if (tab === "active") return;
+        let cancelled = false;
+        (async () => {
+            setTabLoading(true);
+            try {
+                if (tab === "removed") {
+                    const data = await api(`/api/admin/employees/archived?branchId=${branchId}`);
+                    if (!cancelled) setArchived(data.archived || []);
+                } else if (tab === "history") {
+                    const data = await api(`/api/admin/employees/history?branchId=${branchId}&limit=200`);
+                    if (!cancelled) setHistory(data.history || []);
+                }
+            } catch (e) {
+                if (!cancelled) setError(e.message);
+            } finally {
+                if (!cancelled) setTabLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [tab, branchId]);
+
+    const openEdit = (emp) => {
+        setEditId(emp.id);
+        setEditForm({
+            name: emp.name || "",
+            empCode: emp.empCode || "",
+            mobile: emp.mobile || "",
+            role: emp.role || "EMPLOYEE",
+            designation: emp.designation || "",
+            departmentId: emp.departmentId || "",
+            collarType: emp.collarType || "",
+        });
+        setEditMsg({ type: "", text: "" });
+    };
+
+    const handleEditSubmit = async () => {
+        if (!editId) return;
+        setEditLoading(true);
+        setEditMsg({ type: "", text: "" });
+        try {
+            const payload = {
+                mobile: editForm.mobile,
+                role: editForm.role,
+                designation: editForm.designation,
+                departmentId: editForm.departmentId || undefined,
+                collarType: editForm.collarType || null,
+            };
+            const data = await api(`/api/admin/employees/${editId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            setEditMsg({ type: "success", text: data.message || "Employee updated" });
+            setEditId(null);
+            fetchEmployees();
+        } catch (err) {
+            setEditMsg({ type: "error", text: err.message || "Update failed" });
+        }
+        setEditLoading(false);
+    };
+
+    const handleRemoveConfirm = async () => {
+        if (!removeTarget || !removeReason.trim()) return;
+        setRemoveLoading(true);
+        try {
+            await api(`/api/admin/employees/${removeTarget.id}`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reasonLeaving: removeReason.trim() }),
+            });
+            setRemoveTarget(null);
+            setRemoveReason("");
+            fetchEmployees();
+        } catch (err) {
+            alert(err.message || "Remove failed");
+        }
+        setRemoveLoading(false);
+    };
 
     const handleAddEmployee = async () => {
         setAddLoading(true);
@@ -77,7 +219,7 @@ export default function BranchEmployeesPage() {
                 body: JSON.stringify(addForm),
             });
             setAddMsg({ type: "success", text: `${d.employee.name} added. Default password: ${d.defaultPassword}` });
-            setAddForm({ name: "", mobile: "", departmentName: "", joiningDate: "", reason: "", empCode: "", designation: "" });
+            setAddForm({ name: "", mobile: "", departmentName: "", joiningDate: "", reason: "", empCode: "", designation: "", collarType: "" });
             fetchEmployees();
         } catch (err) {
             setAddMsg({ type: "error", text: err.message || "Failed to add employee" });
@@ -85,29 +227,44 @@ export default function BranchEmployeesPage() {
         setAddLoading(false);
     };
 
-    const handleBulkUpload = async () => {
-        if (!bulkFile) {
-            setBulkMsg({ type: "error", text: "Please select an Excel file" });
-            return;
-        }
+    const submitBulkUpload = async () => {
         setBulkLoading(true);
         setBulkMsg({ type: "", text: "" });
         setBulkResult(null);
         try {
             const fd = new FormData();
             fd.append("file", bulkFile);
+            if (bulkReplaceMode) fd.append("mode", "replace");
             const data = await api(`/api/admin/branches/${branchId}/employees/bulk-upload`, { method: "POST", body: fd });
             setBulkResult(data);
+            const archivedCount = data.archivedEmployees?.length || 0;
+            const removedDeptCount = data.removedDepartments?.length || 0;
+            const replaceSuffix = data.mode === "replace"
+                ? `, ${archivedCount} archived, ${removedDeptCount} depts removed`
+                : "";
             setBulkMsg({
                 type: data.errors?.length ? "error" : "success",
-                text: `Upload complete: ${data.employeesCreated} created, ${data.employeesUpdated} updated, ${data.departmentsCreated?.length || 0} new depts${data.errors?.length ? `, ${data.errors.length} errors` : ""}`,
+                text: `Upload complete: ${data.employeesCreated} created, ${data.employeesUpdated} updated, ${data.departmentsCreated?.length || 0} new depts${replaceSuffix}${data.errors?.length ? `, ${data.errors.length} errors` : ""}`,
             });
             setBulkFile(null);
+            setBulkReplaceMode(false);
             fetchEmployees();
         } catch (err) {
             setBulkMsg({ type: "error", text: err.message || "Bulk upload failed" });
         }
         setBulkLoading(false);
+    };
+
+    const handleBulkUpload = () => {
+        if (!bulkFile) {
+            setBulkMsg({ type: "error", text: "Please select an Excel file" });
+            return;
+        }
+        if (bulkReplaceMode) {
+            setShowReplaceConfirm(true);
+            return;
+        }
+        submitBulkUpload();
     };
 
     const downloadBulkTemplate = () => {
@@ -156,8 +313,49 @@ export default function BranchEmployeesPage() {
     if (loading) return <div className="text-center py-12 text-gray-500">Loading employees...</div>;
     if (error) return <div className="p-4 bg-red-50 text-red-700 rounded-lg font-medium">{error}</div>;
 
+    const TabStrip = (
+        <div className="flex gap-1 border-b border-[#E0E0E0]">
+            {[
+                { id: "active",  label: "Active" },
+                { id: "removed", label: "Removed" },
+                { id: "history", label: "Change history" },
+            ].map(t => (
+                <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors -mb-[2px] cursor-pointer ${
+                        tab === t.id
+                            ? "border-[#003087] text-[#003087]"
+                            : "border-transparent text-[#666] hover:text-[#003087] hover:border-[#003087]/40"
+                    }`}
+                >
+                    {t.label}
+                </button>
+            ))}
+        </div>
+    );
+
     return (
         <div className="space-y-4">
+            {departmentIdFilter && tab === "active" && (
+                <div className="flex items-center justify-between gap-2 p-3 bg-[#EEF3FB] border border-[#003087]/20 rounded-lg">
+                    <div className="text-sm">
+                        <span className="text-[#666]">Department:</span>{" "}
+                        <span className="font-bold text-[#003087]">{departmentNameFilter || "Selected department"}</span>
+                        <span className="text-[#666] ml-2">({filtered.length} employee{filtered.length === 1 ? "" : "s"})</span>
+                    </div>
+                    <button
+                        onClick={clearDepartmentFilter}
+                        className="px-3 py-1.5 bg-white border border-[#CCCCCC] rounded-lg text-xs font-bold text-[#333] hover:bg-[#F5F5F5] cursor-pointer"
+                    >
+                        Show all employees
+                    </button>
+                </div>
+            )}
+
+            {TabStrip}
+
+            {tab === "active" && (<>
             <div className="flex items-center justify-between flex-wrap gap-2">
                 <h2 className="text-lg font-bold text-[#003087]">Employees ({filtered.length})</h2>
                 <div className="flex flex-wrap gap-2">
@@ -201,6 +399,14 @@ export default function BranchEmployeesPage() {
                             </select>
                         </div>
                         <div>
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Category</label>
+                            <select value={addForm.collarType} onChange={(e) => setAddForm({ ...addForm, collarType: e.target.value })} className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm">
+                                <option value="">Use department default</option>
+                                <option value="BLUE_COLLAR">Blue-collar</option>
+                                <option value="WHITE_COLLAR">White-collar</option>
+                            </select>
+                        </div>
+                        <div>
                             <label className="block text-xs font-bold text-[#666666] mb-1">Designation</label>
                             <input type="text" value={addForm.designation} onChange={(e) => setAddForm({ ...addForm, designation: e.target.value })} placeholder="e.g. Executive" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
                         </div>
@@ -234,6 +440,18 @@ export default function BranchEmployeesPage() {
                         <p>Uploads are scoped to this branch; missing departments are created here.</p>
                         <p>Default password: <code className="bg-white px-1 rounded">empCode</code> (employee can change after first login).</p>
                     </div>
+                    <label className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-300 rounded-lg cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={bulkReplaceMode}
+                            onChange={(e) => setBulkReplaceMode(e.target.checked)}
+                            className="mt-0.5"
+                        />
+                        <span className="text-xs text-amber-900">
+                            <span className="font-bold block">Replace branch data (destructive)</span>
+                            Archive every active employee not in this file, and delete every department not in this file. Role-holders (BM/CM/HR/Committee/Admin) are preserved. Use this only when the uploaded sheet is the complete source of truth for {branch?.name || "this branch"}.
+                        </span>
+                    </label>
                     {bulkMsg.text && (
                         <div className={`p-3 rounded-lg text-sm font-medium ${bulkMsg.type === "success" ? "bg-green-50 text-green-800 border border-green-200" : "bg-red-50 text-red-800 border border-red-200"}`}>{bulkMsg.text}</div>
                     )}
@@ -282,6 +500,22 @@ export default function BranchEmployeesPage() {
                                     <p className="text-[11px] text-blue-700">{bulkResult.departmentsCreated.join(", ")}</p>
                                 </div>
                             )}
+                            {bulkResult.archivedEmployees?.length > 0 && (
+                                <div className="bg-amber-50 border border-amber-300 rounded-lg p-3">
+                                    <p className="text-xs font-bold text-amber-900 mb-1">Archived ({bulkResult.archivedEmployees.length}) — not in this file:</p>
+                                    <p className="text-[11px] text-amber-800 max-h-24 overflow-y-auto">
+                                        {bulkResult.archivedEmployees.map(a => `${a.empCode} ${a.name}`).join(", ")}
+                                    </p>
+                                </div>
+                            )}
+                            {bulkResult.removedDepartments?.length > 0 && (
+                                <div className="bg-red-50 border border-red-300 rounded-lg p-3">
+                                    <p className="text-xs font-bold text-red-800 mb-1">Departments removed ({bulkResult.removedDepartments.length}) — not in this file:</p>
+                                    <p className="text-[11px] text-red-700">
+                                        {bulkResult.removedDepartments.map(d => `${d.name} (${d.collarType})`).join(", ")}
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -308,60 +542,283 @@ export default function BranchEmployeesPage() {
                 </select>
             </div>
 
-            {/* Table */}
-            <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="bg-[#F5F5F5] text-left">
-                                <th className="px-4 py-3 font-bold text-[11px] text-[#999] uppercase">Emp Code</th>
-                                <th className="px-4 py-3 font-bold text-[11px] text-[#999] uppercase">Name</th>
-                                <th className="px-4 py-3 font-bold text-[11px] text-[#999] uppercase">Department</th>
-                                <th className="px-4 py-3 font-bold text-[11px] text-[#999] uppercase">Designation</th>
-                                <th className="px-4 py-3 font-bold text-[11px] text-[#999] uppercase">Role</th>
-                                <th className="px-4 py-3 font-bold text-[11px] text-[#999] uppercase">Collar</th>
-                                <th className="px-4 py-3 font-bold text-[11px] text-[#999] uppercase">Mobile</th>
-                                <th className="px-4 py-3 font-bold text-[11px] text-[#999] uppercase">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#F0F0F0]">
-                            {filtered.map(emp => (
-                                <tr key={emp.id} className="hover:bg-[#FAFAFA]">
-                                    <td className="px-4 py-3 font-mono text-[12px] font-bold text-[#003087]">{emp.empCode || "—"}</td>
-                                    <td className="px-4 py-3 font-medium">{emp.name}</td>
-                                    <td className="px-4 py-3 text-[#666]">{emp.department?.name || "—"}</td>
-                                    <td className="px-4 py-3 text-[#666]">{emp.designation || "—"}</td>
-                                    <td className="px-4 py-3">
-                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${ROLE_COLORS[emp.role] || "bg-gray-100 text-gray-700"}`}>
-                                            {emp.role}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        {emp.collarType ? (
-                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${emp.collarType === "WHITE_COLLAR" ? "bg-gray-100 text-gray-600" : "bg-blue-50 text-blue-600"}`}>
-                                                {emp.collarType === "WHITE_COLLAR" ? "WC" : "BC"}
-                                            </span>
-                                        ) : "—"}
-                                    </td>
-                                    <td className="px-4 py-3 text-[#666] text-[12px]">{emp.mobile || "—"}</td>
-                                    <td className="px-4 py-3">
-                                        <button
-                                            onClick={() => handleResetPassword(emp)}
-                                            disabled={resettingId === emp.id}
-                                            className="px-2 py-1 text-[11px] font-bold rounded bg-white border border-[#CCCCCC] text-[#333] hover:bg-[#F5F5F5] disabled:opacity-50 cursor-pointer"
-                                        >
-                                            {resettingId === emp.id ? "Resetting…" : "Reset password"}
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+            {/* Edit Employee Panel — opens when an Edit button on a card is clicked */}
+            {editId && (
+                <div className="bg-white border border-[#003087] rounded-xl p-5 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-base font-bold text-[#003087]">Edit Employee — {editForm.name}</h3>
+                        <button onClick={() => setEditId(null)} className="text-xs px-3 py-1.5 bg-gray-100 border border-gray-200 rounded-lg font-bold text-[#333] hover:bg-gray-200 cursor-pointer">
+                            Close
+                        </button>
+                    </div>
+                    {editMsg.text && (
+                        <div className={`p-3 rounded-lg text-sm font-medium ${editMsg.type === "success" ? "bg-green-50 text-green-800 border border-green-200" : "bg-red-50 text-red-800 border border-red-200"}`}>{editMsg.text}</div>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div>
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Name (locked)</label>
+                            <input type="text" value={editForm.name} disabled className="w-full h-10 px-3 bg-[#EEEEEE] border border-[#CCCCCC] rounded-lg text-sm text-[#666] cursor-not-allowed" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Employee Code (locked)</label>
+                            <input type="text" value={editForm.empCode} disabled className="w-full h-10 px-3 bg-[#EEEEEE] border border-[#CCCCCC] rounded-lg text-sm text-[#666] cursor-not-allowed" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Mobile Number</label>
+                            <input type="text" value={editForm.mobile} onChange={(e) => setEditForm({ ...editForm, mobile: e.target.value })} placeholder="Phone number" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Role <span className="text-[#003087]">(switch role)</span></label>
+                            <select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })} className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm">
+                                {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Department <span className="text-[#003087]">(switch dept)</span></label>
+                            <select value={editForm.departmentId} onChange={(e) => setEditForm({ ...editForm, departmentId: e.target.value })} className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm">
+                                <option value="">— None —</option>
+                                {allDepartments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Category</label>
+                            <select value={editForm.collarType} onChange={(e) => setEditForm({ ...editForm, collarType: e.target.value })} className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm">
+                                <option value="">— Not set —</option>
+                                <option value="BLUE_COLLAR">Blue-collar</option>
+                                <option value="WHITE_COLLAR">White-collar</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Designation</label>
+                            <input type="text" value={editForm.designation} onChange={(e) => setEditForm({ ...editForm, designation: e.target.value })} placeholder="e.g. Executive" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button onClick={handleEditSubmit} disabled={editLoading} className="px-6 py-2 bg-[#003087] text-white rounded-lg text-sm font-bold hover:bg-[#002266] transition-colors cursor-pointer disabled:opacity-50">
+                            {editLoading ? "Saving…" : "Save changes"}
+                        </button>
+                        <button onClick={() => setEditId(null)} disabled={editLoading} className="px-6 py-2 bg-white border border-[#CCCCCC] rounded-lg text-sm font-bold text-[#333] hover:bg-[#F5F5F5] cursor-pointer disabled:opacity-50">
+                            Cancel
+                        </button>
+                    </div>
                 </div>
-                {filtered.length === 0 && (
-                    <div className="text-center py-8 text-gray-500 text-sm">No employees found.</div>
-                )}
-            </div>
+            )}
+
+            {/* Employee cards — single-page layout, no horizontal scroll. Stacks
+                 1-up on phones, 2-up on tablet, 3-up on desktop. Every field
+                 (empCode, name, department, designation, role, collar, mobile)
+                 is visible inside the card without overflow. */}
+            {filtered.length === 0 ? (
+                <div className="bg-white border border-[#E0E0E0] rounded-xl text-center py-8 text-gray-500 text-sm">
+                    No employees found.
+                </div>
+            ) : (
+                <div className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+                    {filtered.map(emp => (
+                        <div
+                            key={emp.id}
+                            className="bg-white border border-[#E0E0E0] rounded-xl p-4 hover:border-[#003087]/40 hover:shadow-sm transition-colors flex flex-col gap-3 min-w-0"
+                        >
+                            {/* Card header: empCode + name + role/collar badges */}
+                            <div className="flex items-start justify-between gap-3 min-w-0">
+                                <div className="min-w-0 flex-1">
+                                    <div className="font-mono text-[11px] font-bold text-[#003087] mb-0.5">
+                                        {emp.empCode || "—"}
+                                    </div>
+                                    <div className="font-bold text-[#1a1a1a] text-sm break-words">
+                                        {emp.name}
+                                    </div>
+                                </div>
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${ROLE_COLORS[emp.role] || "bg-gray-100 text-gray-700"}`}>
+                                        {emp.role}
+                                    </span>
+                                    {emp.collarType && (
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${emp.collarType === "WHITE_COLLAR" ? "bg-gray-100 text-gray-600" : "bg-blue-50 text-blue-600"}`}>
+                                            {emp.collarType === "WHITE_COLLAR" ? "White Collar" : "Blue Collar"}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Card body: labeled fields, all visible inline */}
+                            <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-1.5 text-[12px] min-w-0">
+                                <dt className="text-[#999] font-bold uppercase tracking-wide text-[10px] self-center">Department</dt>
+                                <dd className="text-[#333] break-words min-w-0">{emp.department?.name || "—"}</dd>
+
+                                <dt className="text-[#999] font-bold uppercase tracking-wide text-[10px] self-center">Designation</dt>
+                                <dd className="text-[#333] break-words min-w-0">{emp.designation || "—"}</dd>
+
+                                <dt className="text-[#999] font-bold uppercase tracking-wide text-[10px] self-center">Mobile</dt>
+                                <dd className="text-[#333] break-all min-w-0">{emp.mobile || "—"}</dd>
+                            </dl>
+
+                            {/* Card footer: action buttons */}
+                            <div className="pt-1 grid grid-cols-3 gap-1.5">
+                                <button
+                                    onClick={() => openEdit(emp)}
+                                    className="px-2 py-1.5 text-[11px] font-bold rounded bg-[#003087] hover:bg-[#002266] text-white cursor-pointer"
+                                >
+                                    Edit
+                                </button>
+                                <button
+                                    onClick={() => { setRemoveTarget(emp); setRemoveReason(""); }}
+                                    disabled={emp.role === "ADMIN"}
+                                    className="px-2 py-1.5 text-[11px] font-bold rounded bg-white border border-[#D32F2F] text-[#D32F2F] hover:bg-[#FDECEC] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                                    title={emp.role === "ADMIN" ? "Admin users cannot be removed" : ""}
+                                >
+                                    Remove
+                                </button>
+                                <button
+                                    onClick={() => handleResetPassword(emp)}
+                                    disabled={resettingId === emp.id}
+                                    className="px-2 py-1.5 text-[11px] font-bold rounded bg-white border border-[#CCCCCC] text-[#333] hover:bg-[#F5F5F5] disabled:opacity-50 cursor-pointer"
+                                >
+                                    {resettingId === emp.id ? "Resetting…" : "Reset pwd"}
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+            </>)}
+
+            {/* ── Removed tab ─────────────────────────────────────────────── */}
+            {tab === "removed" && (
+                <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden">
+                    <div className="p-4 border-b border-[#E0E0E0]">
+                        <h3 className="text-base font-bold text-[#003087]">Removed Employees ({archived.length})</h3>
+                        <p className="text-xs text-[#666]">Employees archived from this branch's departments. Newest first.</p>
+                    </div>
+                    {tabLoading ? (
+                        <div className="text-center py-8 text-gray-500 text-sm">Loading…</div>
+                    ) : archived.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500 text-sm">No removed employees.</div>
+                    ) : (
+                        <div className="divide-y divide-[#F0F0F0]">
+                            {archived.map(a => (
+                                <div key={a.id} className="p-4 grid grid-cols-1 md:grid-cols-[140px_1fr_1fr_1fr_1.2fr] gap-3 text-sm">
+                                    <div className="font-mono text-[12px] font-bold text-[#003087]">{a.empCode || "—"}</div>
+                                    <div className="font-medium text-[#1a1a1a] break-words">{a.name}</div>
+                                    <div><span className="text-[10px] text-[#999] font-bold uppercase block">Department</span>{a.department || "—"}</div>
+                                    <div><span className="text-[10px] text-[#999] font-bold uppercase block">Removed</span>{fmtDate(a.removalDate)}</div>
+                                    <div>
+                                        <span className="text-[10px] text-[#999] font-bold uppercase block">By / Reason</span>
+                                        <span className="font-mono text-[11px]">{a.archivedBy || "—"}</span>
+                                        <span className="text-[#666]"> · {a.reasonLeaving || "—"}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ── History tab ─────────────────────────────────────────────── */}
+            {tab === "history" && (
+                <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden">
+                    <div className="p-4 border-b border-[#E0E0E0]">
+                        <h3 className="text-base font-bold text-[#003087]">Department / Role Change History ({history.length})</h3>
+                        <p className="text-xs text-[#666]">Every recorded change touching this branch (incoming or outgoing). Newest first.</p>
+                    </div>
+                    {tabLoading ? (
+                        <div className="text-center py-8 text-gray-500 text-sm">Loading…</div>
+                    ) : history.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500 text-sm">No changes recorded yet.</div>
+                    ) : (
+                        <div className="divide-y divide-[#F0F0F0]">
+                            {history.map(h => (
+                                <div key={h.id} className="p-4 space-y-1.5 text-sm">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="font-mono text-[12px] font-bold text-[#003087]">{h.empCode || "—"}</span>
+                                        <span className="font-medium">{h.employeeName || "—"}</span>
+                                        <span className="text-[11px] text-[#666] ml-auto">{fmtDate(h.changedAt)} · by <span className="font-mono">{h.changedByEmpCode || "—"}</span></span>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-[12px]">
+                                        {(h.oldRole || h.newRole) && (
+                                            <div className="bg-[#F8F8F8] rounded p-2">
+                                                <span className="text-[10px] text-[#999] font-bold uppercase block">Role</span>
+                                                <span className="text-[#666]">{h.oldRole || "—"}</span>
+                                                <span className="px-1 text-[#999]">→</span>
+                                                <span className="font-bold text-[#003087]">{h.newRole || "—"}</span>
+                                            </div>
+                                        )}
+                                        {(h.oldDepartmentName || h.newDepartmentName) && (
+                                            <div className="bg-[#F8F8F8] rounded p-2">
+                                                <span className="text-[10px] text-[#999] font-bold uppercase block">Department</span>
+                                                <span className="text-[#666]">{h.oldDepartmentName || "—"}</span>
+                                                <span className="px-1 text-[#999]">→</span>
+                                                <span className="font-bold text-[#003087]">{h.newDepartmentName || "—"}</span>
+                                            </div>
+                                        )}
+                                        {(h.oldBranchName || h.newBranchName) && (h.oldBranchId !== h.newBranchId) && (
+                                            <div className="bg-[#F8F8F8] rounded p-2">
+                                                <span className="text-[10px] text-[#999] font-bold uppercase block">Branch</span>
+                                                <span className="text-[#666]">{h.oldBranchName || "—"}</span>
+                                                <span className="px-1 text-[#999]">→</span>
+                                                <span className="font-bold text-[#003087]">{h.newBranchName || "—"}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ── Replace-mode confirmation dialog ─────────────────────────── */}
+            <ConfirmDialog
+                open={showReplaceConfirm}
+                title={`Replace ${branch?.name || "branch"} data?`}
+                message={
+                    <div className="space-y-2 text-sm text-[#333]">
+                        <p>
+                            This will treat <span className="font-bold">{bulkFile?.name || "the uploaded file"}</span> as the complete source of truth for <span className="font-bold">{branch?.name || "this branch"}</span>.
+                        </p>
+                        <ul className="list-disc list-inside text-[13px] space-y-1">
+                            <li>Active employees (EMPLOYEE / HOD) not in the file will be archived.</li>
+                            <li>Departments not in the file will be deleted.</li>
+                            <li>Role-holders (BM, CM, HR, Committee, Admin) are preserved.</li>
+                        </ul>
+                        <p className="text-[12px] text-[#666]">Archived employees move to the <span className="font-bold">Removed</span> tab and can be reviewed there.</p>
+                    </div>
+                }
+                confirmLabel="Replace branch data"
+                cancelLabel="Cancel"
+                variant="danger"
+                loading={bulkLoading}
+                onConfirm={() => { setShowReplaceConfirm(false); submitBulkUpload(); }}
+                onCancel={() => { if (!bulkLoading) setShowReplaceConfirm(false); }}
+            />
+
+            {/* ── Remove confirmation dialog ──────────────────────────────── */}
+            <ConfirmDialog
+                open={!!removeTarget}
+                title={removeTarget ? `Remove ${removeTarget.name}?` : ""}
+                message={
+                    <div className="space-y-3">
+                        <p className="text-sm text-[#333]">
+                            This will archive <span className="font-bold">{removeTarget?.empCode}</span> and remove them from the active employee list. The audit record stays in the Removed tab.
+                        </p>
+                        <div>
+                            <label className="block text-xs font-bold text-[#666] mb-1">Reason for removal *</label>
+                            <input
+                                value={removeReason}
+                                onChange={(e) => setRemoveReason(e.target.value)}
+                                placeholder="e.g. Resigned, Transferred, Termination"
+                                className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm"
+                            />
+                        </div>
+                    </div>
+                }
+                confirmLabel="Remove employee"
+                cancelLabel="Cancel"
+                variant="danger"
+                loading={removeLoading}
+                onConfirm={handleRemoveConfirm}
+                onCancel={() => { if (!removeLoading) { setRemoveTarget(null); setRemoveReason(""); } }}
+            />
         </div>
     );
 }

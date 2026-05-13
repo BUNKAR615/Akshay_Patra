@@ -63,19 +63,16 @@ export async function updateStage1Shortlist(
     where: { departmentId, quarterId }
   })
 
-  // Insert ranked shortlist
-  for (let i = 0; i < assessments.length; i++) {
-    const a = assessments[i]
-    await tx.shortlistStage1.create({
-      data: {
-        userId: a.userId,
-        quarterId,
-        departmentId,
-        selfScore: a.normalizedScore,
-        rank: i + 1
-      }
-    })
-  }
+  // Insert ranked shortlist in one batch
+  await tx.shortlistStage1.createMany({
+    data: assessments.map((a, i) => ({
+      userId: a.userId,
+      quarterId,
+      departmentId,
+      selfScore: a.normalizedScore,
+      rank: i + 1,
+    })),
+  })
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -138,18 +135,15 @@ export async function updateBranchStage1Shortlist(
     where: { branchId, quarterId }
   })
 
-  // Insert ranked shortlist
-  for (let i = 0; i < shortlisted.length; i++) {
-    const a = shortlisted[i]
-    await tx.branchShortlistStage1.create({
-      data: {
-        userId: a.userId,
-        quarterId,
-        branchId,
-        collarType: a.user.collarType,
-        selfScore: a.normalizedScore,
-        rank: i + 1
-      }
-    })
-  }
+  // Insert ranked shortlist in one batch
+  await tx.branchShortlistStage1.createMany({
+    data: shortlisted.map((a, i) => ({
+      userId: a.userId,
+      quarterId,
+      branchId,
+      collarType: a.user.collarType,
+      selfScore: a.normalizedScore,
+      rank: i + 1,
+    })),
+  })
 }

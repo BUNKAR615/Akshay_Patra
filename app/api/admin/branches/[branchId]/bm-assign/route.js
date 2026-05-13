@@ -15,6 +15,7 @@ import {
     BM_ERR_USER_TAKEN,
 } from "../../../../../../lib/auth/bmAssignment";
 import { defaultPasswordFor } from "../../../../../../lib/auth/defaultPassword";
+import { hashStaffDefaultPassword } from "../../../../../../lib/auth/applyStaffPassword";
 import { z } from "zod";
 
 const SALT_ROUNDS = 10;
@@ -126,7 +127,16 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             return conflict(check.message);
         }
 
-        // Atomic: assignment row + user.role/branchId + legacy department cache.
+        // Reset password to staff formula ("Firstname_##") on every assign
+        // call. data.password (admin-supplied) wins over the formula.
+        const passwordHash = await hashStaffDefaultPassword({
+            role: "BRANCH_MANAGER",
+            empCode: bmUser.empCode,
+            name: bmUser.name,
+            override: data.password,
+        });
+
+        // Atomic: assignment row + user.role/branchId + password + legacy department cache.
         let assignment;
         try {
             assignment = await prisma.$transaction(async (tx) => {
@@ -134,6 +144,7 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
                     userId: bmUser.id,
                     branchId,
                     assignedBy: user.userId,
+                    passwordHash,
                 });
             });
         } catch (err) {

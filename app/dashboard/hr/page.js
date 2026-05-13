@@ -11,7 +11,15 @@ async function api(url, opts) {
     return json.data;
 }
 
-const HR_ALLOWED = ["1800349", "5100029"];
+/* ─── HR reference-sheet upload constraints ─── */
+// HR reference attachment must be an Excel sheet (.xlsx / .xls), max 300 KB.
+const REF_MAX_BYTES = 300 * 1024;
+const EXCEL_MIME_TYPES = new Set([
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+    "application/vnd.ms-excel",                                          // .xls
+]);
+const EXCEL_EXTENSION_RE = /\.(xlsx|xls)$/i;
+const REF_FILE_ACCEPT = ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel";
 
 /* ─── tiny helpers ─── */
 function formatBytes(bytes) {
@@ -44,8 +52,12 @@ export default function HRDashboard() {
     const [loading, setLoading] = useState(true);
     const [authorized, setAuthorized] = useState(false);
 
-    /* ─── Top-level tab — sidebar drives via ?view= ─── */
-    const mainTab = view === "management" ? "management" : "evaluate";
+    /* ─── Top-level tab — HR is restricted to the Evaluate view only.
+       Score and employee-information surfaces are intentionally hidden from
+       HR (Committee is the sole consumer of stage-wise / combined scores).
+       Even if the URL carries ?view=management, we ignore it. The legacy
+       management-tab code below remains in the file but is unreachable. */
+    const mainTab = "evaluate";
 
     /* ══════════════════════════════════════════════════
        EVALUATE TAB STATE
@@ -54,10 +66,26 @@ export default function HRDashboard() {
     const [evalLoading, setEvalLoading] = useState(false);
     const [evalError, setEvalError] = useState("");
 
+    // Branch context for the in-page Total / per-branch dropdown. The pre-
+    // login picker is gone — Total is the default and per-branch is
+    // selectable inline. "" === Total.
+    const [assignedBranches, setAssignedBranches] = useState([]);
+    const [selectedBranchId, setSelectedBranchId] = useState("");
+    const [progressTotals, setProgressTotals] = useState({ evaluated: 0, total: 0 });
+
     // Per-employee UI state keyed by employeeId
     const [attendancePcts, setAttendancePcts] = useState({}); // { [empId]: number }
     const [workingHoursMap, setWorkingHoursMap] = useState({}); // { [empId]: number }
-    const [refSheetUrls, setRefSheetUrls] = useState({});     // { [empId]: string }
+    // Reference sheet — TWO independent state buckets so the local file
+    // input and the external link input never feed into each other:
+    //   refLinkUrls       — driven by the "Reference Sheet Link" text box
+    //   refLocalFileUrls  — driven by the "Choose File" upload result
+    // On submit we prefer the link URL when present, falling back to the
+    // local file URL. Both are stored server-side in the same
+    // `referenceSheetUrl` column for display in the Committee view.
+    const [refLinkUrls, setRefLinkUrls] = useState({});       // { [empId]: string }
+    const [refLocalFileUrls, setRefLocalFileUrls] = useState({}); // { [empId]: string }
+    const [refLocalFileNames, setRefLocalFileNames] = useState({}); // { [empId]: string }
     const [hrNotes, setHrNotes] = useState({});                // { [empId]: string }
     const [evalSubmitting, setEvalSubmitting] = useState({});  // { [empId]: bool }
     const [evalDone, setEvalDone] = useState({});              // { [empId]: bool }
@@ -93,8 +121,8 @@ export default function HRDashboard() {
             try {
                 const d = await api("/api/auth/me");
                 setUser(d.user);
-                setAuthorized(HR_ALLOWED.includes(d.user.empCode));
-            } catch { }
+                setAuthorized(d.user.role === "HR");
+            } catch (err) { console.error("[HR] Auth fetch failed:", err); }
             setLoading(false);
         })();
     }, []);
@@ -102,29 +130,58 @@ export default function HRDashboard() {
     /* ══════════════════════════════════════════════════
        EVALUATE TAB LOGIC
        ══════════════════════════════════════════════════ */
-    const fetchShortlist = async () => {
+    // `branchOverride` of "" means Total; a branchId means a single branch.
+    // `undefined` reuses whatever the dashboard is currently showing (used
+    // by post-submit refreshes).
+    const fetchShortlist = async (branchOverride) => {
         setEvalLoading(true);
         setEvalError("");
         try {
-            const d = await api("/api/hr/shortlist");
-            setShortlist(d.employees || d || []);
+            const target = branchOverride === undefined ? selectedBranchId : branchOverride;
+            const url = target
+                ? `/api/hr/shortlist?branchId=${encodeURIComponent(target)}`
+                : "/api/hr/shortlist";
+            const d = await api(url);
+            setShortlist(d.employees || []);
+            setAssignedBranches(d.assignedBranches || []);
+            setSelectedBranchId(d.branch?.id || "");
+            setProgressTotals({
+                evaluated: d.totalEvaluated || 0,
+                total: d.totalToEvaluate || 0,
+            });
         } catch (err) {
             setEvalError(err.message || "Failed to load shortlist");
         }
         setEvalLoading(false);
     };
 
+    const handleSelectBranch = (branchId) => {
+        if (branchId === selectedBranchId) return;
+        fetchShortlist(branchId);
+    };
+
     useEffect(() => {
-        if (authorized && mainTab === "evaluate") fetchShortlist();
+        if (authorized && mainTab === "evaluate") fetchShortlist("");
     }, [authorized, mainTab]);
 
-    // Upload a PDF for the employee's reference sheet and write the returned
-    // URL into refSheetUrls. The URL text input stays editable in case ops
-    // wants to paste a manual URL instead.
+    // Upload a local Excel sheet (.xlsx / .xls, ≤ 300 KB) to the server
+    // and remember the returned URL in `refLocalFileUrls` ONLY. We must
+    // NOT touch `refLinkUrls` — the two inputs are independent by spec.
+    // The "Reference Sheet Link" text box stays untouched and the HR user
+    // can still paste an external URL in it separately.
     const handleRefUpload = async (employeeId, file) => {
         if (!file) return;
-        if (file.type !== "application/pdf") {
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Reference sheet must be a PDF" } }));
+        // MIME types for Excel are not always reported reliably (especially
+        // on older Windows browsers), so we accept either a known Excel
+        // MIME OR an .xlsx/.xls extension before trusting the file.
+        const isExcelMime = EXCEL_MIME_TYPES.has(file.type);
+        const isExcelExt = EXCEL_EXTENSION_RE.test(file.name || "");
+        if (!isExcelMime && !isExcelExt) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Reference sheet must be an Excel file (.xlsx or .xls)" } }));
+            return;
+        }
+        if (file.size > REF_MAX_BYTES) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Excel file must be 300 KB or smaller" } }));
             return;
         }
         setRefUploading(prev => ({ ...prev, [employeeId]: true }));
@@ -138,12 +195,31 @@ export default function HRDashboard() {
             if (!res.ok || !json.success) {
                 throw new Error(json.message || "Upload failed");
             }
-            setRefSheetUrls(prev => ({ ...prev, [employeeId]: json.data.url }));
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "success", text: "Reference sheet uploaded" } }));
+            // Local-file bucket only — DO NOT auto-populate the link field.
+            setRefLocalFileUrls(prev => ({ ...prev, [employeeId]: json.data.url }));
+            setRefLocalFileNames(prev => ({ ...prev, [employeeId]: file.name }));
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "success", text: `File "${file.name}" uploaded` } }));
         } catch (err) {
             setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: err.message || "Upload failed" } }));
         }
         setRefUploading(prev => ({ ...prev, [employeeId]: false }));
+    };
+
+    // Clear a previously-uploaded local file. The link field is untouched.
+    const handleClearLocalFile = (employeeId) => {
+        setRefLocalFileUrls(prev => {
+            const next = { ...prev };
+            delete next[employeeId];
+            return next;
+        });
+        setRefLocalFileNames(prev => {
+            const next = { ...prev };
+            delete next[employeeId];
+            return next;
+        });
+        if (fileRefs.current[employeeId]) {
+            try { fileRefs.current[employeeId].value = ""; } catch {}
+        }
     };
 
     const handleEvalSubmit = async (employeeId) => {
@@ -163,11 +239,20 @@ export default function HRDashboard() {
             setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Working hours must be a positive number" } }));
             return;
         }
-        const ref = (refSheetUrls[employeeId] || "").trim();
-        if (ref && !/^https?:\/\//i.test(ref)) {
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Reference sheet must be a valid URL (http:// or https://)" } }));
+
+        // Two independent reference inputs. Validate each on its OWN rules:
+        //   * The link field, when filled, must be a valid http(s):// URL.
+        //   * The local file, when uploaded, is already validated server-
+        //     side. We don't apply the URL regex to it.
+        // On submit, we send link if present, otherwise the local file URL.
+        // Spec: "Local file upload does not auto-populate the link field."
+        const linkRaw = (refLinkUrls[employeeId] || "").trim();
+        if (linkRaw && !/^https?:\/\//i.test(linkRaw)) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Reference Sheet Link must start with http:// or https://" } }));
             return;
         }
+        const localFileUrl = refLocalFileUrls[employeeId] || "";
+        const referenceSheetUrl = linkRaw || localFileUrl || "";
 
         setEvalSubmitting(prev => ({ ...prev, [employeeId]: true }));
         setEvalMessages(prev => ({ ...prev, [employeeId]: null }));
@@ -180,7 +265,7 @@ export default function HRDashboard() {
                     employeeId,
                     attendancePct: numAtt,
                     workingHours: numHrs,
-                    referenceSheetUrl: ref,
+                    referenceSheetUrl,
                     notes: hrNotes[employeeId] || "",
                 }),
             });
@@ -192,8 +277,12 @@ export default function HRDashboard() {
         setEvalSubmitting(prev => ({ ...prev, [employeeId]: false }));
     };
 
+    // Counters for the visible (filtered) view. The "Total" tile in the
+    // dropdown header uses `progressTotals` which is cross-branch.
     const evaluatedCount = shortlist.filter(e => evalDone[e.id] || e.hrEvaluated).length;
     const totalShortlisted = shortlist.length;
+    const isTotalMode = !selectedBranchId;
+    const isMultiBranch = (assignedBranches?.length || 0) > 1;
 
     /* ══════════════════════════════════════════════════
        EMPLOYEE MANAGEMENT TAB LOGIC (kept from original)
@@ -283,15 +372,115 @@ export default function HRDashboard() {
        ────────────────────────────────────── */
     const renderEvaluateTab = () => (
         <div className="space-y-6">
+            {/* Branch dropdown — Total + per-branch. This replaces the old
+                pre-login branch picker. Total is the default. */}
+            {(assignedBranches.length > 0) && (
+                <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-xl p-5 shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+                        <div>
+                            <p className="text-[13px] font-bold text-[#F57C00] uppercase tracking-wider">
+                                {isMultiBranch ? "Multi-Branch HR" : "Assigned Branch"}
+                            </p>
+                            <p className="text-[14px] text-[#333333]">
+                                {isTotalMode ? (
+                                    <>Currently viewing <span className="font-bold">Total ({assignedBranches.length} branch{assignedBranches.length === 1 ? "" : "es"})</span>.</>
+                                ) : (
+                                    <>Currently evaluating <span className="font-bold">{assignedBranches.find((b) => b.id === selectedBranchId)?.name || "—"}</span>.</>
+                                )}
+                            </p>
+                        </div>
+                        {isMultiBranch && (
+                            <div className="bg-white rounded-lg p-2 border border-[#FFE082] flex items-center gap-2 w-full sm:w-auto">
+                                <label className="text-[13px] font-bold text-[#F57C00] uppercase tracking-wider whitespace-nowrap pl-2">
+                                    Branch:
+                                </label>
+                                <div className="relative w-full sm:w-64">
+                                    <select
+                                        value={selectedBranchId}
+                                        onChange={(e) => handleSelectBranch(e.target.value)}
+                                        className="w-full px-4 py-2 bg-[#FFF8E1] border border-[#FFE082] rounded-lg text-[#F57C00] font-bold focus:outline-none focus:ring-2 focus:ring-[#F57C00] appearance-none cursor-pointer"
+                                    >
+                                        {/* Total — combined view across every assigned branch. */}
+                                        <option value="">
+                                            Total — {progressTotals.evaluated}/{progressTotals.total}
+                                        </option>
+                                        {assignedBranches.map((b) => (
+                                            <option key={b.id} value={b.id}>
+                                                {b.name}
+                                                {b.totalToEvaluate > 0 ? ` — ${b.evaluated}/${b.totalToEvaluate}` : " — 0 eligible"}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-[#F57C00]">
+                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    {/* Per-branch click-chips, mirroring the dropdown. Total
+                        chip is first when there's more than one branch. */}
+                    {isMultiBranch && (
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => handleSelectBranch("")}
+                                className={`px-3 py-2 rounded-lg border text-left transition-colors cursor-pointer ${
+                                    isTotalMode
+                                        ? "bg-[#F57C00] border-[#F57C00] text-white shadow-sm"
+                                        : "bg-white border-[#FFE082] text-[#F57C00] hover:bg-[#FFF3D8]"
+                                }`}
+                            >
+                                <div className="text-[12px] font-bold uppercase tracking-wider opacity-80">Total</div>
+                                <div className="text-[14px] font-black">
+                                    {progressTotals.total === 0 ? (
+                                        <span className={isTotalMode ? "text-white" : "text-[#666]"}>No eligible employees</span>
+                                    ) : (
+                                        <>{progressTotals.evaluated} / {progressTotals.total} evaluated</>
+                                    )}
+                                </div>
+                            </button>
+                            {assignedBranches.map((b) => {
+                                const isCurrent = !isTotalMode && b.id === selectedBranchId;
+                                const empty = b.totalToEvaluate === 0;
+                                return (
+                                    <button
+                                        key={b.id}
+                                        type="button"
+                                        onClick={() => handleSelectBranch(b.id)}
+                                        className={`px-3 py-2 rounded-lg border text-left transition-colors cursor-pointer ${
+                                            isCurrent
+                                                ? "bg-[#F57C00] border-[#F57C00] text-white shadow-sm"
+                                                : "bg-white border-[#FFE082] text-[#F57C00] hover:bg-[#FFF3D8]"
+                                        }`}
+                                    >
+                                        <div className="text-[12px] font-bold uppercase tracking-wider opacity-80">{b.name}</div>
+                                        <div className="text-[14px] font-black">
+                                            {empty ? (
+                                                <span className={isCurrent ? "text-white" : "text-[#666]"}>No eligible employees</span>
+                                            ) : (
+                                                <>{b.evaluated} / {b.totalToEvaluate} evaluated</>
+                                            )}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Progress bar */}
             {totalShortlisted > 0 && (
                 <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 shadow-sm">
                     <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-bold text-[#333333]">
-                            Evaluation Progress
+                            {isTotalMode ? "Total — " : ""}Evaluation Progress
                         </span>
                         <span className="text-sm font-bold text-[#F57C00]">
-                            {evaluatedCount} / {totalShortlisted} evaluated
+                            {evaluatedCount} / {totalShortlisted} evaluated{isTotalMode ? " across all branches" : ""}
                         </span>
                     </div>
                     <div className="w-full bg-[#E0E0E0] rounded-full h-3">
@@ -341,20 +530,28 @@ export default function HRDashboard() {
                             <div className="flex items-center gap-3">
                                 {isAlreadyDone && <CheckIcon />}
                                 <div>
-                                    <h3 className="text-base font-bold text-[#003087]">{emp.name}</h3>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h3 className="text-base font-bold text-[#003087]">{emp.name}</h3>
+                                        {/* Branch tag — visible in Total mode so HR can
+                                            see at a glance which branch the candidate is
+                                            from when looking at the combined list. */}
+                                        {isTotalMode && emp.branchName && (
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-[#E8EAF6] text-[#1A237E] border-[#9FA8DA]">
+                                                {emp.branchName}
+                                            </span>
+                                        )}
+                                    </div>
                                     <p className="text-xs text-[#666666] mt-0.5">
                                         {emp.empCode} &middot;{" "}
                                         <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${emp.collarType === "BLUE" ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>
                                             {emp.collarType || "N/A"} collar
                                         </span>
-                                        {" "}&middot; {emp.department || emp.departmentName || "—"}
+                                        {" "}&middot; {(typeof emp.department === "object" ? emp.department?.name : emp.department) || emp.departmentName || "—"}
                                     </p>
                                 </div>
                             </div>
-                            <div className="text-right">
-                                <span className="text-xs text-[#666666]">Combined Score</span>
-                                <p className="text-lg font-bold text-[#F57C00]">{emp.combinedScore ?? emp.totalScore ?? "—"}</p>
-                            </div>
+                            {/* Score column intentionally hidden from HR — combined and
+                                stage-wise marks are restricted to the Committee view. */}
                         </div>
 
                         {/* Body */}
@@ -390,40 +587,83 @@ export default function HRDashboard() {
                                 </div>
                             </div>
 
-                            {/* Reference Sheet URL + Notes */}
+                            {/* Reference Sheet — TWO INDEPENDENT inputs.
+                                These two boxes do not feed into each other.
+                                  (A) Choose File         → local Excel upload
+                                  (B) Reference Sheet Link → external URL only
+                                On submit the link takes precedence if both
+                                are filled (link is what HR explicitly typed). */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Reference Sheet Link (optional)</label>
+                                {/* (A) Local file upload — independent of the link below. */}
+                                <div className="border border-[#E0E0E0] rounded-lg p-3 bg-[#FAFAFA]">
+                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">
+                                        Choose File <span className="font-normal text-[#999999]">(local Excel upload, optional)</span>
+                                    </label>
+                                    <input
+                                        ref={(el) => { fileRefs.current[emp.id] = el; }}
+                                        type="file"
+                                        accept={REF_FILE_ACCEPT}
+                                        disabled={isAlreadyDone || refUploading[emp.id]}
+                                        onChange={(e) => handleRefUpload(emp.id, e.target.files?.[0])}
+                                        className="block w-full text-xs text-[#666666] file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#F57C00]/10 file:text-[#F57C00] hover:file:bg-[#F57C00]/20 disabled:opacity-50"
+                                    />
+                                    <p className="text-[10px] text-[#999999] mt-1">Excel only (.xlsx / .xls) · max 300 KB · does NOT need a URL</p>
+                                    {refUploading[emp.id] && (
+                                        <p className="text-xs text-[#666666] mt-1">Uploading…</p>
+                                    )}
+                                    {!!refLocalFileUrls[emp.id] && !refUploading[emp.id] && (
+                                        <div className="mt-2 flex items-center justify-between gap-2 text-xs bg-[#E8F5E9] border border-[#A5D6A7] rounded px-2 py-1.5">
+                                            <span className="text-[#1B5E20] font-semibold truncate" title={refLocalFileNames[emp.id] || "Uploaded"}>
+                                                ✓ {refLocalFileNames[emp.id] || "File uploaded"}
+                                            </span>
+                                            {!isAlreadyDone && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleClearLocalFile(emp.id)}
+                                                    className="text-[#D32F2F] font-bold hover:underline shrink-0"
+                                                >
+                                                    Remove
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                                {/* (B) External URL — independent of the file upload. */}
+                                <div className="border border-[#E0E0E0] rounded-lg p-3 bg-[#FAFAFA]">
+                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">
+                                        Reference Sheet Link <span className="font-normal text-[#999999]">(external URL, optional)</span>
+                                    </label>
                                     <input
                                         type="url"
-                                        value={refSheetUrls[emp.id] ?? (emp.referenceSheetUrl ?? "")}
-                                        onChange={(e) => setRefSheetUrls(prev => ({ ...prev, [emp.id]: e.target.value }))}
+                                        value={refLinkUrls[emp.id] ?? (
+                                            // Pre-fill from prior evaluation ONLY if the saved
+                                            // value is an absolute URL. A saved local-upload
+                                            // path goes into the file slot below (read-only),
+                                            // never into the link box.
+                                            /^https?:\/\//i.test(emp.referenceSheetUrl || "") ? emp.referenceSheetUrl : ""
+                                        )}
+                                        onChange={(e) => setRefLinkUrls(prev => ({ ...prev, [emp.id]: e.target.value }))}
                                         disabled={isAlreadyDone}
-                                        placeholder="https://..."
-                                        className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
+                                        placeholder="https://drive.google.com/..."
+                                        pattern="https?://.*"
+                                        className="w-full h-10 px-3 bg-white border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
                                     />
-                                    <div className="mt-1.5 flex items-center gap-2">
-                                        <input
-                                            type="file"
-                                            accept="application/pdf"
-                                            disabled={isAlreadyDone || refUploading[emp.id]}
-                                            onChange={(e) => handleRefUpload(emp.id, e.target.files?.[0])}
-                                            className="text-xs text-[#666666] file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#F57C00]/10 file:text-[#F57C00] hover:file:bg-[#F57C00]/20 disabled:opacity-50"
-                                        />
-                                        {refUploading[emp.id] && <span className="text-xs text-[#666666]">Uploading…</span>}
-                                    </div>
+                                    <p className="text-[10px] text-[#999999] mt-1">Must start with http:// or https:// · paste only, no files</p>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Notes (optional)</label>
-                                    <input
-                                        type="text"
-                                        value={hrNotes[emp.id] ?? (emp.hrNotes ?? "")}
-                                        onChange={(e) => setHrNotes(prev => ({ ...prev, [emp.id]: e.target.value }))}
-                                        disabled={isAlreadyDone}
-                                        placeholder="Any remarks..."
-                                        className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
-                                    />
-                                </div>
+                            </div>
+
+                            {/* Notes — separated onto its own row now that the
+                                reference inputs occupy the two-column slot. */}
+                            <div>
+                                <label className="block text-xs font-bold text-[#666666] mb-1.5">Notes (optional)</label>
+                                <input
+                                    type="text"
+                                    value={hrNotes[emp.id] ?? (emp.hrNotes ?? "")}
+                                    onChange={(e) => setHrNotes(prev => ({ ...prev, [emp.id]: e.target.value }))}
+                                    disabled={isAlreadyDone}
+                                    placeholder="Any remarks..."
+                                    className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
+                                />
                             </div>
 
                             {/* Message + Submit */}
@@ -584,7 +824,7 @@ export default function HRDashboard() {
                                         <tr key={e.id} className="hover:bg-[#FAFAFA] transition-colors">
                                             <td className="px-5 py-3 text-sm text-[#333333] font-mono">{e.empCode || "\u2014"}</td>
                                             <td className="px-5 py-3 text-sm font-bold text-[#003087]">{e.name}</td>
-                                            <td className="px-5 py-3 text-sm text-[#333333]">{e.department}{e.evaluatorRoles?.length > 0 && <span className="block text-[10px] text-[#666666] mt-0.5">{e.evaluatorRoles.map(er => `${er.role.replace("_"," ")} \u2014 ${er.department}`).join(", ")}</span>}</td>
+                                            <td className="px-5 py-3 text-sm text-[#333333]">{(typeof e.department === "object" ? e.department?.name : e.department) || "\u2014"}{e.evaluatorRoles?.length > 0 && <span className="block text-[10px] text-[#666666] mt-0.5">{e.evaluatorRoles.map(er => `${er.role.replace("_"," ")} \u2014 ${typeof er.department === "object" ? er.department?.name : er.department}`).join(", ")}</span>}</td>
                                             <td className="px-5 py-3 text-sm text-[#666666]">{e.designation}</td>
                                             <td className="px-5 py-3"><div className="flex flex-wrap gap-1">{roles.map(r => <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-700 border-gray-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : r === "HOD" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace("_", " ")}</span>)}</div></td>
                                             <td className="px-5 py-3">

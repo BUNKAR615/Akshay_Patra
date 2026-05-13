@@ -8,6 +8,7 @@ import { ok, fail, created, serverError, notFound } from "../../../../../../lib/
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
 import { defaultPasswordFor } from "../../../../../../lib/auth/defaultPassword";
+import { hashStaffDefaultPassword } from "../../../../../../lib/auth/applyStaffPassword";
 import { z } from "zod";
 
 const SALT_ROUNDS = 10;
@@ -98,18 +99,43 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             return fail("Either hrUserId or empCode is required");
         }
 
-        if (hrUser.role !== "HR") {
-            await prisma.user.update({ where: { id: hrUser.id }, data: { role: "HR" } });
-        }
+        // Reset password to the staff formula ("Firstname_##") on every
+        // assign call. Admins can override via data.password.
+        const passwordHash = await hashStaffDefaultPassword({
+            role: "HR",
+            empCode: hrUser.empCode,
+            name: hrUser.name,
+            override: data.password,
+        });
 
-        // Upsert assignment
-        const assignment = await prisma.hrBranchAssignment.upsert({
-            where: { hrUserId_branchId: { hrUserId: hrUser.id, branchId } },
-            update: { assignedBy: user.userId, assignedAt: new Date() },
-            create: { hrUserId: hrUser.id, branchId, assignedBy: user.userId },
-            include: {
-                hr: { select: { id: true, empCode: true, name: true, mobile: true, role: true } },
-            },
+        // Detach-on-promote + assignment upsert in one transaction.
+        //   - role flipped to HR
+        //   - password reset to staff formula ("Firstname_##")
+        //   - departmentId / branchId / passwordHod / collarType nulled so
+        //     the user no longer appears in their old branch's employee list
+        //     and bulk-uploads of that branch can't silently demote them
+        //   - User.branchId is intentionally NOT written for HR —
+        //     HrBranchAssignment is the single source of truth.
+        const assignment = await prisma.$transaction(async (tx) => {
+            await tx.user.update({
+                where: { id: hrUser.id },
+                data: {
+                    role: "HR",
+                    password: passwordHash,
+                    departmentId: null,
+                    branchId: null,
+                    passwordHod: null,
+                    collarType: null,
+                },
+            });
+            return tx.hrBranchAssignment.upsert({
+                where: { hrUserId_branchId: { hrUserId: hrUser.id, branchId } },
+                update: { assignedBy: user.userId, assignedAt: new Date() },
+                create: { hrUserId: hrUser.id, branchId, assignedBy: user.userId },
+                include: {
+                    hr: { select: { id: true, empCode: true, name: true, mobile: true, role: true } },
+                },
+            });
         });
 
         await prisma.auditLog.create({

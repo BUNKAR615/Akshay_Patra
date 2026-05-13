@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 async function api(url, opts) {
     const res = await fetch(url, opts);
@@ -16,6 +16,7 @@ async function api(url, opts) {
 
 export default function BranchDepartmentsPage() {
     const { branchId } = useParams();
+    const router = useRouter();
     const [departments, setDepartments] = useState([]);
     const [branch, setBranch] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -76,43 +77,55 @@ export default function BranchDepartmentsPage() {
             )}
 
             <div className="grid gap-3">
-                {departments.map(dept => (
-                    <div key={dept.id} className="bg-white border border-[#E0E0E0] rounded-xl p-4">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                {editId === dept.id ? (
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            value={editName}
-                                            onChange={e => setEditName(e.target.value)}
-                                            className="border rounded-lg px-3 py-1.5 text-sm w-48"
-                                            autoFocus
-                                            onKeyDown={e => e.key === "Enter" && handleRename(dept.id)}
-                                        />
-                                        <button onClick={() => handleRename(dept.id)} className="px-3 py-1.5 bg-[#003087] text-white text-xs font-bold rounded-lg cursor-pointer">Save</button>
-                                        <button onClick={() => setEditId(null)} className="px-3 py-1.5 bg-gray-200 text-xs font-bold rounded-lg cursor-pointer">Cancel</button>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <h4 className="font-bold text-[#003087]">{dept.name}</h4>
-                                        <button
-                                            onClick={() => { setEditId(dept.id); setEditName(dept.name); }}
-                                            className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 cursor-pointer"
-                                        >
-                                            Rename
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${dept.collarType === "WHITE_COLLAR" ? "bg-gray-100 text-gray-600" : "bg-blue-50 text-blue-600"}`}>
-                                    {dept.collarType === "WHITE_COLLAR" ? "White Collar" : "Blue Collar"}
-                                </span>
-                                <span className="text-[12px] text-[#666] font-medium">{dept.employeeCount} employees</span>
+                {departments.map(dept => {
+                    const isEditing = editId === dept.id;
+                    const openDept = () => router.push(`/dashboard/admin/${branchId}/employees?departmentId=${dept.id}&departmentName=${encodeURIComponent(dept.name)}`);
+                    return (
+                        <div
+                            key={dept.id}
+                            role={isEditing ? undefined : "button"}
+                            tabIndex={isEditing ? -1 : 0}
+                            onClick={isEditing ? undefined : openDept}
+                            onKeyDown={isEditing ? undefined : (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDept(); } }}
+                            className={`bg-white border border-[#E0E0E0] rounded-xl p-4 ${isEditing ? "" : "hover:border-[#003087] hover:shadow-sm cursor-pointer transition-colors"}`}
+                        >
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    {isEditing ? (
+                                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                            <input
+                                                value={editName}
+                                                onChange={e => setEditName(e.target.value)}
+                                                className="border rounded-lg px-3 py-1.5 text-sm w-48"
+                                                autoFocus
+                                                onKeyDown={e => e.key === "Enter" && handleRename(dept.id)}
+                                            />
+                                            <button onClick={() => handleRename(dept.id)} className="px-3 py-1.5 bg-[#003087] text-white text-xs font-bold rounded-lg cursor-pointer">Save</button>
+                                            <button onClick={() => setEditId(null)} className="px-3 py-1.5 bg-gray-200 text-xs font-bold rounded-lg cursor-pointer">Cancel</button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <h4 className="font-bold text-[#003087]">{dept.name}</h4>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setEditId(dept.id); setEditName(dept.name); }}
+                                                className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 cursor-pointer"
+                                            >
+                                                Rename
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${dept.collarType === "WHITE_COLLAR" ? "bg-gray-100 text-gray-600" : "bg-blue-50 text-blue-600"}`}>
+                                        {dept.collarType === "WHITE_COLLAR" ? "White Collar" : "Blue Collar"}
+                                    </span>
+                                    <span className="text-[12px] text-[#666] font-medium">{dept.employeeCount} employees</span>
+                                    {!isEditing && <span className="text-[#999] text-sm" aria-hidden="true">›</span>}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
             {departments.length === 0 && (
