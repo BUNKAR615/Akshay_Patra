@@ -5,7 +5,7 @@
   "description": "Best Employee of the Quarter — Akshaya Patra Jaipur Branch Pilot",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma migrate deploy && next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "postinstall": "prisma generate",
     "lint": "next lint",
@@ -14,6 +14,7 @@
     "seed": "ts-node -O \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/seed.ts",
     "prisma:generate": "npx prisma generate",
     "prisma:migrate": "npx prisma migrate dev",
+    "prisma:deploy": "npx prisma migrate deploy",
     "prisma:studio": "npx prisma studio"
   },
   "lint-staged": {
