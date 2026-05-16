@@ -3,7 +3,7 @@ export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
-import { ok, fail, serverError, validateBody } from "../../../../lib/api-response";
+import { ok, fail, validateBody, handleApiError } from "../../../../lib/api-response";
 import { hrEvaluateSchema } from "../../../../lib/validators";
 import { normalizeScore, calculateBranchFinalScore } from "../../../../lib/scoreCalculator";
 import { createNotification } from "../../../../lib/notifications";
@@ -113,8 +113,7 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
 
         return ok({ message: "HR evaluation submitted", finalScore });
     } catch (err) {
-        console.error("[HR-EVALUATE] Error:", err.message, err.stack);
-        return serverError();
+        return handleApiError(err, "HR-EVALUATE");
     }
 });
 

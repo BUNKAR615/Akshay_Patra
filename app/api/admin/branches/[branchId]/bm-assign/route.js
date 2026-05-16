@@ -4,7 +4,7 @@ export const runtime = 'nodejs'
 import bcrypt from "bcryptjs";
 import prisma from "../../../../../../lib/prisma";
 import { withRole } from "../../../../../../lib/withRole";
-import { ok, fail, created, conflict, serverError, notFound } from "../../../../../../lib/api-response";
+import { ok, fail, created, conflict, notFound, handleApiError } from "../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
 import {
@@ -16,6 +16,7 @@ import {
 } from "../../../../../../lib/auth/bmAssignment";
 import { defaultPasswordFor } from "../../../../../../lib/auth/defaultPassword";
 import { hashStaffDefaultPassword } from "../../../../../../lib/auth/applyStaffPassword";
+import { assertSingleActiveRole } from "../../../../../../lib/auth/roleAssignmentRules";
 import { z } from "zod";
 
 const SALT_ROUNDS = 10;
@@ -59,8 +60,7 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
 
         return ok({ assignment: assignment || null });
     } catch (err) {
-        console.error("[BM-ASSIGN GET] Error:", err.message);
-        return serverError();
+        return handleApiError(err, "BM-ASSIGN GET");
     }
 });
 
@@ -103,6 +103,26 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             }
         } else {
             return fail("Either bmUserId or empCode is required");
+        }
+
+        // Rule A — a person may actively hold only ONE of BM/CM/HR/Committee.
+        const roleCheck = await assertSingleActiveRole(bmUser.id, "BRANCH_MANAGER");
+        if (!roleCheck.ok) {
+            await prisma.auditLog.create({
+                data: {
+                    userId: user.userId,
+                    action: "ASSIGNMENT_REJECTED",
+                    details: {
+                        type: "BRANCH_MANAGER",
+                        reason: "ROLE_CONFLICT",
+                        message: roleCheck.message,
+                        branchId,
+                        targetUserId: bmUser.id,
+                        empCode: bmUser.empCode,
+                    },
+                },
+            }).catch((err) => { console.error("[BM-ASSIGN] Audit log failed:", err); });
+            return conflict(roleCheck.message);
         }
 
         // Spec-mandated uniqueness validation BEFORE any write.
@@ -170,8 +190,7 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
 
         return created({ assignment });
     } catch (err) {
-        console.error("[BM-ASSIGN POST] Error:", err.message, err.stack);
-        return serverError();
+        return handleApiError(err, "BM-ASSIGN POST");
     }
 });
 
@@ -200,7 +219,6 @@ export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
 
         return ok({ removed: true });
     } catch (err) {
-        console.error("[BM-ASSIGN DELETE] Error:", err.message);
-        return serverError();
+        return handleApiError(err, "BM-ASSIGN DELETE");
     }
 });

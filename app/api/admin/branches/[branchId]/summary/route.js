@@ -35,10 +35,23 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
             include: { _count: { select: { departments: true } } },
         });
 
-        const quarter = await prisma.quarter.findFirst({
-            where: { status: "ACTIVE" },
-            select: { id: true, name: true, status: true },
-        });
+        // Resolve quarter: explicit `?quarterId=` → that quarter; otherwise
+        // the active quarter (or null when none active — counts stay 0).
+        const { searchParams } = new URL(request.url);
+        const requestedQuarterId = searchParams.get("quarterId");
+        let quarter = null;
+        if (requestedQuarterId) {
+            quarter = await prisma.quarter.findUnique({
+                where: { id: requestedQuarterId },
+                select: { id: true, name: true, status: true },
+            });
+            if (!quarter) return notFound("Quarter not found");
+        } else {
+            quarter = await prisma.quarter.findFirst({
+                where: { status: "ACTIVE" },
+                select: { id: true, name: true, status: true },
+            });
+        }
 
         const [
             employees,

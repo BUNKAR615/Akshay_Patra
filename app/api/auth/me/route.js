@@ -2,7 +2,8 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
-import { ok, unauthorized, notFound, serverError } from "../../../../lib/api-response";
+import { ok, unauthorized, notFound, fail, serverError } from "../../../../lib/api-response";
+import { withDbRetry, isTransientDbError } from "../../../../lib/http";
 
 /** GET /api/auth/me */
 export async function GET(request) {
@@ -10,22 +11,27 @@ export async function GET(request) {
         const userId = request.headers.get("x-user-id");
         if (!userId) return unauthorized();
 
-        const user = await prisma.user.findUnique({
+        const user = await withDbRetry(() => prisma.user.findUnique({
             where: { id: userId },
             select: {
                 id: true, empCode: true, name: true, role: true, departmentId: true, designation: true, mobile: true,
+                branchId: true,
                 department: { select: { id: true, name: true, branch: { select: { name: true } } } },
+                // Branch-level scope for ADMIN / BM / CM / HR / COMMITTEE users
+                // who have no departmentId — the profile card resolves Branch
+                // from here when the department-derived branch is absent.
+                scopedBranch: { select: { name: true } },
                 departmentRoles: {
                     select: { departmentId: true, role: true, department: { select: { id: true, name: true } } },
                 },
             },
-        });
+        }));
         if (!user) return notFound("User not found");
 
-        const activeQuarter = await prisma.quarter.findFirst({
+        const activeQuarter = await withDbRetry(() => prisma.quarter.findFirst({
             where: { status: "ACTIVE" },
             select: { id: true, name: true },
-        });
+        }));
 
         // HOD entries in `departmentRoles` are only meaningful while there's
         // a corresponding HodAssignment in the ACTIVE quarter. Stale rows
@@ -36,13 +42,21 @@ export async function GET(request) {
         // user's TRUE active-quarter roles only.
         let activeHodDeptIds = new Set();
         if (activeQuarter && (user.departmentRoles || []).some((dr) => dr.role === "HOD")) {
-            const rows = await prisma.hodAssignment.findMany({
+            const rows = await withDbRetry(() => prisma.hodAssignment.findMany({
                 where: { hodUserId: user.id, quarterId: activeQuarter.id },
                 select: { departmentId: true },
-            });
+            }));
             activeHodDeptIds = new Set(rows.map((r) => r.departmentId));
         }
         const filteredDepartmentRoles = (user.departmentRoles || []).filter((dr) => {
+            // SUPERVISOR is a legacy value in the Role enum (kept only for
+            // historic schema-compat with SupervisorEvaluation). It is not a
+            // runtime role anywhere in the app — no login flow, dashboard,
+            // or evaluator path consumes it. Stale rows that survive from
+            // old seed data (e.g. Rishpal Kumawat / IT) would otherwise
+            // surface as a bogus "SUPERVISOR" pill on the profile. Drop
+            // them here at the API boundary so no UI surface has to know.
+            if (dr.role === "SUPERVISOR") return false;
             if (dr.role !== "HOD") return true;
             return activeHodDeptIds.has(dr.departmentId);
         });
@@ -53,12 +67,23 @@ export async function GET(request) {
         // Dashboard isolation depends on dashboards seeing the picked role.
         const sessionRole = request.headers.get("x-user-role") || user.role;
 
+        // Branch name for the profile card. Department-derived branch (for
+        // EMPLOYEE/HOD) wins; otherwise fall back to the branch-level scope
+        // (ADMIN/BM/CM/HR/COMMITTEE). UserProfileCard reads `branchName` first.
+        const branchName = user.department?.branch?.name || user.scopedBranch?.name || null;
+
         return ok({
-            user: { ...user, role: sessionRole, departmentRoles: filteredDepartmentRoles },
+            user: { ...user, role: sessionRole, departmentRoles: filteredDepartmentRoles, branchName },
             currentQuarter: activeQuarter?.name || null,
         });
     } catch (err) {
         console.error("Me error:", err);
+        // Transient DB connection errors (cold start / pool wake-up) must
+        // surface as 503 so the client can retry gracefully instead of
+        // showing a dead "Internal Server Error".
+        if (isTransientDbError(err)) {
+            return fail("Service is starting up. Please try again in a moment.", 503);
+        }
         return serverError();
     }
 }

@@ -3,7 +3,7 @@ export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
-import { created, fail, notFound, conflict, serverError, validateBody } from "../../../../lib/api-response";
+import { created, fail, notFound, conflict, validateBody, handleApiError } from "../../../../lib/api-response";
 import { resolveScopeBranch } from "../../../../lib/auth/resolveScopeBranch";
 import { evaluateSchema } from "../../../../lib/validators";
 import { createNotification } from "../../../../lib/notifications";
@@ -211,7 +211,6 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
             stage2Generated,
         });
     } catch (err) {
-        console.error("BM evaluate error:", err);
-        return serverError();
+        return handleApiError(err, "BM-EVALUATE");
     }
 });

@@ -109,8 +109,9 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
                     : null,
                 alreadyEvaluated: !!ev,
                 isEvaluated: !!ev,
-                mySubmittedScore: ev ? ev.bmNormalized : null,
-                mySubmittedRawScore: ev ? ev.bmRawScore : null,
+                // Scores are intentionally NOT returned — only the Committee
+                // may see evaluation scores. The boolean flags above are
+                // enough for the dashboard's "Done" state.
             };
         }));
 

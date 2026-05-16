@@ -40,10 +40,19 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
         if (!branch) return notFound("Branch not found");
         const branchId = branch.id;
 
-        // Active quarter, fall back to most recent if none is active.
-        let quarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
-        if (!quarter) {
-            quarter = await prisma.quarter.findFirst({ orderBy: { createdAt: "desc" } });
+        // Resolve quarter: explicit `?quarterId=` → that quarter (archive view);
+        // otherwise active quarter, fall back to most recent.
+        const { searchParams } = new URL(request.url);
+        const requestedQuarterId = searchParams.get("quarterId");
+        let quarter = null;
+        if (requestedQuarterId) {
+            quarter = await prisma.quarter.findUnique({ where: { id: requestedQuarterId } });
+            if (!quarter) return notFound("Quarter not found");
+        } else {
+            quarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
+            if (!quarter) {
+                quarter = await prisma.quarter.findFirst({ orderBy: { createdAt: "desc" } });
+            }
         }
         if (!quarter) return fail("No quarters exist yet");
         const quarterId = quarter.id;

@@ -4,11 +4,12 @@ export const runtime = 'nodejs'
 import bcrypt from "bcryptjs";
 import prisma from "../../../../../../lib/prisma";
 import { withRole } from "../../../../../../lib/withRole";
-import { ok, fail, created, serverError, notFound } from "../../../../../../lib/api-response";
+import { ok, fail, created, conflict, notFound, handleApiError } from "../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
 import { defaultPasswordFor } from "../../../../../../lib/auth/defaultPassword";
 import { hashStaffDefaultPassword } from "../../../../../../lib/auth/applyStaffPassword";
+import { assertSingleActiveRole, assertHrCapacity } from "../../../../../../lib/auth/roleAssignmentRules";
 import { z } from "zod";
 
 const SALT_ROUNDS = 10;
@@ -54,8 +55,7 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
 
         return ok({ assignments });
     } catch (err) {
-        console.error("[HR-ASSIGN GET] Error:", err.message);
-        return serverError();
+        return handleApiError(err, "HR-ASSIGN GET");
     }
 });
 
@@ -97,6 +97,32 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             }
         } else {
             return fail("Either hrUserId or empCode is required");
+        }
+
+        // Rule A — a person may actively hold only ONE of BM/CM/HR/Committee.
+        const roleCheck = await assertSingleActiveRole(hrUser.id, "HR");
+        if (!roleCheck.ok) {
+            await prisma.auditLog.create({
+                data: {
+                    userId: user.userId,
+                    action: "ASSIGNMENT_REJECTED",
+                    details: { type: "HR", reason: "ROLE_CONFLICT", message: roleCheck.message, branchId, targetUserId: hrUser.id, empCode: hrUser.empCode },
+                },
+            }).catch(() => {});
+            return conflict(roleCheck.message);
+        }
+
+        // Rule D — at most 3 HR personnel per branch.
+        const capacity = await assertHrCapacity(branchId, hrUser.id);
+        if (!capacity.ok) {
+            await prisma.auditLog.create({
+                data: {
+                    userId: user.userId,
+                    action: "ASSIGNMENT_REJECTED",
+                    details: { type: "HR", reason: "BRANCH_HR_FULL", message: capacity.message, branchId, targetUserId: hrUser.id, empCode: hrUser.empCode },
+                },
+            }).catch(() => {});
+            return conflict(capacity.message);
         }
 
         // Reset password to the staff formula ("Firstname_##") on every
@@ -148,8 +174,7 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
 
         return created({ assignment });
     } catch (err) {
-        console.error("[HR-ASSIGN POST] Error:", err.message);
-        return serverError();
+        return handleApiError(err, "HR-ASSIGN POST");
     }
 });
 
@@ -180,7 +205,6 @@ export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
 
         return ok({ removed: true });
     } catch (err) {
-        console.error("[HR-ASSIGN DELETE] Error:", err.message);
-        return serverError();
+        return handleApiError(err, "HR-ASSIGN DELETE");
     }
 });

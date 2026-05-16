@@ -139,9 +139,8 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
                 designation: s.user.designation || '',
                 departmentName: deptName,
                 isEvaluated: !!ev,
-                mySubmittedScore: ev ? ev.cmNormalized : null,
-                mySubmittedRawScore: ev ? ev.cmRawScore : null,
-                myFinalScore: ev ? ev.finalScore : null,
+                // Scores are intentionally NOT returned — only the Committee
+                // may see evaluation scores.
             };
         }));
 

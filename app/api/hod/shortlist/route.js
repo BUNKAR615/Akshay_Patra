@@ -71,8 +71,8 @@ export const GET = withRole(["HOD"], async (request, { user }) => {
                 rank: s.rank,
                 evaluated: !!ev,
                 isEvaluated: !!ev,
-                mySubmittedScore: ev ? ev.hodNormalized : null,
-                mySubmittedRawScore: ev ? ev.hodRawScore : null,
+                // Scores are intentionally NOT returned — only the Committee
+                // may see evaluation scores.
             };
         });
 

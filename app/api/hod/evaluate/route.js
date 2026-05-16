@@ -3,7 +3,7 @@ export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
-import { ok, fail, serverError, validateBody } from "../../../../lib/api-response";
+import { ok, fail, validateBody, handleApiError } from "../../../../lib/api-response";
 import { evaluateSchema } from "../../../../lib/validators";
 import { normalizeScore, calculateBranchStage2Score } from "../../../../lib/scoreCalculator";
 import { getBigBranchCollarLimits } from "../../../../lib/branchRules";
@@ -207,7 +207,6 @@ export const POST = withRole(["HOD"], async (request, { user }) => {
 
         return ok({ message: "Evaluation submitted successfully", stage2CombinedScore: combined });
     } catch (err) {
-        console.error("[HOD-EVALUATE] Error:", err.message, err.stack);
-        return serverError();
+        return handleApiError(err, "HOD-EVALUATE");
     }
 });

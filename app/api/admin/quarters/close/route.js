@@ -3,7 +3,7 @@ export const runtime = 'nodejs'
 
 import prisma from "../../../../../lib/prisma";
 import { withRole } from "../../../../../lib/withRole";
-import { ok, notFound, fail, serverError } from "../../../../../lib/api-response";
+import { ok, notFound, fail, handleApiError } from "../../../../../lib/api-response";
 import { resetHodStateForQuarters } from "../../../../../lib/auth/quarterReset";
 
 /**
@@ -47,13 +47,15 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             console.error("[QUARTER-CLOSE] HOD reset failed (quarter still marked CLOSED):", resetErr);
         }
 
+        // Audit is best-effort: the quarter is already CLOSED, so an audit
+        // failure must not turn a successful close into a 500.
         await prisma.auditLog.create({
             data: {
                 userId: user.userId,
                 action: "QUARTER_CLOSED",
                 details: { quarterId: closed.id, name: closed.name, hodReset: hodResetStats },
             },
-        });
+        }).catch((e) => { console.error("[QUARTER-CLOSE] Audit log failed:", e); });
 
         return ok({
             message: `Quarter "${closed.name}" closed successfully`,
@@ -61,7 +63,6 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             hodReset: hodResetStats,
         });
     } catch (err) {
-        console.error("Close quarter error:", err);
-        return serverError();
+        return handleApiError(err, "QUARTER-CLOSE");
     }
 });

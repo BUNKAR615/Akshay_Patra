@@ -3,7 +3,7 @@ export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
-import { created, fail, notFound, conflict, serverError, validateBody } from "../../../../lib/api-response";
+import { created, fail, notFound, conflict, validateBody, handleApiError } from "../../../../lib/api-response";
 import { evaluateSchema } from "../../../../lib/validators";
 import { createNotification } from "../../../../lib/notifications";
 import { normalizeScore, calculateFinalScore, calculateBranchStage3Score } from "../../../../lib/scoreCalculator";
@@ -225,8 +225,7 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
 
         return fail("Could not determine evaluation flow for this employee");
     } catch (err) {
-        console.error("CM evaluate error:", err);
-        return serverError();
+        return handleApiError(err, "CM-EVALUATE");
     }
 });
 

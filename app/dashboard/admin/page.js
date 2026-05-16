@@ -11,11 +11,40 @@ import QuarterCountdown from "../../../components/QuarterCountdown";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
 
-async function api(url, opts) {
-    const res = await fetch(url, opts);
-    const json = await res.json();
-    if (!res.ok || !json.success) throw new Error(json.message || "Request failed");
-    return json.data;
+async function api(url, opts, { retries = 4 } = {}) {
+    let lastErr;
+    for (let attempt = 0; attempt < retries; attempt++) {
+        let res;
+        try {
+            res = await fetch(url, opts);
+        } catch (e) {
+            // Network blip — retry a couple of times before surfacing.
+            lastErr = e;
+            if (attempt < retries - 1) {
+                await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+                continue;
+            }
+            throw e;
+        }
+        let json = null;
+        try { json = await res.json(); } catch { json = null; }
+
+        // 503 = backend warming up (cold DB / pool). Retry transparently
+        // with backoff so the dashboard never shows a dead error page.
+        if (res.status === 503 && attempt < retries - 1) {
+            lastErr = new Error((json && json.message) || "Service starting up");
+            await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+            continue;
+        }
+
+        if (!res.ok || !json || !json.success) {
+            const err = new Error((json && json.message) || "Request failed");
+            err.status = res.status;
+            throw err;
+        }
+        return json.data;
+    }
+    throw lastErr || new Error("Request failed");
 }
 
 // Auto-generate quarter name based on current month / financial year
@@ -368,8 +397,15 @@ export default function AdminDashboard() {
             try {
                 const d = await api("/api/auth/me");
                 setUser(d.user);
-            } catch (err) { console.error("[Admin] Auth fetch failed:", err); }
-            setLoading(false);
+                setLoading(false);
+            } catch (err) {
+                console.error("[Admin] Auth fetch failed:", err);
+                // Auth could not be established — an expired session, or
+                // persistent backend trouble even after retries. Send the
+                // user to re-login rather than rendering a broken shell;
+                // no browser-cache clear is ever required.
+                if (typeof window !== "undefined") window.location.replace("/login");
+            }
         })();
     }, []);
 
@@ -390,15 +426,36 @@ export default function AdminDashboard() {
     const [quarterProgress, setQuarterProgress] = useState(null);
     const [progressLoading, setProgressLoading] = useState(true);
 
+    // Quarter archive — list of every quarter + the one currently being viewed.
+    // `selectedQuarterId === null` means "active quarter" (resolved by the API).
+    // Set explicitly when the admin picks an archived quarter from the dropdown.
+    const [quarters, setQuarters] = useState([]);
+    const [activeQuarterId, setActiveQuarterId] = useState(null);
+    const [selectedQuarterId, setSelectedQuarterId] = useState(null);
+
     // Ongoing-evaluation download (Pipeline tab)
     const [exportBranchId, setExportBranchId] = useState("");
     const [exportLoading, setExportLoading] = useState(false);
     const [exportError, setExportError] = useState("");
 
-    const fetchProgress = async () => {
+    const fetchQuarters = async () => {
+        try {
+            const d = await api("/api/admin/quarters/list");
+            setQuarters(d.quarters || []);
+            setActiveQuarterId(d.activeQuarterId || null);
+            // First load only — don't clobber a user-picked archived quarter.
+            setSelectedQuarterId((prev) => prev || d.activeQuarterId || d.quarters?.[0]?.id || null);
+        } catch {
+            setQuarters([]);
+            setActiveQuarterId(null);
+        }
+    };
+
+    const fetchProgress = async (quarterId) => {
         setProgressLoading(true);
         try {
-            const d = await api("/api/admin/quarter-progress");
+            const qs = quarterId ? `?quarterId=${encodeURIComponent(quarterId)}` : "";
+            const d = await api(`/api/admin/quarter-progress${qs}`);
             setQuarterProgress(d);
         } catch {
             setQuarterProgress(null);
@@ -417,7 +474,8 @@ export default function AdminDashboard() {
         setExportLoading(true);
         setExportError("");
         try {
-            const payload = await api(`/api/admin/branches/${exportBranchId}/export/ongoing`);
+            const qs = selectedQuarterId ? `?quarterId=${encodeURIComponent(selectedQuarterId)}` : "";
+            const payload = await api(`/api/admin/branches/${exportBranchId}/export/ongoing${qs}`);
             const rows = (payload.employees || []).map((e, i) => ({
                 "S.No": i + 1,
                 "Emp Code": e.empCode || "",
@@ -577,26 +635,45 @@ export default function AdminDashboard() {
         } catch (err) { console.error("[Admin] fetchQuestions failed:", err); }
     };
 
+    // Load the list of every quarter once — drives the dashboard archive
+    // selector. We only fetch the list itself here; the actual quarter
+    // progress fetch is keyed on `selectedQuarterId` below so picking a new
+    // quarter from the dropdown re-fetches automatically.
     useEffect(() => {
-        if (tab === "dashboard" && !quarterProgress) {
-            fetchProgress();
-            fetchReport();
+        if ((tab === "dashboard" || tab === "pipeline" || tab === "quarter") && quarters.length === 0) {
+            fetchQuarters();
         }
-        if ((tab === "pipeline" || tab === "quarter") && !quarterProgress) fetchProgress();
         if (tab === "org" && orgStructure.length === 0) fetchOrg();
         if (tab === "questions" && questions.length === 0) fetchQuestions();
     }, [tab]);
 
+    // Re-fetch progress (and the summary report) whenever the dashboard is
+    // visible and the selected quarter changes — including the very first
+    // resolution from the quarter list. Passing `selectedQuarterId` lets the
+    // admin pin the view to an archived quarter; the API resolves null → active.
     useEffect(() => {
-        // Auto-refresh dashboard tab every 60s
-        let interval;
+        if (!selectedQuarterId) return;
         if (tab === "dashboard") {
+            fetchProgress(selectedQuarterId);
+            fetchReport();
+        }
+        if (tab === "pipeline" || tab === "quarter") {
+            fetchProgress(selectedQuarterId);
+        }
+    }, [tab, selectedQuarterId]);
+
+    useEffect(() => {
+        // Auto-refresh dashboard tab every 60s, pinned to the selected quarter
+        // so a user reviewing an archived quarter doesn't get yanked back to
+        // the active quarter on each tick.
+        let interval;
+        if (tab === "dashboard" && selectedQuarterId) {
             interval = setInterval(() => {
-                fetchProgress();
+                fetchProgress(selectedQuarterId);
             }, 60000);
         }
         return () => clearInterval(interval);
-    }, [tab]);
+    }, [tab, selectedQuarterId]);
 
     // Recent activity for the dashboard view.
     useEffect(() => {
@@ -688,8 +765,11 @@ export default function AdminDashboard() {
             setQuarterName(""); setStartDate(""); setEndDate("");
             setQuarterProgress(null);
             setReport(null);
-            if (tab === "dashboard") { fetchProgress(); fetchReport(); }
-            if (tab === "quarter") fetchProgress();
+            // Snap selection to the new active quarter and re-load the list.
+            setSelectedQuarterId(null);
+            await fetchQuarters();
+            // The selectedQuarterId-watching effect will trigger fetchProgress
+            // once the list resolves and seeds selectedQuarterId.
         } catch (e) { setQuarterMsg({ type: "error", text: e.message }); }
         setQuarterLoading(false);
     };
@@ -706,8 +786,10 @@ export default function AdminDashboard() {
             setQuarterMsg({ type: "success", text: d.message });
             setQuarterProgress(null);
             setReport(null);
-            if (tab === "dashboard") { fetchProgress(); fetchReport(); }
-            if (tab === "quarter") fetchProgress();
+            // Re-fetch the quarter list (the just-closed one is now archived).
+            // Keep selectedQuarterId pointing at it so the admin can see the
+            // archived view immediately — they explicitly chose to close it.
+            await fetchQuarters();
         } catch (e) { setQuarterMsg({ type: "error", text: e.message }); }
         setQuarterLoading(false);
     };
@@ -784,6 +866,40 @@ export default function AdminDashboard() {
     const [branchMsg, setBranchMsg] = useState({ type: "", text: "" });
     const [newBranch, setNewBranch] = useState({ name: "", location: "", branchType: "SMALL" });
     const [editBranch, setEditBranch] = useState(null);
+
+    // ── Branch sheet import (full replacement) ──
+    const [importFile, setImportFile] = useState(null);
+    const [importBranchName, setImportBranchName] = useState("");
+    const [importLoading, setImportLoading] = useState(false);
+    const [importResult, setImportResult] = useState(null);
+    const [importMsg, setImportMsg] = useState({ type: "", text: "" });
+
+    const runBranchImport = async () => {
+        setConfirm({ open: false, type: null });
+        setImportLoading(true);
+        setImportMsg({ type: "", text: "" });
+        setImportResult(null);
+        try {
+            const fd = new FormData();
+            fd.append("file", importFile);
+            if (importBranchName) fd.append("branchName", importBranchName);
+            const res = await fetch("/api/admin/branches/import", { method: "POST", body: fd });
+            const json = await res.json();
+            if (!res.ok || !json.success) throw new Error(json.message || "Import failed");
+            setImportResult(json.data);
+            const b = json.data.branches || [];
+            setImportMsg({
+                type: "success",
+                text: `Imported ${b.length} branch(es): ${b.reduce((s, x) => s + x.employeesImported, 0)} employees, ${b.reduce((s, x) => s + x.archivedEmployees.length, 0)} archived.`,
+            });
+            setImportFile(null);
+            setImportBranchName("");
+            fetchBranches();
+        } catch (err) {
+            setImportMsg({ type: "error", text: err.message || "Import failed" });
+        }
+        setImportLoading(false);
+    };
 
     const fetchBranches = async () => {
         setBranchLoading(true);
@@ -966,21 +1082,38 @@ export default function AdminDashboard() {
                         </div>
                     ) : quarterProgress ? (
                         <>
-                            {/* SECTION A — Quarter Status Bar */}
+                            {/* SECTION A — Quarter Status Bar + Archive Selector */}
                             <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-3 sm:p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 sm:gap-4">
-                                <div>
-                                    <h2 className="text-lg sm:text-xl font-bold text-[#003087] flex items-center gap-2 sm:gap-3 flex-wrap">
-                                        {quarterProgress.quarter.name}
+                                <div className="min-w-0">
+                                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                                        <label className="text-[11px] uppercase tracking-wide text-[#666666] font-bold">Quarter</label>
+                                        <select
+                                            value={selectedQuarterId || ""}
+                                            onChange={(e) => setSelectedQuarterId(e.target.value)}
+                                            className="bg-white border border-[#CCCCCC] rounded-md px-2 py-1 text-base sm:text-lg font-bold text-[#003087] focus:outline-none focus:ring-2 focus:ring-[#003087] cursor-pointer"
+                                            aria-label="Select quarter to view"
+                                        >
+                                            {quarters.map((q) => (
+                                                <option key={q.id} value={q.id}>
+                                                    {q.name}{q.status === "CLOSED" ? " — Archived" : ""}
+                                                </option>
+                                            ))}
+                                        </select>
                                         <span className={`text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border ${quarterProgress.quarter.status === "ACTIVE" ? "bg-[#E3F2FD] text-[#003087] border-[#90CAF9]" : "bg-[#FFEBEE] text-[#D32F2F] border-[#EF9A9A]"}`}>
                                             {quarterProgress.quarter.status}
                                         </span>
-                                    </h2>
+                                        {quarterProgress.quarter.status === "CLOSED" && (
+                                            <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-[#F5F5F5] text-[#666666] border border-[#CCCCCC] font-semibold">
+                                                Read-only archive
+                                            </span>
+                                        )}
+                                    </div>
                                     <p className="text-[#333333] text-xs sm:text-sm mt-1 font-medium">
                                         Started: {new Date(quarterProgress.quarter.startDate).toLocaleDateString()}
                                     </p>
                                 </div>
                                 <QuarterCountdown quarter={quarterProgress.quarter} compact className="w-full lg:max-w-xl lg:flex-1" />
-                                {quarterProgress.quarter.status === "ACTIVE" && (
+                                {quarterProgress.quarter.status === "ACTIVE" && quarterProgress.quarter.id === activeQuarterId && (
                                     <button onClick={requestCloseQuarter} disabled={quarterLoading} className="w-full sm:w-auto px-4 py-2 bg-[#D32F2F] hover:bg-[#B71C1C] text-white font-bold rounded-lg text-sm transition-colors cursor-pointer shadow-sm">
                                         Close Quarter
                                     </button>
@@ -1294,13 +1427,82 @@ export default function AdminDashboard() {
                         </div>
                     </div>
 
+                    {/* Replace Branch Data — full sheet import */}
+                    <div className="bg-white border border-[#EF9A9A] rounded-xl p-4 space-y-3">
+                        <h3 className="font-bold text-[#D32F2F]">Replace Branch Data (Import Sheet)</h3>
+                        <p className="text-xs text-[#666666]">
+                            Uploads an employee Excel workbook and <strong>completely replaces</strong> all
+                            employees and departments for each branch it covers. Old employees not in the
+                            sheet are archived; old departments are removed. Multi-branch files (with a
+                            Location column) are split automatically — leave the branch blank. For a
+                            single-branch file (e.g. the Jaipur department-tab file) select the target branch.
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <input
+                                type="file"
+                                accept=".xlsx,.xls"
+                                onChange={(e) => { setImportFile(e.target.files?.[0] || null); setImportResult(null); setImportMsg({ type: "", text: "" }); }}
+                                className="border rounded-lg px-3 py-2 text-sm"
+                            />
+                            <select
+                                value={importBranchName}
+                                onChange={(e) => setImportBranchName(e.target.value)}
+                                className="border rounded-lg px-3 py-2 text-sm"
+                            >
+                                <option value="">Branch from file (multi-branch)</option>
+                                {branches.map((b) => (
+                                    <option key={b.id} value={b.name}>{b.name}</option>
+                                ))}
+                            </select>
+                            <button
+                                onClick={() => setConfirm({ open: true, type: "import-branch" })}
+                                disabled={!importFile || importLoading}
+                                className="bg-[#D32F2F] text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-[#B71C1C] disabled:bg-[#CCCCCC] disabled:cursor-not-allowed cursor-pointer"
+                            >
+                                {importLoading ? "Importing…" : "Replace Branch Data"}
+                            </button>
+                        </div>
+                        {importMsg.text && (
+                            <div className={`p-3 rounded-lg text-sm font-medium ${importMsg.type === "error" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>{importMsg.text}</div>
+                        )}
+                        {importResult && (
+                            <div className="border border-[#E0E0E0] rounded-lg overflow-hidden">
+                                <table className="w-full text-xs">
+                                    <thead className="bg-[#F5F5F5] text-[#333333]">
+                                        <tr>
+                                            <th className="text-left px-3 py-2 font-bold">Branch</th>
+                                            <th className="text-right px-3 py-2 font-bold">Employees Imported</th>
+                                            <th className="text-right px-3 py-2 font-bold">Departments</th>
+                                            <th className="text-right px-3 py-2 font-bold">Archived (replaced)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {importResult.branches.map((b) => (
+                                            <tr key={b.branch.id} className="border-t border-[#E0E0E0]">
+                                                <td className="px-3 py-2 font-bold text-[#003087]">{b.branch.name}{b.branchCreated ? " (new)" : ""}</td>
+                                                <td className="px-3 py-2 text-right">{b.employeesImported}</td>
+                                                <td className="px-3 py-2 text-right">{b.departmentsCreated.length}</td>
+                                                <td className="px-3 py-2 text-right">{b.archivedEmployees.length}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                {(importResult.errors?.length > 0 || importResult.skipped?.length > 0) && (
+                                    <div className="px-3 py-2 text-[11px] text-[#666666] bg-[#FAFAFA] border-t border-[#E0E0E0]">
+                                        {importResult.skipped?.length || 0} row(s) skipped, {importResult.errors?.length || 0} error(s), {importResult.duplicatesInFile || 0} duplicate(s) in file.
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                     {/* Branch List */}
                     {branchLoading ? <div className="text-center py-8 text-gray-500">Loading...</div> : (
                         <div className="grid gap-4">
                             {branches.map(branch => (
                                 <div
                                     key={branch.id}
-                                    onClick={() => router.push(`/dashboard/admin/${branch.slug}`)}
+                                    onClick={() => router.push(`/dashboard/admin/${branch.slug || branch.id}`)}
                                     className="bg-white border border-[#E0E0E0] rounded-xl p-4 hover:shadow-md hover:border-[#003087] transition-all cursor-pointer"
                                 >
                                     <div className="flex items-center justify-between">
@@ -2201,6 +2403,16 @@ export default function AdminDashboard() {
                 variant="danger"
                 loading={quarterLoading}
                 onConfirm={closeQuarter}
+                onCancel={() => setConfirm({ open: false, type: null })}
+            />
+            <ConfirmDialog
+                open={confirm.open && confirm.type === "import-branch"}
+                title="Replace Branch Data?"
+                message={`This will REPLACE all employees and departments for ${importBranchName ? `the "${importBranchName}" branch` : "every branch in the uploaded file"}.\n\n✓ The sheet becomes the source of truth\n✓ Employees not in the sheet are archived and removed\n✓ Departments not in the sheet are deleted\n✓ A branch named in the sheet but missing is created\n\nThis cannot be undone.`}
+                confirmLabel="Yes, Replace Data"
+                variant="danger"
+                loading={importLoading}
+                onConfirm={runBranchImport}
                 onCancel={() => setConfirm({ open: false, type: null })}
             />
         </DashboardShell >

@@ -14,6 +14,9 @@ out/
 # prisma
 prisma/dev.db
 
+# runtime uploads (local dev only — production uses Vercel Blob)
+public/uploads/
+
 # misc
 .DS_Store
 *.pem

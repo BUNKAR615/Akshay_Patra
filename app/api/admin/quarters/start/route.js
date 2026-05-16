@@ -4,6 +4,7 @@ export const runtime = 'nodejs'
 import prisma from "../../../../../lib/prisma";
 import { withRole } from "../../../../../lib/withRole";
 import { created, fail, conflict, serverError, validateBody } from "../../../../../lib/api-response";
+import { isTransientDbError } from "../../../../../lib/http";
 import { startQuarterSchema } from "../../../../../lib/validators";
 import { notifyAllEmployees, createNotification } from "../../../../../lib/notifications";
 import { getDepartmentSize, logSmallDepartmentRule } from "../../../../../lib/department-rules";
@@ -174,29 +175,45 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             return { quarter: q, assignmentStats: stats };
         });
 
+        // ── Everything below runs AFTER the quarter is already committed. ──
+        // None of it may fail the request: a throw here would return a 500
+        // even though the quarter exists, trapping the admin in a
+        // "quarter already exists" retry loop. Each step is best-effort and
+        // failures are collected into `warnings` instead of crashing.
+        const warnings = [];
+
         await prisma.auditLog.create({
             data: { userId: user.userId, action: "QUARTER_STARTED", details: { quarterId: quarter.id, name: quarter.name, questionCount: data.questionCount, totalLocked: allSelectedIds.length, selfCount: selectedSelf.length, bmCount: selectedBm.length, cmCount: selectedCm.length, priorHodReset } },
-        });
+        }).catch((e) => { console.error("[QUARTER-START] Audit log failed:", e); });
 
         // Notify all employees
-        await notifyAllEmployees(`New evaluation quarter started for ${data.quarterName}. Please complete your self-assessment.`);
+        try {
+            await notifyAllEmployees(`New evaluation quarter started for ${data.quarterName}. Please complete your self-assessment.`);
+        } catch (e) {
+            console.error("[QUARTER-START] notifyAllEmployees failed:", e);
+            warnings.push("Employee notifications could not be sent.");
+        }
 
         // ── Auto-winner check for single-employee departments ──
-        const allDepartments = await prisma.department.findMany({ select: { id: true, name: true } });
         const autoWinners = [];
+        try {
+            const allDepartments = await prisma.department.findMany({ select: { id: true, name: true } });
+            for (const dept of allDepartments) {
+                // Guard per-department: a stale/deleted department (a throwing
+                // getDepartmentSize) must not abort the loop or fail the request.
+                try {
+                    const deptLimits = await getDepartmentSize(dept.id);
+                    if (!deptLimits.autoWinner) continue;
 
-        for (const dept of allDepartments) {
-            const deptLimits = await getDepartmentSize(dept.id);
-            if (deptLimits.autoWinner) {
-                const singleEmployee = await prisma.user.findFirst({
-                    where: { departmentId: dept.id, role: "EMPLOYEE" },
-                    select: { id: true, name: true },
-                });
+                    const singleEmployee = await prisma.user.findFirst({
+                        where: { departmentId: dept.id, role: "EMPLOYEE" },
+                        select: { id: true, name: true },
+                    });
+                    if (!singleEmployee) continue;
 
-                if (singleEmployee) {
                     // Check if winner already exists for this specific department+quarter
                     const existingWinner = await prisma.bestEmployee.findFirst({
-                        where: { quarterId: quarter.id, departmentId: dept.id }
+                        where: { quarterId: quarter.id, departmentId: dept.id },
                     });
                     if (!existingWinner) {
                         await prisma.bestEmployee.create({
@@ -219,43 +236,60 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
                                 message: `Auto-winner due to single employee in department "${dept.name}"`,
                             },
                         },
-                    });
+                    }).catch(() => {});
 
                     await createNotification(
                         singleEmployee.id,
                         `🏆 You are automatically the Best Employee of ${data.quarterName} (only employee in ${dept.name}).`
-                    );
+                    ).catch(() => {});
 
                     logSmallDepartmentRule({
                         userId: user.userId, departmentId: dept.id, departmentName: dept.name,
                         caseNumber: 4, totalEmployees: 1, quarterId: quarter.id,
                         action: "SMALL_DEPT_AUTO_WINNER",
                     });
+                } catch (deptErr) {
+                    console.error(`[QUARTER-START] Auto-winner check failed for department ${dept.id}:`, deptErr);
                 }
             }
+        } catch (e) {
+            console.error("[QUARTER-START] Auto-winner scan failed:", e);
+            warnings.push("Single-employee auto-winner check could not complete.");
         }
 
-        const result = await prisma.quarter.findUnique({
-            where: { id: quarter.id },
-            include: { quarterQuestions: { include: { question: { select: { id: true, text: true, textHindi: true, category: true, level: true } } } } },
-        });
+        // Fetch the full quarter for the response — fall back to the already
+        // committed `quarter` object if this read blips.
+        let result = quarter;
+        try {
+            const full = await prisma.quarter.findUnique({
+                where: { id: quarter.id },
+                include: { quarterQuestions: { include: { question: { select: { id: true, text: true, textHindi: true, category: true, level: true } } } } },
+            });
+            if (full) result = full;
+        } catch (e) {
+            console.error("[QUARTER-START] Quarter re-fetch failed:", e);
+        }
 
         // Warn on branches without BM assigned
-        const branchesWithoutBm = await prisma.branch.findMany({
-            where: { scopedUsers: { none: { role: "BRANCH_MANAGER" } } },
-            select: { name: true },
-        });
-
         let warningMsg = "";
-        if (branchesWithoutBm.length > 0) {
-            const names = branchesWithoutBm.map(b => b.name).join(", ");
-            warningMsg = ` WARNING: ${branchesWithoutBm.length} branch(es) have no assigned Branch Manager (${names}). Stage 2 evaluations in those branches cannot proceed!`;
+        try {
+            const branchesWithoutBm = await prisma.branch.findMany({
+                where: { scopedUsers: { none: { role: "BRANCH_MANAGER" } } },
+                select: { name: true },
+            });
+            if (branchesWithoutBm.length > 0) {
+                const names = branchesWithoutBm.map(b => b.name).join(", ");
+                warningMsg = ` WARNING: ${branchesWithoutBm.length} branch(es) have no assigned Branch Manager (${names}). Stage 2 evaluations in those branches cannot proceed!`;
+            }
+        } catch (e) {
+            console.error("[QUARTER-START] branchesWithoutBm check failed:", e);
         }
 
         const responseData = {
             message: `Quarter "${data.quarterName}" started with ${allSelectedIds.length} questions locked (${selectedSelf.length} SELF, ${selectedBm.length} BM, ${selectedCm.length} CM). ${assignmentStats.totalEmployees} employees assigned unique question sets.${warningMsg}`,
             quarter: result,
             assignmentStats,
+            warnings,
         };
         if (autoWinners.length > 0) {
             responseData.autoWinners = autoWinners;
@@ -264,8 +298,17 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
 
         return created(responseData);
     } catch (err) {
-        console.error("Start quarter error:", err);
-        require("fs").writeFileSync("c:/Users/Dinesh/Desktop/Akshaya_Patra/err.txt", String(err.stack || err));
+        // Log to stdout/stderr so Vercel's runtime captures the stack — DO
+        // NOT write to a hard-coded Windows path here. The previous
+        // `fs.writeFileSync("c:/Users/Dinesh/...")` call worked only on the
+        // dev machine and threw an EPERM on Vercel's Linux runtime,
+        // masking the real error.
+        console.error("Start quarter error:", err?.stack || err);
+        // Transient DB connection blips (cold start / pool wake-up) surface
+        // as a retryable 503 rather than a dead 500.
+        if (isTransientDbError(err)) {
+            return fail("Service is starting up. Please try again in a moment.", 503);
+        }
         return serverError();
     }
 });

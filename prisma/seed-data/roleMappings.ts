@@ -20,7 +20,14 @@ export const ROLE_MAPPINGS = [
   { empCode: '5100029', department: 'Human Resources', role: 'SUPERVISOR' },
   { empCode: '1800022', department: 'Information Technology', role: 'CLUSTER_MANAGER' },
   { empCode: '1800022', department: 'Information Technology', role: 'BRANCH_MANAGER' },
-  { empCode: '1800349', department: 'Information Technology', role: 'SUPERVISOR' },
+  // NOTE: Rishpal Kumawat (1800349) was previously seeded here with
+  // role 'SUPERVISOR' for Information Technology. SUPERVISOR is a legacy
+  // enum value with no runtime support — login, dashboard routing, and
+  // every evaluator flow ignore it. Keeping that row meant his admin
+  // profile rendered a bogus "SUPERVISOR" pill alongside ADMIN. The row
+  // is intentionally removed so future re-seeds don't reintroduce it.
+  // For pre-existing DBs, /api/auth/me + UserProfileCard also filter
+  // SUPERVISOR entries at the boundary, so this is purely belt-and-braces.
   { empCode: '1800022', department: 'Maintenance', role: 'CLUSTER_MANAGER' },
   { empCode: '1800011', department: 'Maintenance', role: 'BRANCH_MANAGER' },
   { empCode: '1801772', department: 'Maintenance', role: 'SUPERVISOR' },

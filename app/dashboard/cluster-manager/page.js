@@ -449,11 +449,6 @@ export default function ClusterManagerDashboard() {
                                                     </svg>
                                                     ✓ Done
                                                 </span>
-                                                {entry.mySubmittedScore != null && (
-                                                    <span className="text-[12px] font-bold text-[#2E7D32] mt-1">
-                                                        Your score: {Number(entry.mySubmittedScore).toFixed(2)}
-                                                    </span>
-                                                )}
                                             </div>
                                         ) : (
                                             <button

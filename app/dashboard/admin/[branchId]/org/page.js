@@ -16,13 +16,14 @@ async function api(url, opts) {
     return json.data;
 }
 
-function AssignmentSection({ title, color, bgColor, borderColor, avatarBg, mode = "multi", assignments, onAssign, onRemove, form, setForm, assigning, emptyHint }) {
+function AssignmentSection({ title, color, bgColor, borderColor, avatarBg, mode = "multi", assignments, onAssign, onRemove, form, setForm, assigning, emptyHint, note }) {
     const isSingle = mode === "single";
     const occupied = isSingle && assignments.length > 0;
 
     return (
         <div className="bg-white border border-[#E0E0E0] rounded-xl p-5">
-            <h3 className={`text-[15px] font-bold ${color} mb-4 uppercase tracking-wide`}>{title}</h3>
+            <h3 className={`text-[15px] font-bold ${color} ${note ? "mb-1" : "mb-4"} uppercase tracking-wide`}>{title}</h3>
+            {note && <p className="text-[12px] text-gray-500 mb-4">{note}</p>}
 
             {occupied ? (
                 <div className="space-y-3">
@@ -303,6 +304,7 @@ export default function BranchOrgPage() {
                 form={hrForm}
                 setForm={setHrForm}
                 assigning={assigning}
+                note="Up to 3 HR personnel per branch. The same person may serve multiple branches."
             />
 
             <AssignmentSection
@@ -318,6 +320,7 @@ export default function BranchOrgPage() {
                 form={committeeForm}
                 setForm={setCommitteeForm}
                 assigning={assigning}
+                note="Committee is global — assigning a member here applies to all branches automatically (max 3 members)."
             />
 
             {hods.length > 0 && (

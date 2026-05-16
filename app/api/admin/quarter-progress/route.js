@@ -1,18 +1,32 @@
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
-import { ok, notFound, serverError } from "../../../../lib/api-response";
+import { ok, fail, notFound, serverError } from "../../../../lib/api-response";
+import { isTransientDbError } from "../../../../lib/http";
 
 /**
- * GET /api/admin/quarter-progress
+ * GET /api/admin/quarter-progress?quarterId=<id>
  * Returns a strict, comprehensive JSON payload describing real-time
- * progress of an active or recent quarter by department.
+ * progress of the requested quarter by department / branch.
+ *
+ * When `quarterId` is omitted, defaults to the ACTIVE quarter, falling
+ * back to the most recently created quarter. Passing `quarterId` lets the
+ * admin dashboard view an archived (CLOSED) quarter read-only.
  */
-export const GET = withRole(["ADMIN"], async () => {
+export const GET = withRole(["ADMIN"], async (request) => {
     try {
-        // 1. Find Current/Latest Quarter
-        let quarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
-        if (!quarter) {
-            quarter = await prisma.quarter.findFirst({ orderBy: { createdAt: "desc" } });
+        const { searchParams } = new URL(request.url);
+        const requestedQuarterId = searchParams.get("quarterId");
+
+        // 1. Resolve the quarter to report on.
+        let quarter = null;
+        if (requestedQuarterId) {
+            quarter = await prisma.quarter.findUnique({ where: { id: requestedQuarterId } });
+            if (!quarter) return notFound("Quarter not found");
+        } else {
+            quarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
+            if (!quarter) {
+                quarter = await prisma.quarter.findFirst({ orderBy: { createdAt: "desc" } });
+            }
         }
         if (!quarter) return notFound("No quarters exist yet");
 
@@ -314,6 +328,9 @@ export const GET = withRole(["ADMIN"], async () => {
 
     } catch (err) {
         console.error("Quarter progress API error:", err);
+        if (isTransientDbError(err)) {
+            return fail("Service is starting up. Please try again in a moment.", 503);
+        }
         return serverError("Failed to build quarter progress report");
     }
 });

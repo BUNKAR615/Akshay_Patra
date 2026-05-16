@@ -4,11 +4,12 @@ export const runtime = 'nodejs'
 import bcrypt from "bcryptjs";
 import prisma from "../../../../../../lib/prisma";
 import { withRole } from "../../../../../../lib/withRole";
-import { ok, fail, created, serverError, notFound } from "../../../../../../lib/api-response";
+import { ok, fail, created, conflict, notFound, handleApiError } from "../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
 import { defaultPasswordFor } from "../../../../../../lib/auth/defaultPassword";
 import { hashStaffDefaultPassword } from "../../../../../../lib/auth/applyStaffPassword";
+import { assertSingleActiveRole, assertCommitteeCapacity } from "../../../../../../lib/auth/roleAssignmentRules";
 import { z } from "zod";
 
 const SALT_ROUNDS = 10;
@@ -22,9 +23,14 @@ const assignSchema = z.object({
 });
 
 /**
+ * Committee is GLOBAL — the same members apply to every branch. Assigning a
+ * member here creates a CommitteeBranchAssignment row for ALL branches, and
+ * removing one deletes their rows from ALL branches. The [branchId] in the URL
+ * is only used for admin scoping; the result is identical for every branch.
+ *
  * GET  /api/admin/branches/[branchId]/committee-assign — list committee members
- * POST /api/admin/branches/[branchId]/committee-assign — assign (create if new)
- * DELETE /api/admin/branches/[branchId]/committee-assign?memberUserId=... — remove
+ * POST /api/admin/branches/[branchId]/committee-assign — assign globally (create if new)
+ * DELETE /api/admin/branches/[branchId]/committee-assign?memberUserId=... — remove globally
  */
 export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
     try {
@@ -47,8 +53,7 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
 
         return ok({ assignments });
     } catch (err) {
-        console.error("[COMMITTEE-ASSIGN GET] Error:", err.message);
-        return serverError();
+        return handleApiError(err, "COMMITTEE-ASSIGN GET");
     }
 });
 
@@ -91,6 +96,32 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             return fail("Either memberUserId or empCode is required");
         }
 
+        // Rule A — a person may actively hold only ONE of BM/CM/HR/Committee.
+        const roleCheck = await assertSingleActiveRole(member.id, "COMMITTEE");
+        if (!roleCheck.ok) {
+            await prisma.auditLog.create({
+                data: {
+                    userId: user.userId,
+                    action: "ASSIGNMENT_REJECTED",
+                    details: { type: "COMMITTEE", reason: "ROLE_CONFLICT", message: roleCheck.message, branchId, targetUserId: member.id, empCode: member.empCode },
+                },
+            }).catch(() => {});
+            return conflict(roleCheck.message);
+        }
+
+        // Rule E — at most 3 committee members (counted globally).
+        const capacity = await assertCommitteeCapacity(member.id);
+        if (!capacity.ok) {
+            await prisma.auditLog.create({
+                data: {
+                    userId: user.userId,
+                    action: "ASSIGNMENT_REJECTED",
+                    details: { type: "COMMITTEE", reason: "COMMITTEE_FULL", message: capacity.message, branchId, targetUserId: member.id, empCode: member.empCode },
+                },
+            }).catch(() => {});
+            return conflict(capacity.message);
+        }
+
         // Reset password to the staff formula ("Firstname_##") on every
         // assign call. Admins can override via data.password.
         const passwordHash = await hashStaffDefaultPassword({
@@ -99,6 +130,9 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             name: member.name,
             override: data.password,
         });
+
+        // Committee is global: assign the member to EVERY branch in one go.
+        const allBranches = await prisma.branch.findMany({ select: { id: true } });
 
         // Detach-on-promote + assignment upsert in one transaction.
         //   - role flipped to COMMITTEE
@@ -120,10 +154,18 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
                     collarType: null,
                 },
             });
-            return tx.committeeBranchAssignment.upsert({
+            // Upsert one assignment row per branch — committee is global.
+            for (const b of allBranches) {
+                await tx.committeeBranchAssignment.upsert({
+                    where: { memberUserId_branchId: { memberUserId: member.id, branchId: b.id } },
+                    update: { assignedBy: user.userId, assignedAt: new Date() },
+                    create: { memberUserId: member.id, branchId: b.id, assignedBy: user.userId },
+                });
+            }
+            // Return the row for the URL branch so the response shape is
+            // unchanged for existing callers.
+            return tx.committeeBranchAssignment.findUnique({
                 where: { memberUserId_branchId: { memberUserId: member.id, branchId } },
-                update: { assignedBy: user.userId, assignedAt: new Date() },
-                create: { memberUserId: member.id, branchId, assignedBy: user.userId },
                 include: {
                     member: { select: { id: true, empCode: true, name: true, mobile: true, role: true } },
                 },
@@ -140,8 +182,7 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
 
         return created({ assignment });
     } catch (err) {
-        console.error("[COMMITTEE-ASSIGN POST] Error:", err.message);
-        return serverError();
+        return handleApiError(err, "COMMITTEE-ASSIGN POST");
     }
 });
 
@@ -158,8 +199,9 @@ export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
         const memberUserId = searchParams.get("memberUserId");
         if (!memberUserId) return fail("memberUserId query parameter is required");
 
-        await prisma.committeeBranchAssignment.delete({
-            where: { memberUserId_branchId: { memberUserId, branchId } },
+        // Committee is global — remove the member from every branch.
+        await prisma.committeeBranchAssignment.deleteMany({
+            where: { memberUserId },
         });
 
         await prisma.auditLog.create({
@@ -172,7 +214,6 @@ export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
 
         return ok({ removed: true });
     } catch (err) {
-        console.error("[COMMITTEE-ASSIGN DELETE] Error:", err.message);
-        return serverError();
+        return handleApiError(err, "COMMITTEE-ASSIGN DELETE");
     }
 });

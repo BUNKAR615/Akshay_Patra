@@ -5,6 +5,7 @@ import prisma from "../../../../lib/prisma";
 import bcrypt from "bcryptjs";
 import { withRole } from "../../../../lib/withRole";
 import { defaultPasswordFor } from "../../../../lib/auth/defaultPassword";
+import { handleApiError } from "../../../../lib/api-response";
 import { NextResponse } from "next/server";
 
 // Only these two empCodes can add/remove employees
@@ -210,11 +211,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
             },
         });
     } catch (err) {
-        console.error("[ADMIN EMPLOYEES] Error:", err);
-        return NextResponse.json(
-            { success: false, message: "Server error" },
-            { status: 500 }
-        );
+        return handleApiError(err, "ADMIN EMPLOYEES");
     }
 }, { allowedEmpCodes: HR_ALLOWED });
 
@@ -309,10 +306,6 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             },
         }, { status: 201 });
     } catch (err) {
-        console.error("[ADD EMPLOYEE] Error:", err);
-        return NextResponse.json(
-            { success: false, message: "Server error" },
-            { status: 500 }
-        );
+        return handleApiError(err, "ADD EMPLOYEE");
     }
 }, { allowedEmpCodes: HR_ALLOWED });

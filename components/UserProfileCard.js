@@ -47,6 +47,10 @@ export default function UserProfileCard({ user, extraInfo, roles }) {
     if (user.role) allRoles.add(user.role);
     // Remove EMPLOYEE if there are higher roles
     if (allRoles.size > 1) allRoles.delete("EMPLOYEE");
+    // SUPERVISOR is a legacy enum value with no runtime support — never
+    // surface it as a pill even if some upstream forgets to filter it out.
+    // Defensive belt-and-braces; /api/auth/me already strips it.
+    allRoles.delete("SUPERVISOR");
     const roleList = Array.from(allRoles);
 
     return (

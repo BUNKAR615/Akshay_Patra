@@ -4,7 +4,7 @@ export const runtime = 'nodejs'
 import bcrypt from "bcryptjs";
 import prisma from "../../../../../../lib/prisma";
 import { withRole } from "../../../../../../lib/withRole";
-import { ok, fail, serverError, notFound, forbidden, conflict, created } from "../../../../../../lib/api-response";
+import { ok, fail, notFound, forbidden, conflict, created, handleApiError } from "../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
 import { defaultPasswordFor } from "../../../../../../lib/auth/defaultPassword";
@@ -29,6 +29,27 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
         const { searchParams } = new URL(request.url);
         const roleFilter = searchParams.get("role");
         const departmentIdFilter = searchParams.get("departmentId");
+        const requestedQuarterId = searchParams.get("quarterId");
+
+        // Resolve the quarter that scopes the HOD listing. Explicit `?quarterId=`
+        // selects an archived quarter for the admin's history view; otherwise
+        // we default to the ACTIVE quarter. Falls through to `null` when no
+        // quarter exists yet — HOD union below is then skipped.
+        let scopeQuarterId = null;
+        if (requestedQuarterId) {
+            const q = await prisma.quarter.findUnique({
+                where: { id: requestedQuarterId },
+                select: { id: true },
+            });
+            if (!q) return notFound("Quarter not found");
+            scopeQuarterId = q.id;
+        } else {
+            const active = await prisma.quarter.findFirst({
+                where: { status: "ACTIVE" },
+                select: { id: true },
+            });
+            scopeQuarterId = active?.id || null;
+        }
 
         const where = {
             OR: [{ branchId }, { department: { branchId } }],
@@ -93,9 +114,13 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
                         select: { member: { select: userSelect } },
                     })
                     : Promise.resolve([]),
-                (!roleFilter || roleFilter === "HOD")
+                // HOD union is quarter-scoped: for archive views we pin to the
+                // requested quarter's HodAssignment rows (which are preserved
+                // by quarterReset). When no quarter is resolvable we return
+                // an empty union rather than leaking cross-quarter HODs.
+                (!roleFilter || roleFilter === "HOD") && scopeQuarterId
                     ? prisma.hodAssignment.findMany({
-                        where: { branchId, quarter: { status: "ACTIVE" } },
+                        where: { branchId, quarterId: scopeQuarterId },
                         select: { hod: { select: userSelect } },
                     })
                     : Promise.resolve([]),
@@ -121,8 +146,7 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
 
         return ok({ employees: finalUsers, branch: { id: branch.id, name: branch.name, branchType: branch.branchType } });
     } catch (err) {
-        console.error("[BRANCH-EMPLOYEES] Error:", err.message);
-        return serverError();
+        return handleApiError(err, "BRANCH-EMPLOYEES");
     }
 });
 
@@ -215,7 +239,6 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
 
         return created({ employee: newUser, defaultPassword: rawPassword });
     } catch (err) {
-        console.error("[BRANCH-ADD-EMPLOYEE] Error:", err.message);
-        return serverError();
+        return handleApiError(err, "BRANCH-ADD-EMPLOYEE");
     }
 }, { allowedEmpCodes: HR_ALLOWED });
