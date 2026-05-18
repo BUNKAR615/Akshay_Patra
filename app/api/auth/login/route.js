@@ -9,7 +9,6 @@ import { ok, fail, serverError, validateBody } from "../../../../lib/api-respons
 import { loginSchema } from "../../../../lib/validators";
 import { getClientIp, withDbRetry } from "../../../../lib/http";
 import { sanitize } from "../../../../lib/sanitize";
-import { checkAndRecord, clear as clearRateLimit } from "../../../../lib/rate-limit";
 
 /**
  * POST /api/auth/login
@@ -42,16 +41,10 @@ export async function POST(request) {
 
         const empCode = sanitize(data.empCode);
 
+        // Login rate limiting is intentionally disabled — logins are
+        // unlimited. Many users legitimately share one office / NAT IP, and a
+        // per-IP cap locked them out. `ip` is still resolved for audit logs.
         const ip = getClientIp(request);
-        const ipKey = `login:ip:${ip}`;
-        const userKey = `login:emp:${empCode}`;
-        const ipGate = checkAndRecord(ipKey, { maxAttempts: 20 });
-        const userGate = checkAndRecord(userKey, { maxAttempts: 8 });
-        if (!ipGate.allowed || !userGate.allowed) {
-            const retryAfterMs = Math.max(ipGate.retryAfterMs, userGate.retryAfterMs);
-            const seconds = Math.ceil(retryAfterMs / 1000);
-            return fail(`Too many login attempts. Try again in ${seconds} seconds.`, 429);
-        }
 
         const user = await withDbRetry(() => prisma.user.findUnique({
             where: { empCode },
@@ -108,9 +101,6 @@ export async function POST(request) {
                 details: { userAgent: request.headers.get("user-agent") || "unknown", role: resolvedRole },
             },
         }).catch(() => {});
-
-        clearRateLimit(ipKey);
-        clearRateLimit(userKey);
 
         // Admin+HOD role picker — spec: "If a person is both Admin and HOD, the
         // system must show a role selection screen after login when both roles
