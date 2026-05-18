@@ -927,13 +927,6 @@ export default function AdminDashboard() {
         } catch (e) { setBranchMsg({ type: "error", text: e.message }); }
     };
 
-    const handleCollarType = async (userId, collarType) => {
-        try {
-            await api("/api/admin/collar-type", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, collarType }) });
-            fetchEmployees(empPage, empFilter);
-        } catch (e) { alert(e.message); }
-    };
-
     useEffect(() => { if (tab === "branches") fetchBranches(); }, [tab]);
 
     // Always load branches on mount so the Global/Branch dropdown is populated
@@ -2044,12 +2037,10 @@ export default function AdminDashboard() {
                                             <td className="px-5 py-3 text-sm text-[#666666]">{e.designation}</td>
                                             <td className="px-5 py-3 text-sm text-[#666666]">{e.mobile ? <a href={`tel:${e.mobile}`} className="text-[#003087] hover:underline">{e.mobile}</a> : <span className="text-[#BBBBBB] italic text-xs">Not provided</span>}</td>
                                             <td className="px-5 py-3">
-                                                {e.role === "EMPLOYEE" ? (
-                                                    <select value={e.collarType || ""} onChange={ev => handleCollarType(e.id, ev.target.value)} className="text-[10px] px-2 py-1 rounded border font-bold cursor-pointer">
-                                                        <option value="">Not Set</option>
-                                                        <option value="WHITE_COLLAR">White Collar</option>
-                                                        <option value="BLUE_COLLAR">Blue Collar</option>
-                                                    </select>
+                                                {e.role === "EMPLOYEE" && e.collarType ? (
+                                                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${e.collarType === "WHITE_COLLAR" ? "bg-gray-100 text-gray-600" : "bg-blue-50 text-blue-600"}`}>
+                                                        {e.collarType === "WHITE_COLLAR" ? "White Collar" : "Blue Collar"}
+                                                    </span>
                                                 ) : <span className="text-xs text-gray-400">—</span>}
                                             </td>
                                             <td className="px-5 py-3"><div className="flex flex-wrap gap-1">{roles.map(r => <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-700 border-gray-200" : r === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : r === "HOD" ? "bg-purple-50 text-purple-700 border-purple-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : r === "HR" ? "bg-amber-50 text-amber-700 border-amber-200" : r === "COMMITTEE" ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace("_", " ")}</span>)}</div></td>

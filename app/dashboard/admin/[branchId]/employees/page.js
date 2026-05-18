@@ -534,11 +534,12 @@ export default function BranchEmployeesPage() {
                     onChange={e => setRoleFilter(e.target.value)}
                     className="border rounded-lg px-3 py-2 text-sm"
                 >
-                    <option value="">All Roles</option>
-                    <option value="EMPLOYEE">Employee</option>
+                    <option value="">All Employees</option>
                     <option value="BRANCH_MANAGER">Branch Manager</option>
+                    {branch?.branchType !== "SMALL" && <option value="HOD">HODs</option>}
                     <option value="CLUSTER_MANAGER">Cluster Manager</option>
-                    <option value="HOD">HOD</option>
+                    <option value="HR">HR Personnel</option>
+                    <option value="COMMITTEE">Committee</option>
                 </select>
             </div>
 

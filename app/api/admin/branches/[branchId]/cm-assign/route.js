@@ -223,8 +223,21 @@ export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
         const cmUserId = searchParams.get("cmUserId");
         if (!cmUserId) return fail("cmUserId query parameter is required");
 
-        await prisma.clusterManagerBranchAssignment.delete({
-            where: { cmUserId_branchId: { cmUserId, branchId } },
+        await prisma.$transaction(async (tx) => {
+            await tx.clusterManagerBranchAssignment.delete({
+                where: { cmUserId_branchId: { cmUserId, branchId } },
+            });
+            // Reset the user's role unless they still serve another branch as
+            // CM — otherwise a removed CM lingers as a stale CLUSTER_MANAGER.
+            const remaining = await tx.clusterManagerBranchAssignment.count({
+                where: { cmUserId },
+            });
+            if (remaining === 0) {
+                await tx.user.updateMany({
+                    where: { id: cmUserId, role: "CLUSTER_MANAGER" },
+                    data: { role: "EMPLOYEE" },
+                });
+            }
         });
 
         await prisma.auditLog.create({

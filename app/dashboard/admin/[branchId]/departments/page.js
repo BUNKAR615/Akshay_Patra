@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 async function api(url, opts) {
@@ -58,13 +58,38 @@ export default function BranchDepartmentsPage() {
         }
     };
 
+    // Collapse departments that render as the same name (trailing/secondary
+    // whitespace or case differences) into one row so each appears once.
+    // Employee counts are summed; the id of the variant with the most
+    // employees is kept so click-through and rename hit the populated one.
+    const dedupedDepartments = useMemo(() => {
+        const groups = new Map();
+        for (const d of departments) {
+            const display = (d.name || "").trim().replace(/\s+/g, " ");
+            const key = display.toLowerCase();
+            const count = d.employeeCount || 0;
+            const existing = groups.get(key);
+            if (!existing) {
+                groups.set(key, { id: d.id, name: display, collarType: d.collarType, employeeCount: count, canonicalCount: count });
+            } else {
+                existing.employeeCount += count;
+                if (count > existing.canonicalCount) {
+                    existing.canonicalCount = count;
+                    existing.id = d.id;
+                    existing.collarType = d.collarType;
+                }
+            }
+        }
+        return [...groups.values()];
+    }, [departments]);
+
     if (loading) return <div className="text-center py-12 text-gray-500">Loading departments...</div>;
     if (error) return <div className="p-4 bg-red-50 text-red-700 rounded-lg font-medium">{error}</div>;
 
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-[#003087]">Departments ({departments.length})</h2>
+                <h2 className="text-lg font-bold text-[#003087]">Departments ({dedupedDepartments.length})</h2>
                 <button onClick={fetchDepts} className="px-3 py-1.5 bg-white border border-[#CCCCCC] rounded-lg text-xs font-bold text-[#333] hover:bg-[#F5F5F5] cursor-pointer">
                     Refresh
                 </button>
@@ -77,7 +102,7 @@ export default function BranchDepartmentsPage() {
             )}
 
             <div className="grid gap-3">
-                {departments.map(dept => {
+                {dedupedDepartments.map(dept => {
                     const isEditing = editId === dept.id;
                     const openDept = () => router.push(`/dashboard/admin/${branchId}/employees?departmentId=${dept.id}&departmentName=${encodeURIComponent(dept.name)}`);
                     return (
@@ -128,7 +153,7 @@ export default function BranchDepartmentsPage() {
                 })}
             </div>
 
-            {departments.length === 0 && (
+            {dedupedDepartments.length === 0 && (
                 <div className="bg-[#F5F5F5] border border-[#E0E0E0] rounded-xl p-8 text-center">
                     <h3 className="font-bold text-[#333] mb-1">No Departments</h3>
                     <p className="text-sm text-[#666]">Departments will appear here after employees are uploaded to this branch.</p>

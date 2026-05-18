@@ -203,13 +203,21 @@ export default function BranchSummaryPage() {
                             { label: "Stage 1 — Self Assessment", count: counts.stage1, color: "bg-blue-500" },
                             { label: "Stage 2 — BM/HOD Evaluation", count: counts.stage2, color: "bg-emerald-500" },
                             { label: "Stage 3 — CM Evaluation", count: counts.stage3, color: "bg-orange-500" },
-                            { label: "Stage 4 — HR Evaluation", count: counts.stage4, color: "bg-purple-500" },
+                            { label: "Stage 4 — HR Round", count: counts.stage4, participated: counts.hrParticipated ?? 0, color: "bg-purple-500" },
                             { label: "Winners", count: counts.winners, color: "bg-[#00843D]" },
                         ].map(stage => (
                             <div key={stage.label} className="flex items-center gap-3">
                                 <div className={`w-2.5 h-2.5 rounded-full ${stage.color} shrink-0`} />
                                 <span className="text-[13px] font-medium text-[#333333] flex-1">{stage.label}</span>
-                                <span className="text-[15px] font-black text-[#003087] tabular-nums">{stage.count}</span>
+                                {stage.participated !== undefined ? (
+                                    <span className="text-[13px] font-bold text-[#003087] tabular-nums whitespace-nowrap">
+                                        <span className="text-[#666666] font-medium">Participated</span> {stage.participated}
+                                        <span className="text-[#CCCCCC] mx-2">·</span>
+                                        <span className="text-[#666666] font-medium">Passed</span> {stage.count}
+                                    </span>
+                                ) : (
+                                    <span className="text-[15px] font-black text-[#003087] tabular-nums">{stage.count}</span>
+                                )}
                             </div>
                         ))}
                     </div>

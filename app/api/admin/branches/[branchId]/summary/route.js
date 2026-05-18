@@ -76,7 +76,7 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
             prisma.committeeBranchAssignment.count({ where: { branchId } }),
         ]);
 
-        let stage1 = 0, stage2 = 0, stage3 = 0, stage4 = 0, winners = 0;
+        let stage1 = 0, stage2 = 0, stage3 = 0, stage4 = 0, winners = 0, hrParticipated = 0;
         if (quarter) {
             [stage1, stage2, stage3, stage4, winners] = await Promise.all([
                 prisma.branchShortlistStage1.count({ where: { branchId, quarterId: quarter.id } }),
@@ -85,6 +85,16 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
                 prisma.branchShortlistStage4.count({ where: { branchId, quarterId: quarter.id } }),
                 prisma.branchBestEmployee.count({ where: { branchId, quarterId: quarter.id } }),
             ]);
+
+            // Distinct employees actually evaluated by HR this quarter — i.e.
+            // those who participated in the HR round. `distinct` guards against
+            // double-counting if more than one HR evaluates the same employee.
+            const hrEvalRows = await prisma.hrEvaluation.findMany({
+                where: { quarterId: quarter.id, employee: { department: { branchId } } },
+                select: { employeeId: true },
+                distinct: ['employeeId'],
+            });
+            hrParticipated = hrEvalRows.length;
         }
 
         return ok({
@@ -110,6 +120,7 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
                 stage3,
                 stage4,
                 winners,
+                hrParticipated,
             },
         });
     } catch (err) {

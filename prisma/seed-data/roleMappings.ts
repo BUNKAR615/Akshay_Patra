@@ -1,4 +1,4 @@
-// DepartmentRoleMapping assignments (39 entries)
+// DepartmentRoleMapping assignments (38 entries)
 export const ROLE_MAPPINGS = [
   { empCode: '1800003', department: 'Administration', role: 'CLUSTER_MANAGER' },
   { empCode: '1800011', department: 'Administration', role: 'BRANCH_MANAGER' },
@@ -38,7 +38,6 @@ export const ROLE_MAPPINGS = [
   { empCode: '1800011', department: 'Production-White Collar', role: 'BRANCH_MANAGER' },
   { empCode: '1801155', department: 'Production-White Collar', role: 'SUPERVISOR' },
   { empCode: '1800022', department: 'Quality', role: 'CLUSTER_MANAGER' },
-  { empCode: '1802215', department: 'Quality', role: 'BRANCH_MANAGER' },
   { empCode: '1800011', department: 'Quality', role: 'SUPERVISOR' },
   { empCode: '1800022', department: 'Security', role: 'CLUSTER_MANAGER' },
   { empCode: '1801130', department: 'Security', role: 'BRANCH_MANAGER' },

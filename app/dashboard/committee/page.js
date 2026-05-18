@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import DashboardShell from "../../../components/DashboardShell";
-import { Card, Stat, Badge, Avatar, Empty, Alert } from "../../../components/ui";
+import { Card, Stat, Badge, Empty, Alert } from "../../../components/ui";
 import { AP, ROLE_COLOR } from "../../../components/ui/tokens";
 
 async function api(url) {
@@ -19,8 +19,6 @@ async function api(url) {
     return json.data;
 }
 
-const COLLAR_LABEL = { WHITE_COLLAR: "White Collar", BLUE_COLLAR: "Blue Collar" };
-
 function rankBadge(rank) {
     if (rank === 1) return "🥇";
     if (rank === 2) return "🥈";
@@ -28,125 +26,11 @@ function rankBadge(rank) {
     return `#${rank}`;
 }
 
-function FinalistCard({ winner, branchName }) {
-    const isWinner = winner.rank === 1;
-    const collarColor = winner.collarType === "BLUE_COLLAR" ? AP.green : AP.blue;
-    const collarBadge = winner.collarType === "BLUE_COLLAR" ? "green" : "blue";
-
-    const scoreBoxes = [
-        ...(winner.stages || []).map((s) => ({
-            label: `Stage ${s.stage}`,
-            name: s.name,
-            value: s.score,
-            weight: s.weightPct,
-        })),
-        { label: "Composite", name: "Final", value: winner.finalScore, weight: null, highlight: true },
-    ];
-
-    return (
-        <Card
-            style={{
-                padding: "18px 20px",
-                background: isWinner
-                    ? "linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)"
-                    : "#fff",
-                borderColor: isWinner ? "#F59E0B" : undefined,
-                borderWidth: isWinner ? 2 : 1,
-            }}
-        >
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                <div className="flex items-center gap-3 min-w-0">
-                    <div className="relative shrink-0">
-                        <Avatar name={winner.name} size={44} color={collarColor} />
-                        <div
-                            className="absolute -top-1 -right-1 rounded-full bg-white border border-[#E4E7ED] flex items-center justify-center text-[11px] font-extrabold"
-                            style={{ width: 22, height: 22, color: isWinner ? "#B45309" : "#6B7280" }}
-                        >
-                            {rankBadge(winner.rank)}
-                        </div>
-                    </div>
-                    <div className="min-w-0">
-                        <p className="text-[15px] font-extrabold text-[#111827] truncate">
-                            {winner.name}
-                        </p>
-                        <p className="text-[12px] text-[#6B7280] font-medium truncate">
-                            {winner.empCode}
-                            {winner.designation ? ` · ${winner.designation}` : ""}
-                            {winner.department ? ` · ${winner.department}` : ""}
-                        </p>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                    <Badge label={branchName} color="gray" />
-                    <Badge label={COLLAR_LABEL[winner.collarType] || winner.collarType} color={collarBadge} />
-                    {isWinner && <Badge label="Selected ✓" color="amber" />}
-                </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {scoreBoxes.map((b, i) => (
-                    <div
-                        key={i}
-                        className="rounded-[10px] text-center px-2 py-2.5"
-                        style={{
-                            background: b.highlight ? "rgba(0,48,135,0.06)" : "#F9FAFB",
-                            border: `1px solid ${b.highlight ? "#C7D9F5" : "#E4E7ED"}`,
-                        }}
-                    >
-                        <p className="text-[9px] font-bold uppercase tracking-wider text-[#6B7280] m-0">
-                            {b.label}
-                        </p>
-                        <p className="text-[10px] font-semibold text-[#374151] leading-tight mt-0.5 truncate">
-                            {b.name}
-                        </p>
-                        <p
-                            className="text-[17px] font-extrabold mt-1 m-0"
-                            style={{ color: b.highlight ? AP.blue : "#111827" }}
-                        >
-                            {b.value != null ? Number(b.value).toFixed(2) : "—"}
-                        </p>
-                        {b.weight != null && (
-                            <p className="text-[9px] text-[#9CA3AF] mt-0.5 m-0">Weight {b.weight}%</p>
-                        )}
-                    </div>
-                ))}
-            </div>
-
-            {(winner.attendancePct != null || winner.workingHours != null || winner.referenceSheetUrl) && (
-                <div className="mt-3 pt-3 border-t border-[#E4E7ED] grid grid-cols-1 sm:grid-cols-3 gap-3 text-[12px]">
-                    {winner.attendancePct != null && (
-                        <div>
-                            <span className="font-bold text-[#6B7280]">Attendance: </span>
-                            <span className="font-extrabold text-[#111827]">
-                                {Number(winner.attendancePct).toFixed(2)}%
-                            </span>
-                        </div>
-                    )}
-                    {winner.workingHours != null && (
-                        <div>
-                            <span className="font-bold text-[#6B7280]">Hours: </span>
-                            <span className="font-extrabold text-[#111827]">
-                                {Number(winner.workingHours).toFixed(2)}
-                            </span>
-                        </div>
-                    )}
-                    {winner.referenceSheetUrl && (
-                        <div>
-                            <a
-                                href={winner.referenceSheetUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="font-bold underline"
-                                style={{ color: AP.blue }}
-                            >
-                                Reference sheet →
-                            </a>
-                        </div>
-                    )}
-                </div>
-            )}
-        </Card>
-    );
+// Score cell formatter — 2dp, em-dash for missing values.
+function fmtScore(v) {
+    if (v == null) return "—";
+    const n = Number(v);
+    return Number.isNaN(n) ? "—" : n.toFixed(2);
 }
 
 export default function CommitteeDashboard() {
@@ -392,10 +276,26 @@ function TabButton({ active, onClick, children }) {
     );
 }
 
+// Committee winners table — columns follow the committee reference sheet:
+// Rank · Name · Emp Code · Self (Stage 1) · BM · CM · HR · Attendance ·
+// Total Working Hours · Reference.
 function BranchSection({ branch }) {
     const actual = branch.winners.length;
     const expected = branch.expectedCount;
     const typeColor = branch.branchType === "SMALL" ? "amber" : "purple";
+
+    // Stage weights come from the API payload (committee/results). The table
+    // only renders when there is at least one winner, so winners[0] exists.
+    const stageWeight = (n) => branch.winners[0]?.stages?.find((s) => s.stage === n)?.weightPct;
+    const withWeight = (label, n) => {
+        const w = stageWeight(n);
+        return w != null ? `${label} · ${w}%` : label;
+    };
+    const COLS = [
+        "Rank", "Name", "Emp Code",
+        withWeight("Self", 1), withWeight("BM", 2), withWeight("CM", 3), withWeight("HR", 4),
+        "Attendance", "Total Working Hours", "Reference",
+    ];
 
     return (
         <div className="space-y-2.5">
@@ -418,11 +318,65 @@ function BranchSection({ branch }) {
                     </p>
                 </Card>
             ) : (
-                <div className="space-y-2.5">
-                    {branch.winners.map((w, i) => (
-                        <FinalistCard key={`${branch.branchId}-${i}`} winner={w} branchName={branch.branchName} />
-                    ))}
-                </div>
+                <Card style={{ padding: 0 }}>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-[#F9FAFB] border-b border-[#E4E7ED]">
+                                    {COLS.map((h, i) => (
+                                        <th
+                                            key={h}
+                                            className={`px-3 py-2.5 text-[11px] font-bold text-[#6B7280] uppercase tracking-wider ${i >= 3 && i <= 8 ? "text-center" : ""}`}
+                                        >
+                                            {h}
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#E4E7ED]">
+                                {branch.winners.map((w, i) => {
+                                    const stageScore = (n) => w.stages?.find((s) => s.stage === n)?.score;
+                                    return (
+                                        <tr key={`${branch.branchId}-${i}`} className="hover:bg-[#FAFBFC]">
+                                            <td className="px-3 py-2.5 text-[13px] font-extrabold text-[#111827] whitespace-nowrap">
+                                                {rankBadge(w.rank)}
+                                            </td>
+                                            <td className="px-3 py-2.5 text-[13px] font-bold text-[#111827]">
+                                                {w.name}
+                                            </td>
+                                            <td className="px-3 py-2.5 text-[12px] font-mono text-[#374151] whitespace-nowrap">
+                                                {w.empCode || "—"}
+                                            </td>
+                                            <td className="px-3 py-2.5 text-[13px] text-center tabular-nums text-[#374151]">{fmtScore(stageScore(1))}</td>
+                                            <td className="px-3 py-2.5 text-[13px] text-center tabular-nums text-[#374151]">{fmtScore(stageScore(2))}</td>
+                                            <td className="px-3 py-2.5 text-[13px] text-center tabular-nums text-[#374151]">{fmtScore(stageScore(3))}</td>
+                                            <td className="px-3 py-2.5 text-[13px] text-center tabular-nums text-[#374151]">{fmtScore(stageScore(4))}</td>
+                                            <td className="px-3 py-2.5 text-[13px] text-center tabular-nums text-[#374151]">
+                                                {w.attendancePct != null ? `${Number(w.attendancePct).toFixed(2)}%` : "—"}
+                                            </td>
+                                            <td className="px-3 py-2.5 text-[13px] text-center tabular-nums text-[#374151]">{fmtScore(w.workingHours)}</td>
+                                            <td className="px-3 py-2.5 text-[13px]">
+                                                {w.referenceSheetUrl ? (
+                                                    <a
+                                                        href={w.referenceSheetUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="font-bold underline"
+                                                        style={{ color: AP.blue }}
+                                                    >
+                                                        View
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-[#9CA3AF]">—</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
             )}
 
             {actual > 0 && actual < expected && (

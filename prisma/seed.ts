@@ -14,7 +14,7 @@ const SALT_ROUNDS = 10;
 async function main() {
   console.log('╔══════════════════════════════════════════════╗');
   console.log('║  AKSHAYA PATRA — SEED SCRIPT v3             ║');
-  console.log('║  287 Employees | 16 Departments | 39 Roles  ║');
+  console.log('║  287 Employees | 16 Departments | 38 Roles  ║');
   console.log('╚══════════════════════════════════════════════╝\n');
 
   // Guard: this script TRUNCATEs users/branches/departments and re-adds 287

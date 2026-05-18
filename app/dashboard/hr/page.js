@@ -543,8 +543,8 @@ export default function HRDashboard() {
                                     </div>
                                     <p className="text-xs text-[#666666] mt-0.5">
                                         {emp.empCode} &middot;{" "}
-                                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${emp.collarType === "BLUE" ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>
-                                            {emp.collarType || "N/A"} collar
+                                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${emp.collarType === "BLUE_COLLAR" ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>
+                                            {emp.collarType === "BLUE_COLLAR" ? "Blue Collar" : emp.collarType === "WHITE_COLLAR" ? "White Collar" : "N/A"}
                                         </span>
                                         {" "}&middot; {(typeof emp.department === "object" ? emp.department?.name : emp.department) || emp.departmentName || "—"}
                                     </p>
