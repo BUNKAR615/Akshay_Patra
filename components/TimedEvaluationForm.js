@@ -209,8 +209,14 @@ export default function TimedEvaluationForm({
                 </div>
             )}
 
-            {/* Header: Progress & Timer */}
-            <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 sticky top-0 z-10 shadow-sm flex flex-col gap-3 object-contain">
+            {/* Header: Progress & Timer — must stick BELOW the 56px TopBar
+                 (h-14 + iOS safe-area inset), otherwise it slides under the
+                 higher z-index TopBar and the countdown becomes invisible
+                 once the user scrolls (always the case on mobile screens). */}
+            <div
+                className="bg-white border border-[#E0E0E0] rounded-xl p-4 sticky z-10 shadow-sm flex flex-col gap-3 object-contain"
+                style={{ top: "calc(3.5rem + var(--safe-top, 0px))" }}
+            >
                 <div className="flex justify-between items-center w-full">
                     <span className="text-[14px] text-[#333333]">
                         Question <span className="text-[#003087] font-bold">{currentIndex + 1}</span> of{" "}
