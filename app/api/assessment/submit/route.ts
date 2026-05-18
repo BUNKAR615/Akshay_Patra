@@ -4,6 +4,7 @@ import { updateStage1Shortlist, updateBranchStage1Shortlist } from "../../../../
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+export const maxDuration = 30
 
 export async function POST(request: Request) {
   try {
@@ -148,7 +149,7 @@ export async function POST(request: Request) {
           isRead: false
         }
       })
-    })
+    }, { timeout: 20000 })
 
     return NextResponse.json({
       success: true,
@@ -160,7 +161,16 @@ export async function POST(request: Request) {
       }
     })
 
-  } catch (error) {
+  } catch (error: any) {
+    // A concurrent double-submit loses the race on the
+    // self_assessments_userId_quarterId unique index — report it cleanly
+    // instead of as a generic 500.
+    if (error?.code === 'P2002') {
+      return NextResponse.json(
+        { success: false, message: 'Assessment already submitted for this quarter.' },
+        { status: 409 }
+      )
+    }
     console.error('Submit error:', error)
     return NextResponse.json(
       { success: false, message: 'Server error. Try again.' },

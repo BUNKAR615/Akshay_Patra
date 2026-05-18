@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+export const maxDuration = 30
 
 import prisma from "../../../../../lib/prisma";
 import { withRole } from "../../../../../lib/withRole";
@@ -173,7 +174,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             const stats = await assignQuestionsToEmployees(tx, q.id, selfQuestions, selfCount);
 
             return { quarter: q, assignmentStats: stats };
-        });
+        }, { maxWait: 8000, timeout: 20000 });
 
         // ── Everything below runs AFTER the quarter is already committed. ──
         // None of it may fail the request: a throw here would return a 500
