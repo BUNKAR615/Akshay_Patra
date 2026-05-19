@@ -30,9 +30,9 @@ function slugify(name) {
 const EMPCODE_KEYS  = ["empcode", "employeecode", "empid", "code"];
 const NAME_KEYS     = ["name", "employeename", "fullname"];
 const DEPT_KEYS     = ["department", "dept", "departmentname", "departmentdescription"];
-const MOBILE_KEYS   = ["mobile", "mobileno", "phone", "contact"];
+const MOBILE_KEYS   = ["mobile", "mobileno", "mobilenumber", "phone", "contact"];
 const DESIG_KEYS    = ["designation", "designationdescription", "position", "title"];
-const LOCATION_KEYS = ["location", "locationdescription", "branch", "branchname"];
+const LOCATION_KEYS = ["location", "locationdescription", "branch", "branchname", "branchlocation"];
 
 // Any normalized header cell that proves row 0 is a header (not data).
 const HEADER_HINTS = new Set([
