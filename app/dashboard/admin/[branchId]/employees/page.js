@@ -50,6 +50,13 @@ export default function BranchEmployeesPage() {
     const [search, setSearch] = useState("");
     const [roleFilter, setRoleFilter] = useState("");
 
+    // Sorting + view-mode + pagination state for the Active tab
+    const [sortBy, setSortBy] = useState("name");      // "name" | "empCode"
+    const [sortDir, setSortDir] = useState("asc");     // "asc" | "desc"
+    const [viewMode, setViewMode] = useState("grid");  // "grid" | "list"
+    const [page, setPage] = useState(1);
+    const PAGE_SIZE = 100;
+
     // Edit-employee panel state
     const [editId, setEditId] = useState(null);
     const [editForm, setEditForm] = useState({ name: "", empCode: "", mobile: "", role: "EMPLOYEE", designation: "", departmentId: "", collarType: "" });
@@ -310,6 +317,25 @@ export default function BranchEmployeesPage() {
         );
     });
 
+    // Sort filtered employees by name or empCode, asc or desc. `numeric: true`
+    // makes empCodes like 5100001/5100010 sort numerically, not lexically.
+    const sorted = [...filtered].sort((a, b) => {
+        const av = (sortBy === "empCode" ? a.empCode : a.name) || "";
+        const bv = (sortBy === "empCode" ? b.empCode : b.name) || "";
+        const cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: "base" });
+        return sortDir === "asc" ? cmp : -cmp;
+    });
+
+    // List view paginates at 100; grid view renders the full sorted set.
+    const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+    const safePage = Math.min(Math.max(1, page), totalPages);
+    const pageStart = (safePage - 1) * PAGE_SIZE;
+    const pageEnd = Math.min(pageStart + PAGE_SIZE, sorted.length);
+    const visible = viewMode === "list" ? sorted.slice(pageStart, pageEnd) : sorted;
+
+    // Reset to page 1 whenever a filter/sort/view change reshapes the list.
+    useEffect(() => { setPage(1); }, [search, roleFilter, sortBy, sortDir, viewMode, departmentIdFilter]);
+
     if (loading) return <div className="text-center py-12 text-gray-500">Loading employees...</div>;
     if (error) return <div className="p-4 bg-red-50 text-red-700 rounded-lg font-medium">{error}</div>;
 
@@ -541,6 +567,37 @@ export default function BranchEmployeesPage() {
                     <option value="HR">HR Personnel</option>
                     <option value="COMMITTEE">Committee</option>
                 </select>
+                <select
+                    value={`${sortBy}|${sortDir}`}
+                    onChange={e => {
+                        const [by, dir] = e.target.value.split("|");
+                        setSortBy(by);
+                        setSortDir(dir);
+                    }}
+                    className="border rounded-lg px-3 py-2 text-sm"
+                    title="Sort employees"
+                >
+                    <option value="name|asc">Name (A–Z)</option>
+                    <option value="name|desc">Name (Z–A)</option>
+                    <option value="empCode|asc">Emp code (asc)</option>
+                    <option value="empCode|desc">Emp code (desc)</option>
+                </select>
+                <div className="inline-flex rounded-lg border border-[#CCCCCC] overflow-hidden">
+                    <button
+                        onClick={() => setViewMode("grid")}
+                        className={`px-3 py-2 text-xs font-bold cursor-pointer ${viewMode === "grid" ? "bg-[#003087] text-white" : "bg-white text-[#333] hover:bg-[#F5F5F5]"}`}
+                        title="Grid view"
+                    >
+                        Grid
+                    </button>
+                    <button
+                        onClick={() => setViewMode("list")}
+                        className={`px-3 py-2 text-xs font-bold border-l border-[#CCCCCC] cursor-pointer ${viewMode === "list" ? "bg-[#003087] text-white" : "bg-white text-[#333] hover:bg-[#F5F5F5]"}`}
+                        title="List view"
+                    >
+                        List
+                    </button>
+                </div>
             </div>
 
             {/* Edit Employee Panel — opens when an Edit button on a card is clicked */}
@@ -609,13 +666,13 @@ export default function BranchEmployeesPage() {
                  1-up on phones, 2-up on tablet, 3-up on desktop. Every field
                  (empCode, name, department, designation, role, collar, mobile)
                  is visible inside the card without overflow. */}
-            {filtered.length === 0 ? (
+            {sorted.length === 0 ? (
                 <div className="bg-white border border-[#E0E0E0] rounded-xl text-center py-8 text-gray-500 text-sm">
                     No employees found.
                 </div>
-            ) : (
+            ) : viewMode === "grid" ? (
                 <div className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
-                    {filtered.map(emp => (
+                    {visible.map(emp => (
                         <div
                             key={emp.id}
                             className="bg-white border border-[#E0E0E0] rounded-xl p-4 hover:border-[#003087]/40 hover:shadow-sm transition-colors flex flex-col gap-3 min-w-0"
@@ -680,6 +737,100 @@ export default function BranchEmployeesPage() {
                             </div>
                         </div>
                     ))}
+                </div>
+            ) : (
+                <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden">
+                    <div className="hidden md:grid grid-cols-[110px_1fr_1fr_1fr_1fr_220px] gap-3 px-4 py-2 bg-[#F8F8F8] border-b border-[#E0E0E0] text-[10px] font-bold uppercase tracking-wide text-[#999]">
+                        <div>Emp Code</div>
+                        <div>Name</div>
+                        <div>Department</div>
+                        <div>Designation</div>
+                        <div>Mobile</div>
+                        <div className="text-right">Actions</div>
+                    </div>
+                    <div className="divide-y divide-[#F0F0F0]">
+                        {visible.map(emp => (
+                            <div
+                                key={emp.id}
+                                className="px-4 py-3 grid grid-cols-1 md:grid-cols-[110px_1fr_1fr_1fr_1fr_220px] gap-3 text-sm items-center hover:bg-[#F9FAFB] min-w-0"
+                            >
+                                <div className="font-mono text-[12px] font-bold text-[#003087]">{emp.empCode || "—"}</div>
+                                <div className="min-w-0">
+                                    <div className="font-bold text-[#1a1a1a] break-words">{emp.name}</div>
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${ROLE_COLORS[emp.role] || "bg-gray-100 text-gray-700"}`}>
+                                            {emp.role}
+                                        </span>
+                                        {emp.collarType && (
+                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${emp.collarType === "WHITE_COLLAR" ? "bg-gray-100 text-gray-600" : "bg-blue-50 text-blue-600"}`}>
+                                                {emp.collarType === "WHITE_COLLAR" ? "White Collar" : "Blue Collar"}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="text-[#333] break-words min-w-0">
+                                    <span className="md:hidden text-[10px] text-[#999] font-bold uppercase block">Department</span>
+                                    {emp.department?.name || "—"}
+                                </div>
+                                <div className="text-[#333] break-words min-w-0">
+                                    <span className="md:hidden text-[10px] text-[#999] font-bold uppercase block">Designation</span>
+                                    {emp.designation || "—"}
+                                </div>
+                                <div className="text-[#333] break-all min-w-0">
+                                    <span className="md:hidden text-[10px] text-[#999] font-bold uppercase block">Mobile</span>
+                                    {emp.mobile || "—"}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 md:justify-end">
+                                    <button
+                                        onClick={() => openEdit(emp)}
+                                        className="px-2 py-1.5 text-[11px] font-bold rounded bg-[#003087] hover:bg-[#002266] text-white cursor-pointer"
+                                    >
+                                        Edit
+                                    </button>
+                                    <button
+                                        onClick={() => { setRemoveTarget(emp); setRemoveReason(""); }}
+                                        disabled={emp.role === "ADMIN"}
+                                        className="px-2 py-1.5 text-[11px] font-bold rounded bg-white border border-[#D32F2F] text-[#D32F2F] hover:bg-[#FDECEC] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                                        title={emp.role === "ADMIN" ? "Admin users cannot be removed" : ""}
+                                    >
+                                        Remove
+                                    </button>
+                                    <button
+                                        onClick={() => handleResetPassword(emp)}
+                                        disabled={resettingId === emp.id}
+                                        className="px-2 py-1.5 text-[11px] font-bold rounded bg-white border border-[#CCCCCC] text-[#333] hover:bg-[#F5F5F5] disabled:opacity-50 cursor-pointer"
+                                    >
+                                        {resettingId === emp.id ? "Resetting…" : "Reset pwd"}
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {viewMode === "list" && sorted.length > 0 && totalPages > 1 && (
+                <div className="flex items-center justify-between flex-wrap gap-2 px-1">
+                    <div className="text-xs text-[#666]">
+                        Showing <span className="font-bold text-[#333]">{pageStart + 1}</span>–<span className="font-bold text-[#333]">{pageEnd}</span> of <span className="font-bold text-[#333]">{sorted.length}</span>
+                        <span className="text-[#999]"> · Page {safePage} of {totalPages}</span>
+                    </div>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={safePage <= 1}
+                            className="h-9 px-3 bg-white border border-[#CCCCCC] rounded-lg text-xs font-bold text-[#333] hover:bg-[#F5F5F5] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                            ← Prev
+                        </button>
+                        <button
+                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                            disabled={safePage >= totalPages}
+                            className="h-9 px-3 bg-white border border-[#CCCCCC] rounded-lg text-xs font-bold text-[#333] hover:bg-[#F5F5F5] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                            Next →
+                        </button>
+                    </div>
                 </div>
             )}
             </>)}
