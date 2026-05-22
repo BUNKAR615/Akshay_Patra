@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-import * as XLSX from "xlsx";
 
 async function api(url) {
     const res = await fetch(url);
@@ -59,6 +58,7 @@ export default function BranchSummaryPage() {
         setDownloading(true);
         setDownloadError("");
         try {
+            const XLSX = await import("xlsx");
             const payload = await api(`/api/admin/branches/${branchId}/export/ongoing`);
             const rows = (payload.employees || []).map((e, i) => ({
                 "S.No": i + 1,

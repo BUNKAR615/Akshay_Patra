@@ -49,15 +49,13 @@ export default function ClusterManagerDashboard() {
         [departmentsData]
     );
 
-    // selectedBranchId === ""   → Total mode (combined across all assigned branches)
-    // selectedBranchId === "id" → focused on a specific branch
+    // selectedBranchId is always a real assigned-branch id once loaded.
     const fetchData = async (nextSelection) => {
         try {
             setLoading(true);
-            // `nextSelection === ""` is Total mode — we deliberately omit
-            // the branchId query param so the API merges across every
-            // assigned branch. `undefined` means "use whatever is currently
-            // selected" (initial load, or refresh-after-submit).
+            // `nextSelection === ""` on first load → the API focuses the
+            // CM's first assigned branch. `undefined` means "use whatever is
+            // currently selected" (refresh-after-submit).
             const target = nextSelection === undefined ? selectedBranchId : nextSelection;
             const deptsUrl = target
                 ? `/api/cluster-manager/departments?branchId=${encodeURIComponent(target)}`
@@ -69,18 +67,17 @@ export default function ClusterManagerDashboard() {
             ]);
             // Stitch the assignment-table branch onto the user object so the
             // profile card's Branch field reflects the branch this CM is
-            // currently working on (or "All Branches" in Total mode).
+            // currently working on.
             setUser({
                 ...meData.user,
-                branchName: deptsData.branch?.name || (deptsData.mode === "TOTAL" ? "All Branches" : null),
+                branchName: deptsData.branch?.name || null,
             });
             setCurrentQuarterName(meData.currentQuarter || deptsData.quarter?.name);
             setDepartmentsData(deptsData.departments || []);
             setQuestions(qData.questions);
             setBranchInfo(deptsData.branch || null);
             setAssignedBranches(deptsData.assignedBranches || []);
-            // Keep the dropdown in sync with what the server actually scoped
-            // to. In Total mode, branch is null → selectedBranchId = "".
+            // Keep the dropdown in sync with the branch the server scoped to.
             setSelectedBranchId(deptsData.branch?.id || "");
             setSelectedEmployee(null);
             setError("");
@@ -94,15 +91,14 @@ export default function ClusterManagerDashboard() {
     };
 
     const handleSelectBranch = (branchId) => {
-        // Empty string is the legitimate Total sentinel — only short-circuit
-        // when the selection didn't actually change.
+        // Only refetch when the selection actually changed.
         if (branchId === selectedBranchId) return;
         fetchData(branchId);
     };
 
-    // Default the dashboard to Total mode on first open. No pre-login picker
-    // any more — the user lands here directly and chooses a branch (or stays
-    // on Total) via the in-page dropdown.
+    // On first open the dashboard focuses the CM's first assigned branch
+    // (resolved server-side). The in-page dropdown switches between the
+    // CM's assigned branches.
     useEffect(() => { fetchData(""); }, []);
 
     const handleEvaluate = async (answers) => {
@@ -147,20 +143,12 @@ export default function ClusterManagerDashboard() {
         );
     }
 
-    // In Total mode `branchInfo` is null — fall back to a Total label.
-    const isTotalMode = !selectedBranchId;
     const dashboardTitle = branchInfo?.name
         ? `Cluster Manager — ${branchInfo.name}`
-        : isTotalMode
-            ? "Cluster Manager — Total (All Branches)"
-            : "Cluster Manager Final Evaluation";
+        : "Cluster Manager Final Evaluation";
 
     const isMultiBranch = (assignedBranches?.length || 0) > 1;
     const noAssignments = (assignedBranches?.length || 0) === 0;
-    // Total counters across assigned branches, for the Total option label
-    // and the progress strip header in Total mode.
-    const totalEvaluatedAll = (assignedBranches || []).reduce((n, b) => n + (b.evaluated || 0), 0);
-    const totalToEvaluateAll = (assignedBranches || []).reduce((n, b) => n + (b.totalToEvaluate || 0), 0);
 
     return (
         <DashboardShell user={user} currentQuarter={currentQuarterName} title={dashboardTitle}>
@@ -195,11 +183,7 @@ export default function ClusterManagerDashboard() {
                                     {isMultiBranch ? "Multi-Branch Cluster Manager" : "Assigned Branch"}
                                 </p>
                                 <p className="text-[14px] text-[#333333]">
-                                    {isTotalMode ? (
-                                        <>Currently viewing <span className="font-bold">Total ({assignedBranches.length} branch{assignedBranches.length === 1 ? "" : "es"})</span>.</>
-                                    ) : (
-                                        <>Currently evaluating <span className="font-bold">{branchInfo?.name || "—"}</span>{isMultiBranch ? ` of ${assignedBranches.length} assigned branches.` : "."}</>
-                                    )}
+                                    Currently evaluating <span className="font-bold">{branchInfo?.name || "—"}</span>{isMultiBranch ? ` of ${assignedBranches.length} assigned branches.` : "."}
                                 </p>
                             </div>
                         </div>
@@ -214,11 +198,6 @@ export default function ClusterManagerDashboard() {
                                         onChange={(e) => handleSelectBranch(e.target.value)}
                                         className="w-full px-4 py-2 bg-[#E3F2FD] border border-[#90CAF9] rounded-lg text-[#003087] font-bold focus:outline-none focus:ring-2 focus:ring-[#003087] appearance-none cursor-pointer"
                                     >
-                                        {/* Total option — combined view across every assigned branch.
-                                            Default selection when the dashboard opens. */}
-                                        <option value="">
-                                            Total — {totalEvaluatedAll}/{totalToEvaluateAll}
-                                        </option>
                                         {assignedBranches.map((b) => (
                                             <option key={b.id} value={b.id}>
                                                 {b.name}
@@ -236,32 +215,10 @@ export default function ClusterManagerDashboard() {
                         )}
                     </div>
 
-                    {/* Branch-wise counts strip — Total chip first, then one
-                        chip per assigned branch. The Total chip mirrors the
-                        dropdown's Total option for click-to-switch parity. */}
+                    {/* Branch-wise counts strip — one chip per assigned branch. */}
                     <div className="flex flex-wrap gap-2">
-                        {isMultiBranch && (
-                            <button
-                                type="button"
-                                onClick={() => handleSelectBranch("")}
-                                className={`px-3 py-2 rounded-lg border text-left transition-colors cursor-pointer ${
-                                    isTotalMode
-                                        ? "bg-[#003087] border-[#003087] text-white shadow-sm"
-                                        : "bg-white border-[#90CAF9] text-[#003087] hover:bg-[#F5F9FF]"
-                                }`}
-                            >
-                                <div className="text-[12px] font-bold uppercase tracking-wider opacity-80">Total</div>
-                                <div className="text-[14px] font-black">
-                                    {totalToEvaluateAll === 0 ? (
-                                        <span className={isTotalMode ? "text-white" : "text-[#666]"}>No eligible employees</span>
-                                    ) : (
-                                        <>{totalEvaluatedAll} / {totalToEvaluateAll} evaluated</>
-                                    )}
-                                </div>
-                            </button>
-                        )}
                         {assignedBranches.map((b) => {
-                            const isCurrent = !isTotalMode && b.id === selectedBranchId;
+                            const isCurrent = b.id === selectedBranchId;
                             const empty = b.totalToEvaluate === 0;
                             return (
                                 <button
@@ -301,10 +258,10 @@ export default function ClusterManagerDashboard() {
                 <div className="flex justify-between items-end mb-3">
                     <div>
                         <span className="text-[14px] text-[#666666] font-bold uppercase tracking-wider block mb-1">
-                            {isTotalMode ? "Total — " : (branchInfo?.name ? `${branchInfo.name} — ` : "")}Evaluation Progress
+                            {branchInfo?.name ? `${branchInfo.name} — ` : ""}Evaluation Progress
                         </span>
                         <span className="text-[15px] font-medium text-[#333333]">
-                            {progress.evaluated} of {progress.total} eligible employees evaluated{isTotalMode ? " across all assigned branches" : " in this branch"}
+                            {progress.evaluated} of {progress.total} eligible employees evaluated in this branch
                         </span>
                     </div>
                     <span className="text-[24px] font-black text-[#003087] leading-none">
@@ -426,13 +383,6 @@ export default function ClusterManagerDashboard() {
                                                 )}
                                                 {entry.collarType === "BLUE_COLLAR" && (
                                                     <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border bg-[#FFF8E1] text-[#F57C00] border-[#FFE082]">BC</span>
-                                                )}
-                                                {/* Show the branch tag in Total mode so it's clear
-                                                    which branch each candidate belongs to. */}
-                                                {isTotalMode && entry.branchName && (
-                                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border bg-[#E8EAF6] text-[#1A237E] border-[#9FA8DA]">
-                                                        {entry.branchName}
-                                                    </span>
                                                 )}
                                             </div>
                                             <p className="text-[#666666] text-[14px] font-medium">

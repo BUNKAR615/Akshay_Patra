@@ -91,6 +91,7 @@ export default function Sidebar({
                 >
                     <Link
                         href={DASHBOARD_HOME[role] || "/login"}
+                        onClick={isMobile ? onDrawerClose : undefined}
                         className="flex items-center gap-3 no-underline flex-1 min-w-0"
                     >
                         <div
@@ -139,6 +140,7 @@ export default function Sidebar({
                                         item={item}
                                         active={active}
                                         collapsed={isCollapsed}
+                                        onNavigate={isMobile ? onDrawerClose : undefined}
                                     />
                                 );
                             })}
@@ -191,12 +193,13 @@ export default function Sidebar({
     );
 }
 
-function SidebarItem({ item, active, collapsed }) {
+function SidebarItem({ item, active, collapsed, onNavigate }) {
     const [hover, setHover] = useState(false);
     const icon = Ic[item.icon] || Ic.dashboard;
     return (
         <Link
             href={item.href}
+            onClick={onNavigate}
             onMouseEnter={() => setHover(true)}
             onMouseLeave={() => setHover(false)}
             title={collapsed ? item.label : undefined}

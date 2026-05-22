@@ -8,8 +8,6 @@ import ConfirmDialog from "../../../components/ConfirmDialog";
 import { PageSpinner, SkeletonCard, SkeletonStats } from "../../../components/Skeleton";
 import UserProfileCard from "../../../components/UserProfileCard";
 import QuarterCountdown from "../../../components/QuarterCountdown";
-import Papa from "papaparse";
-import * as XLSX from "xlsx";
 
 async function api(url, opts, { retries = 4 } = {}) {
     let lastErr;
@@ -194,7 +192,8 @@ export default function AdminDashboard() {
         setBulkLoading(false);
     };
 
-    const downloadBulkTemplate = () => {
+    const downloadBulkTemplate = async () => {
+        const XLSX = await import("xlsx");
         const sampleRows = [
             { "Emp Code": "5100099", "Name": "Sample Name", "Department": "Production", "Branch": "Jaipur", "Designation": "Operator", "Mobile": "9876543210", "Collar Type": "BLUE_COLLAR" },
         ];
@@ -333,6 +332,7 @@ export default function AdminDashboard() {
     const downloadExcel = async () => {
         setExcelLoading(true);
         try {
+            const XLSX = await import("xlsx");
             const params = new URLSearchParams({ page: "1", export: "true" });
             if (empFilter.search) params.set("search", empFilter.search);
             if (empFilter.department) params.set("department", empFilter.department);
@@ -474,6 +474,7 @@ export default function AdminDashboard() {
         setExportLoading(true);
         setExportError("");
         try {
+            const XLSX = await import("xlsx");
             const qs = selectedQuarterId ? `?quarterId=${encodeURIComponent(selectedQuarterId)}` : "";
             const payload = await api(`/api/admin/branches/${exportBranchId}/export/ongoing${qs}`);
             const rows = (payload.employees || []).map((e, i) => ({
@@ -687,7 +688,7 @@ export default function AdminDashboard() {
     }, [tab]);
 
     // ── CSV export ──
-    const exportCSV = (data) => {
+    const exportCSV = async (data) => {
         const source = data || report;
         if (!source?.employees?.length) return;
         const stageLabel = { 1: "Self Assessment", 2: "BM / HOD", 3: "Cluster Manager", 4: "HR", 5: "Committee" };
@@ -704,6 +705,7 @@ export default function AdminDashboard() {
             "Best Employee": e.isBestEmployee ? "Yes" : "No",
         }));
 
+        const Papa = (await import("papaparse")).default;
         const csv = Papa.unparse(csvData);
         const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);

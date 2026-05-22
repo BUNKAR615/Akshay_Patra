@@ -21,13 +21,10 @@ function shuffleArray(array) {
  * Branch-scope semantics:
  *   - ?branchId=<id>  → focus on that branch (must be in the CM's
  *                       ClusterManagerBranchAssignment table; otherwise 403).
- *   - omitted / empty / "ALL" → "Total" mode: data merged across EVERY branch
- *                       the CM is assigned to. Each shortlist row carries a
- *                       branchId/branchName so the dashboard can label it.
+ *   - omitted / empty → focus the CM's first assigned branch (initial load).
  *
- * "Total" is the new default behaviour of the dashboard (the pre-login
- * branch picker has been removed). The single-branch view is preserved for
- * the dropdown's per-branch options.
+ * There is no "all branches" mode — the dashboard always shows a single
+ * assigned branch and the in-page dropdown switches between assigned branches.
  */
 export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
     try {
@@ -36,11 +33,9 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
 
         const { searchParams } = new URL(request.url);
         const requested = (searchParams.get("branchId") || "").trim();
-        const isTotal = !requested || requested.toUpperCase() === "ALL";
 
-        // All branches this CM is assigned to — drives both the dropdown
-        // and the data source for Total mode. Source of truth: the
-        // ClusterManagerBranchAssignment table (NOT user.branchId).
+        // All branches this CM is assigned to — drives the dropdown. Source
+        // of truth: the ClusterManagerBranchAssignment table (NOT user.branchId).
         const allAssignedBranches = await resolveAllScopeBranches({
             userId: user.userId,
             role: "CLUSTER_MANAGER",
@@ -49,12 +44,13 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
             return forbidden("You are not assigned to any branch. Please contact your administrator.");
         }
 
-        // Validate the focus branch when one was requested. We do NOT fall
-        // back to the JWT branchId here — that was the source of the old
-        // branch-leak bug. Either Total (no validation needed) or a branch
-        // explicitly present in the CM's assignment table.
-        let focusBranch = null;
-        if (!isTotal) {
+        // Resolve the focus branch. There is no "all branches" mode — when no
+        // branch is requested (initial dashboard load) we focus the CM's
+        // first assigned branch. A requested branch must be present in the
+        // CM's assignment table; we never fall back to the JWT branchId
+        // (that was the source of the old branch-leak bug).
+        let focusBranch;
+        if (requested) {
             const { branch } = await resolveScopeBranch({
                 userId: user.userId,
                 role: "CLUSTER_MANAGER",
@@ -64,11 +60,12 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
                 return forbidden("You are not authorized for this branch. Please sign in again.");
             }
             focusBranch = branch;
+        } else {
+            const first = allAssignedBranches[0];
+            focusBranch = { id: first.id, name: first.name, branchType: first.branchType };
         }
 
-        const targetBranches = isTotal
-            ? allAssignedBranches.map((b) => ({ id: b.id, name: b.name, branchType: b.branchType }))
-            : [{ id: focusBranch.id, name: focusBranch.name, branchType: focusBranch.branchType }];
+        const targetBranches = [{ id: focusBranch.id, name: focusBranch.name, branchType: focusBranch.branchType }];
         const targetBranchIds = targetBranches.map((b) => b.id);
         const branchById = new Map(targetBranches.map((b) => [b.id, b]));
 
@@ -195,13 +192,9 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         return ok({
             departments: departmentsData,
             quarter: activeQuarter,
-            // `branch` is null in Total mode so the UI knows there is no
-            // single-branch focus. The per-branch chip strip and the
-            // assignedBranches array still drive the dropdown.
-            branch: isTotal
-                ? null
-                : { id: focusBranch.id, name: focusBranch.name, branchType: focusBranch.branchType },
-            mode: isTotal ? "TOTAL" : "BRANCH",
+            // The dashboard always focuses a single assigned branch.
+            branch: { id: focusBranch.id, name: focusBranch.name, branchType: focusBranch.branchType },
+            mode: "BRANCH",
             assignedBranchCount,
             assignedBranches,
             totals: { totalToEvaluate, evaluated: totalEvaluated },

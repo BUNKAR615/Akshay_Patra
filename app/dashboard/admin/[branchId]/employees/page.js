@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import * as XLSX from "xlsx";
 import ConfirmDialog from "../../../../../components/ConfirmDialog";
 
 const ROLE_OPTIONS = ["EMPLOYEE", "SUPERVISOR", "HOD", "BRANCH_MANAGER", "CLUSTER_MANAGER", "HR", "COMMITTEE"];
@@ -274,7 +273,8 @@ export default function BranchEmployeesPage() {
         submitBulkUpload();
     };
 
-    const downloadBulkTemplate = () => {
+    const downloadBulkTemplate = async () => {
+        const XLSX = await import("xlsx");
         const sampleRows = [
             { "Emp Code": "5100099", "Name": "Sample Name", "Department": "Production", "Designation": "Operator", "Mobile": "9876543210", "Collar Type": "BLUE_COLLAR" },
         ];
