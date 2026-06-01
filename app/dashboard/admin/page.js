@@ -1379,36 +1379,73 @@ export default function AdminDashboard() {
                     ) : (
                         <>
                             <h2 className="text-xl font-bold text-[#003087]">Evaluation Pipeline</h2>
+                            <p className="text-[12px] text-[#666666] -mt-2">
+                                For each stage — <span className="font-bold text-[#003087]">Evaluated</span> = scored so far ·
+                                {" "}<span className="font-bold text-[#00843D]">Cleared</span> = passed to the next stage ·
+                                {" "}<span className="font-bold text-[#E65100]">Pending</span> = still awaiting evaluation.
+                            </p>
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 {(quarterProgress.branches || []).map((b) => {
+                                    // Per stage: total = employees who entered the stage (the prior
+                                    // stage's cleared pool); evaluated = scored so far; cleared =
+                                    // shortlisted onward; pending = entered but not yet evaluated.
                                     const stages = [
-                                        { label: "Stage 1 — Self", done: b.stage1.submitted, total: b.totalEmployees, color: "#003087" },
-                                        { label: "Stage 2 — BM/HOD", done: (b.stage2.evaluatedByBm || 0) + (b.stage2.evaluatedByHod || 0), total: b.stage2.shortlisted, color: "#00843D" },
-                                        { label: "Stage 3 — CM", done: b.stage3.evaluatedByCm, total: b.stage3.shortlisted, color: "#F7941D" },
-                                        { label: "Stage 4 — HR", done: b.stage4.evaluatedByHr, total: b.stage4.shortlisted, color: "#D32F2F" },
-                                        { label: "Winners", done: b.winners.length, total: b.branchType === "BIG" ? 4 : 3, color: "#6A1B9A" },
+                                        { label: "Stage 1 — Self", color: "#003087", total: b.totalEmployees, evaluated: b.stage1.submitted, cleared: b.stage1.shortlisted },
+                                        { label: "Stage 2 — BM/HOD", color: "#00843D", total: b.stage1.shortlisted, evaluated: (b.stage2.evaluatedByBm || 0) + (b.stage2.evaluatedByHod || 0), cleared: b.stage2.shortlisted },
+                                        { label: "Stage 3 — CM", color: "#F7941D", total: b.stage2.shortlisted, evaluated: b.stage3.evaluatedByCm, cleared: b.stage3.shortlisted },
+                                        { label: "Stage 4 — HR", color: "#D32F2F", total: b.stage3.shortlisted, evaluated: b.stage4.evaluatedByHr, cleared: b.stage4.shortlisted },
                                     ];
+                                    const winnerTarget = b.branchType === "BIG" ? 4 : 3;
                                     return (
                                         <div key={b.branchId} className="bg-white border border-[#E0E0E0] rounded-xl p-4 shadow-sm">
-                                            <div className="flex items-center justify-between mb-3">
+                                            <div className="flex items-center justify-between mb-1">
                                                 <h3 className="font-bold text-[#1A1A2E]">{b.branchName}</h3>
                                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${b.branchType === "BIG" ? "bg-[#F3E5F5] text-[#6A1B9A] border-[#CE93D8]" : "bg-[#FFF8E1] text-[#F57F17] border-[#FFE082]"}`}>{b.branchType}</span>
                                             </div>
+                                            <p className="text-[11px] text-[#666666] mb-3">Total employees in pipeline: <span className="font-bold text-[#003087]">{b.totalEmployees}</span></p>
                                             <div className="space-y-2.5">
                                                 {stages.map((s) => {
-                                                    const pct = s.total > 0 ? Math.min(100, Math.round((s.done / s.total) * 100)) : 0;
+                                                    const started = s.total > 0;
+                                                    const pending = Math.max(0, s.total - s.evaluated);
+                                                    const pct = started ? Math.min(100, Math.round((s.evaluated / s.total) * 100)) : 0;
                                                     return (
-                                                        <div key={s.label}>
-                                                            <div className="flex items-center justify-between text-[11px] mb-1">
-                                                                <span className="font-bold text-[#333333]">{s.label}</span>
-                                                                <span className="text-[#666666]"><span className="font-bold" style={{ color: s.color }}>{s.done}</span> / {s.total}</span>
+                                                        <div key={s.label} className="border border-[#EEEEEE] rounded-lg p-2.5">
+                                                            <div className="flex items-center justify-between mb-1.5">
+                                                                <span className="text-[12px] font-bold text-[#333333]">{s.label}</span>
+                                                                {started ? (
+                                                                    <span className="text-[10px] text-[#666666]"><span className="font-bold" style={{ color: s.color }}>{s.total}</span> in stage</span>
+                                                                ) : (
+                                                                    <span className="text-[10px] font-bold text-[#999999] bg-[#F5F5F5] border border-[#E0E0E0] px-1.5 py-0.5 rounded-full">Not started</span>
+                                                                )}
                                                             </div>
-                                                            <div className="h-1.5 bg-[#F5F5F5] rounded-full overflow-hidden">
-                                                                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: s.color }} />
-                                                            </div>
+                                                            {started && (
+                                                                <>
+                                                                    <div className="grid grid-cols-3 gap-1.5 mb-1.5">
+                                                                        <div className="text-center bg-[#F5F7FA] rounded-md py-1">
+                                                                            <p className="text-[9px] font-bold uppercase tracking-wider text-[#888888] leading-none">Evaluated</p>
+                                                                            <p className="text-[15px] font-black leading-tight mt-0.5" style={{ color: s.color }}>{s.evaluated}</p>
+                                                                        </div>
+                                                                        <div className="text-center bg-[#F1F8E9] rounded-md py-1">
+                                                                            <p className="text-[9px] font-bold uppercase tracking-wider text-[#888888] leading-none">Cleared</p>
+                                                                            <p className="text-[15px] font-black leading-tight mt-0.5 text-[#00843D]">{s.cleared}</p>
+                                                                        </div>
+                                                                        <div className="text-center bg-[#FFF3E0] rounded-md py-1">
+                                                                            <p className="text-[9px] font-bold uppercase tracking-wider text-[#888888] leading-none">Pending</p>
+                                                                            <p className="text-[15px] font-black leading-tight mt-0.5 text-[#E65100]">{pending}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="h-1.5 bg-[#F5F5F5] rounded-full overflow-hidden">
+                                                                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: s.color }} />
+                                                                    </div>
+                                                                </>
+                                                            )}
                                                         </div>
                                                     );
                                                 })}
+                                            </div>
+                                            <div className="mt-3 pt-3 border-t border-[#EEEEEE] flex items-center justify-between text-[11px]">
+                                                <span className="font-bold text-[#6A1B9A]">Winners selected</span>
+                                                <span className="text-[#666666]"><span className="font-bold text-[#6A1B9A]">{b.winners.length}</span> / {winnerTarget}</span>
                                             </div>
                                         </div>
                                     );
