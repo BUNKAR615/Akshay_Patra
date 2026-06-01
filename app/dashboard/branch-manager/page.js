@@ -19,6 +19,17 @@ async function api(url, opts) {
     return json.data;
 }
 
+// Fisher-Yates shuffle — returns a new array. Used to give each evaluated
+// employee a different question order without persisting the sequence.
+function shuffle(arr) {
+    const a = [...(arr || [])];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
 function StatBox({ label, value, color, compact }) {
     return (
         <div className="border border-[#E0E0E0] rounded-lg bg-[#FAFCFF] px-3 py-2.5 text-center">
@@ -316,6 +327,13 @@ export default function BranchManagerDashboard() {
     const [selectedEmployee, setSelectedEmployee] = useState(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+
+    // Re-shuffle the question order whenever the evaluator opens a different
+    // employee — so the sequence is random per employee, not fixed for all.
+    const shuffledQuestions = useMemo(
+        () => shuffle(questions),
+        [questions, selectedEmployee?.userId]
+    );
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
 
@@ -903,7 +921,7 @@ export default function BranchManagerDashboard() {
                         </div>
 
                         <EvaluationForm
-                            questions={questions}
+                            questions={shuffledQuestions}
                             onSubmit={handleEvaluate}
                             submitLabel={`Submit Evaluation for ${selectedEmployee.name.split(' ')[0]}`}
                             draftKey={user?.id && branch?.id ? `draft_eval_${user.id}_${selectedEmployee.userId}_${branch.id}` : null}

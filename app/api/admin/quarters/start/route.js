@@ -130,31 +130,60 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             return fail("Cannot start quarter. No questions in the question bank. Please add questions first.");
         }
 
+        // Question selection mode — AUTO (system picks a random, category-
+        // balanced subset) or MANUAL (use exactly the admin-curated questions).
+        const mode = data.questionSelectionMode === "MANUAL" ? "MANUAL" : "AUTO";
+
         // ── Fetch active questions per level ──
         // Note: HOD evaluators reuse the BRANCH_MANAGER question bank, so there is no separate HOD level.
         const selfQuestions = await prisma.question.findMany({ where: { level: "SELF", isActive: true } });
         const bmQuestions = await prisma.question.findMany({ where: { level: "BRANCH_MANAGER", isActive: true } });
         const cmQuestions = await prisma.question.findMany({ where: { level: "CLUSTER_MANAGER", isActive: true } });
 
-        const selfCount = data.questionCount; // strictly admin-set
-        const bmCount = data.bmQuestionCount || 15;
-        const cmCount = data.cmQuestionCount || 10;
+        // `selected*` are the questions locked into the quarter for each level.
+        // `selfPoolForAssignment` / `selfPerEmployee` drive the per-employee
+        // SELF assignment. Resolved differently per mode below.
+        let selectedSelf, selectedBm, selectedCm;
+        let selfPoolForAssignment, selfPerEmployee;
 
-        // Validate sufficient questions
-        if (selfQuestions.length < selfCount) {
-            return fail(`Not enough active SELF questions. Need ${selfCount}, found ${selfQuestions.length}. Add more questions.`);
-        }
-        if (bmQuestions.length < bmCount) {
-            return fail(`Not enough active BRANCH_MANAGER questions. Need ${bmCount}, found ${bmQuestions.length}. Add more questions.`);
-        }
-        if (cmQuestions.length < cmCount) {
-            return fail(`Not enough active CLUSTER_MANAGER questions. Need ${cmCount}, found ${cmQuestions.length}. Add more questions.`);
-        }
+        if (mode === "MANUAL") {
+            // Manual: use exactly the questions the admin marked as included
+            // on the Questions page. No random subsetting — every included
+            // question is locked; every employee gets the full SELF set.
+            const manualSelf = selfQuestions.filter((q) => q.includedInQuarter);
+            const manualBm = bmQuestions.filter((q) => q.includedInQuarter);
+            const manualCm = cmQuestions.filter((q) => q.includedInQuarter);
+            if (manualSelf.length === 0) return fail("Manual mode: no Stage 1 (SELF) questions are marked as included. Mark questions to include on the Questions page first.");
+            if (manualBm.length === 0) return fail("Manual mode: no Branch Manager questions are marked as included. Mark questions to include on the Questions page first.");
+            if (manualCm.length === 0) return fail("Manual mode: no Cluster Manager questions are marked as included. Mark questions to include on the Questions page first.");
+            selectedSelf = manualSelf;
+            selectedBm = manualBm;
+            selectedCm = manualCm;
+            selfPoolForAssignment = manualSelf;
+            selfPerEmployee = manualSelf.length;
+        } else {
+            // Automatic: the system picks a random, category-balanced subset.
+            const selfCount = data.questionCount; // strictly admin-set
+            const bmCount = data.bmQuestionCount || 15;
+            const cmCount = data.cmQuestionCount || 10;
 
-        // ── Select random questions per level ──
-        const selectedSelf = selectSelfQuestions(selfQuestions, selfCount);
-        const selectedBm = selectSimple(bmQuestions, bmCount);
-        const selectedCm = selectSimple(cmQuestions, cmCount);
+            // Validate sufficient questions
+            if (selfQuestions.length < selfCount) {
+                return fail(`Not enough active SELF questions. Need ${selfCount}, found ${selfQuestions.length}. Add more questions.`);
+            }
+            if (bmQuestions.length < bmCount) {
+                return fail(`Not enough active BRANCH_MANAGER questions. Need ${bmCount}, found ${bmQuestions.length}. Add more questions.`);
+            }
+            if (cmQuestions.length < cmCount) {
+                return fail(`Not enough active CLUSTER_MANAGER questions. Need ${cmCount}, found ${cmQuestions.length}. Add more questions.`);
+            }
+
+            selectedSelf = selectSelfQuestions(selfQuestions, selfCount);
+            selectedBm = selectSimple(bmQuestions, bmCount);
+            selectedCm = selectSimple(cmQuestions, cmCount);
+            selfPoolForAssignment = selfQuestions;
+            selfPerEmployee = selfCount;
+        }
 
         const allSelectedIds = [
             ...selectedSelf.map(q => q.id),
@@ -164,14 +193,14 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
 
         const { quarter, assignmentStats } = await prisma.$transaction(async (tx) => {
             const q = await tx.quarter.create({
-                data: { name: data.quarterName, status: "ACTIVE", startDate: start, endDate: end, questionCount: data.questionCount, bmQuestionCount: bmCount, hodQuestionCount: bmCount, cmQuestionCount: cmCount },
+                data: { name: data.quarterName, status: "ACTIVE", startDate: start, endDate: end, questionCount: selfPerEmployee, bmQuestionCount: selectedBm.length, hodQuestionCount: selectedBm.length, cmQuestionCount: selectedCm.length, questionSelectionMode: mode },
             });
             await tx.quarterQuestion.createMany({
                 data: allSelectedIds.map((questionId) => ({ quarterId: q.id, questionId })),
             });
 
             // ── Assign per-employee randomized SELF question sets ──
-            const stats = await assignQuestionsToEmployees(tx, q.id, selfQuestions, selfCount);
+            const stats = await assignQuestionsToEmployees(tx, q.id, selfPoolForAssignment, selfPerEmployee);
 
             return { quarter: q, assignmentStats: stats };
         }, { maxWait: 8000, timeout: 20000 });
@@ -184,7 +213,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         const warnings = [];
 
         await prisma.auditLog.create({
-            data: { userId: user.userId, action: "QUARTER_STARTED", details: { quarterId: quarter.id, name: quarter.name, questionCount: data.questionCount, totalLocked: allSelectedIds.length, selfCount: selectedSelf.length, bmCount: selectedBm.length, cmCount: selectedCm.length, priorHodReset } },
+            data: { userId: user.userId, action: "QUARTER_STARTED", details: { quarterId: quarter.id, name: quarter.name, questionSelectionMode: mode, questionCount: selectedSelf.length, totalLocked: allSelectedIds.length, selfCount: selectedSelf.length, bmCount: selectedBm.length, cmCount: selectedCm.length, priorHodReset } },
         }).catch((e) => { console.error("[QUARTER-START] Audit log failed:", e); });
 
         // Notify all employees
@@ -287,7 +316,7 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         }
 
         const responseData = {
-            message: `Quarter "${data.quarterName}" started with ${allSelectedIds.length} questions locked (${selectedSelf.length} SELF, ${selectedBm.length} BM, ${selectedCm.length} CM). ${assignmentStats.totalEmployees} employees assigned unique question sets.${warningMsg}`,
+            message: `Quarter "${data.quarterName}" started in ${mode === "MANUAL" ? "Manual" : "Automatic"} question-selection mode with ${allSelectedIds.length} questions locked (${selectedSelf.length} SELF, ${selectedBm.length} BM, ${selectedCm.length} CM). ${assignmentStats.totalEmployees} employees assigned randomized question sets.${warningMsg}`,
             quarter: result,
             assignmentStats,
             warnings,

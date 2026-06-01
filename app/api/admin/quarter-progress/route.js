@@ -302,7 +302,8 @@ export const GET = withRole(["ADMIN"], async (request) => {
                 status: quarter.status,
                 startDate: quarter.startDate,
                 endDate: quarter.endDate,
-                questionCount: quarter.questionCount
+                questionCount: quarter.questionCount,
+                questionSelectionMode: quarter.questionSelectionMode
             },
             departments: resultDepartments.sort((a, b) => a.departmentName.localeCompare(b.departmentName)),
             branches: branchesPayload,

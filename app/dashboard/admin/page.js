@@ -126,6 +126,9 @@ export default function AdminDashboard() {
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
     const [questionCount, setQuestionCount] = useState(15);
+    // AUTO: system picks a random balanced set. MANUAL: lock exactly the
+    // questions marked "In quarter" on the Questions tab.
+    const [quarterMode, setQuarterMode] = useState("AUTO");
     const [quarterMsg, setQuarterMsg] = useState({ type: "", text: "" });
     const [quarterLoading, setQuarterLoading] = useState(false);
 
@@ -750,13 +753,15 @@ export default function AdminDashboard() {
                         startDate: now.toISOString().split('T')[0],
                         endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
                     },
-                    questionCount: 15
+                    questionCount: 15,
+                    questionSelectionMode: "AUTO"
                 };
             } else {
-                body = { 
-                    quarterName, 
-                    dateRange: { startDate, endDate }, 
-                    questionCount: Number(questionCount) || 15 
+                body = {
+                    quarterName,
+                    dateRange: { startDate, endDate },
+                    questionCount: Number(questionCount) || 15,
+                    questionSelectionMode: quarterMode
                 };
             }
             const d = await api("/api/admin/quarters/start", {
@@ -817,6 +822,18 @@ export default function AdminDashboard() {
             const d = await api(`/api/admin/questions/${id}`, { method: "PATCH" });
             setQuestions((prev) => prev.map((q) => (q.id === id ? d.question : q)));
         } catch (err) { console.error("[Admin] toggleQuestion failed:", err); }
+    };
+
+    // Curate which questions a MANUAL-mode quarter locks. Has no effect on
+    // quarters started in Automatic mode.
+    const toggleInclude = async (q) => {
+        try {
+            const d = await api(`/api/admin/questions/${q.id}`, {
+                method: "PUT", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ includedInQuarter: !q.includedInQuarter }),
+            });
+            setQuestions((prev) => prev.map((x) => (x.id === q.id ? d.question : x)));
+        } catch (err) { console.error("[Admin] toggleInclude failed:", err); }
     };
 
     const saveEditQuestion = async () => {
@@ -1702,6 +1719,12 @@ export default function AdminDashboard() {
                         <div className={`p-3 rounded-lg text-sm border ${quarterMsg.type === "success" ? "bg-[#E3F2FD] border-[#90CAF9] text-[#003087]" : "bg-[#FFEBEE] border-[#EF9A9A] text-[#D32F2F]"}`}>{quarterMsg.text}</div>
                     )}
                     <QuarterCountdown quarter={quarterProgress?.quarter} />
+                    {quarterProgress?.quarter?.questionSelectionMode && (
+                        <div className="bg-[#E3F2FD] border border-[#90CAF9] rounded-lg px-4 py-2.5 text-[13px] text-[#333333]">
+                            Question selection mode for <span className="font-bold">{quarterProgress.quarter.name}</span>:{" "}
+                            <span className="font-bold text-[#003087]">{quarterProgress.quarter.questionSelectionMode === "MANUAL" ? "Manual" : "Automatic"}</span>
+                        </div>
+                    )}
                     <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-6">
                         <h3 className="text-lg font-semibold text-[#003087] mb-4">Start New Quarter</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -1709,6 +1732,30 @@ export default function AdminDashboard() {
                             <div><label className="block text-sm text-[#333333] mb-1 font-medium">Question Count per Level</label><input type="number" value={questionCount} onChange={(e) => setQuestionCount(parseInt(e.target.value))} min={10} max={25} className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]" /></div>
                             <div><label className="block text-sm text-[#333333] mb-1 font-medium">Start Date</label><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]" /></div>
                             <div><label className="block text-sm text-[#333333] mb-1 font-medium">End Date</label><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]" /></div>
+                        </div>
+                        <div className="mb-4">
+                            <label className="block text-sm text-[#333333] mb-1.5 font-medium">Question Selection Mode</label>
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    { v: "AUTO", label: "Automatic", desc: "System picks a random, category-balanced set" },
+                                    { v: "MANUAL", label: "Manual", desc: "Lock exactly the questions marked “In quarter”" },
+                                ].map((m) => (
+                                    <button
+                                        key={m.v}
+                                        type="button"
+                                        onClick={() => setQuarterMode(m.v)}
+                                        className={`text-left px-4 py-2.5 rounded-lg border transition-colors cursor-pointer ${quarterMode === m.v ? "bg-[#003087] border-[#003087] text-white" : "bg-white border-[#CCCCCC] text-[#333333] hover:bg-[#F5F7FA]"}`}
+                                    >
+                                        <span className="block text-[14px] font-bold">{m.label}</span>
+                                        <span className={`block text-[11px] ${quarterMode === m.v ? "text-white/80" : "text-[#666666]"}`}>{m.desc}</span>
+                                    </button>
+                                ))}
+                            </div>
+                            {quarterMode === "MANUAL" && (
+                                <p className="text-[12px] text-[#666666] mt-2">
+                                    Manual mode locks every question marked &ldquo;In quarter&rdquo; on the Questions tab. The &ldquo;Question Count per Level&rdquo; value above is ignored.
+                                </p>
+                            )}
                         </div>
                         <button onClick={requestStartQuarter} disabled={quarterLoading || !quarterName || !startDate || !endDate} className="min-h-[44px] min-w-[120px] px-6 py-2.5 bg-[#003087] hover:bg-[#00843D] text-[14px] text-white font-bold rounded-lg disabled:bg-[#CCCCCC] disabled:text-[#666666] disabled:cursor-not-allowed cursor-pointer transition-all">{quarterLoading ? "Starting..." : "Start Quarter"}</button>
                     </div>
@@ -1827,6 +1874,7 @@ export default function AdminDashboard() {
                                                                 <button onClick={() => setEditingQ({ id: q.id, text: q.text, textHindi: q.textHindi || "", category: q.category, level: q.level })} className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-3 py-1.5 bg-[#F5F5F5] font-bold border border-[#E0E0E0] text-[#333333] hover:text-[#003087] rounded-md cursor-pointer transition-colors text-[12px] sm:text-[13px]">Edit</button>
                                                                 <button onClick={() => setDeleteQ(q)} className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-3 py-1.5 bg-[#F5F5F5] font-bold border border-[#E0E0E0] text-[#333333] hover:text-[#D32F2F] rounded-md cursor-pointer transition-colors text-[12px] sm:text-[13px]">Delete</button>
                                                                 <button onClick={() => toggleQuestion(q.id)} className={`min-h-[36px] sm:min-h-[40px] text-[12px] sm:text-[13px] font-bold px-2.5 sm:px-3 py-1.5 rounded-lg border transition-colors cursor-pointer shrink-0 shadow-sm ${q.isActive ? "bg-[#00843D] text-[#FFFFFF] border-[#A5D6A7]" : "bg-[#CCCCCC] text-[#333333] border-[#EF9A9A]"}`}>{q.isActive ? "Active" : "Off"}</button>
+                                                                <button onClick={() => toggleInclude(q)} title="Whether this question is locked into a quarter started in Manual mode" className={`min-h-[36px] sm:min-h-[40px] text-[12px] sm:text-[13px] font-bold px-2.5 sm:px-3 py-1.5 rounded-lg border transition-colors cursor-pointer shrink-0 shadow-sm ${q.includedInQuarter ? "bg-[#003087] text-[#FFFFFF] border-[#90CAF9]" : "bg-[#FFFFFF] text-[#666666] border-[#CCCCCC]"}`}>{q.includedInQuarter ? "In quarter" : "Excluded"}</button>
                                                             </div>
                                                         </div>
                                                     )}

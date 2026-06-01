@@ -52,6 +52,7 @@ export const PUT = withRole(["ADMIN"], async (request, { params, user }) => {
         if (data.category !== undefined) updateData.category = data.category;
         if (data.level !== undefined) updateData.level = data.level;
         if (data.isActive !== undefined) updateData.isActive = data.isActive;
+        if (data.includedInQuarter !== undefined) updateData.includedInQuarter = data.includedInQuarter;
 
         const updated = await prisma.question.update({ where: { id }, data: updateData });
 

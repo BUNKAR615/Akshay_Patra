@@ -17,14 +17,23 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
  * follow the same shape — see route handlers for the equivalent block.
  */
 
-// Mock prisma BEFORE importing applyBmAssignment.
+// Mock prisma BEFORE importing the helpers. syncLegacyBmDepartmentCache runs
+// post-commit on the top-level prisma client (NOT the tx), so the legacy
+// department/role-mapping writes are stubbed here.
+const { prismaDeptFindUnique, prismaDeptUpdate, prismaDrmUpsert } = vi.hoisted(() => ({
+    prismaDeptFindUnique: vi.fn(),
+    prismaDeptUpdate: vi.fn(),
+    prismaDrmUpsert: vi.fn(),
+}));
 vi.mock("../lib/prisma", () => ({
     default: {
         branchManagerAssignment: { findUnique: vi.fn() },
+        department: { findUnique: prismaDeptFindUnique, update: prismaDeptUpdate },
+        departmentRoleMapping: { upsert: prismaDrmUpsert },
     },
 }));
 
-import { applyBmAssignment } from "../lib/auth/bmAssignment.js";
+import { applyBmAssignment, syncLegacyBmDepartmentCache } from "../lib/auth/bmAssignment.js";
 
 function makeTx() {
     const userUpdate = vi.fn().mockResolvedValue({ id: "u-rajesh", departmentId: null });
@@ -99,49 +108,20 @@ describe("applyBmAssignment — detach-on-promote", () => {
         expect(upsertArgs.create).toEqual({ bmUserId: "u-rajesh", branchId: "branch-jodhpur", assignedBy: "admin-1" });
     });
 
-    it("does not write to legacy department cache when prior dept was in a DIFFERENT branch", async () => {
-        // Rajesh's prior department is in Jaipur, but he's becoming BM of
-        // Jodhpur — the legacy department cache only matters when the dept
-        // belongs to the new branch.
+    it("returns the prior departmentId so the caller can drive the legacy sync", async () => {
         ctx.spies.userFindUnique.mockResolvedValueOnce({ departmentId: "dept-jaipur-ops" });
-        ctx.spies.deptFindUnique.mockResolvedValueOnce({
-            id: "dept-jaipur-ops",
-            branchId: "branch-jaipur",
-            branchManagerId: null,
-        });
 
-        await applyBmAssignment(ctx.tx, {
+        const result = await applyBmAssignment(ctx.tx, {
             userId: "u-rajesh",
             branchId: "branch-jodhpur",
             assignedBy: "admin-1",
         });
 
-        // Departments in another branch must not be touched.
+        expect(result.priorDepartmentId).toBe("dept-jaipur-ops");
+        // The authoritative write must NOT touch legacy department state — that
+        // is deferred to the post-commit syncLegacyBmDepartmentCache.
         expect(ctx.spies.deptUpdate).not.toHaveBeenCalled();
         expect(ctx.spies.deptRoleMappingUpsert).not.toHaveBeenCalled();
-    });
-
-    it("syncs legacy department cache when prior dept IS in the new branch", async () => {
-        // Edge case: BM was already in a Jodhpur department, now becoming
-        // Jodhpur's BM. Department.branchManagerId still needs the link.
-        ctx.spies.userFindUnique.mockResolvedValueOnce({ departmentId: "dept-jodhpur-ops" });
-        ctx.spies.deptFindUnique.mockResolvedValueOnce({
-            id: "dept-jodhpur-ops",
-            branchId: "branch-jodhpur",
-            branchManagerId: null,
-        });
-
-        await applyBmAssignment(ctx.tx, {
-            userId: "u-rajesh",
-            branchId: "branch-jodhpur",
-            assignedBy: "admin-1",
-        });
-
-        expect(ctx.spies.deptUpdate).toHaveBeenCalledWith({
-            where: { id: "dept-jodhpur-ops" },
-            data: { branchManagerId: "u-rajesh" },
-        });
-        expect(ctx.spies.deptRoleMappingUpsert).toHaveBeenCalledTimes(1);
     });
 
     it("skips password reset when no passwordHash is supplied (still detaches)", async () => {
@@ -162,5 +142,49 @@ describe("applyBmAssignment — detach-on-promote", () => {
             passwordHod: null,
             collarType: null,
         });
+    });
+});
+
+describe("syncLegacyBmDepartmentCache — post-commit best-effort", () => {
+    beforeEach(() => {
+        prismaDeptFindUnique.mockReset();
+        prismaDeptUpdate.mockReset();
+        prismaDrmUpsert.mockReset();
+    });
+
+    it("no-ops when there is no prior department", async () => {
+        await syncLegacyBmDepartmentCache({ userId: "u-rajesh", branchId: "branch-jodhpur", priorDepartmentId: null });
+        expect(prismaDeptFindUnique).not.toHaveBeenCalled();
+        expect(prismaDeptUpdate).not.toHaveBeenCalled();
+        expect(prismaDrmUpsert).not.toHaveBeenCalled();
+    });
+
+    it("does NOT write when prior dept is in a DIFFERENT branch", async () => {
+        prismaDeptFindUnique.mockResolvedValueOnce({ id: "dept-jaipur-ops", branchId: "branch-jaipur", branchManagerId: null });
+
+        await syncLegacyBmDepartmentCache({ userId: "u-rajesh", branchId: "branch-jodhpur", priorDepartmentId: "dept-jaipur-ops" });
+
+        expect(prismaDeptUpdate).not.toHaveBeenCalled();
+        expect(prismaDrmUpsert).not.toHaveBeenCalled();
+    });
+
+    it("syncs Department.branchManagerId + DepartmentRoleMapping when prior dept IS in the new branch", async () => {
+        prismaDeptFindUnique.mockResolvedValueOnce({ id: "dept-jodhpur-ops", branchId: "branch-jodhpur", branchManagerId: null });
+
+        await syncLegacyBmDepartmentCache({ userId: "u-rajesh", branchId: "branch-jodhpur", priorDepartmentId: "dept-jodhpur-ops" });
+
+        expect(prismaDeptUpdate).toHaveBeenCalledWith({
+            where: { id: "dept-jodhpur-ops" },
+            data: { branchManagerId: "u-rajesh" },
+        });
+        expect(prismaDrmUpsert).toHaveBeenCalledTimes(1);
+    });
+
+    it("never throws when the legacy write fails (failure is swallowed)", async () => {
+        prismaDeptFindUnique.mockRejectedValueOnce(Object.assign(new Error("boom"), { code: "P2002" }));
+
+        await expect(
+            syncLegacyBmDepartmentCache({ userId: "u-rajesh", branchId: "branch-jodhpur", priorDepartmentId: "dept-x" })
+        ).resolves.toBeUndefined();
     });
 });

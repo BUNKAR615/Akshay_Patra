@@ -4,6 +4,18 @@ import prisma from "../../../../lib/prisma"
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
+// Fisher-Yates shuffle — returns a new array, leaves the input untouched.
+// Used to randomize the question sequence freshly on every assessment start,
+// so no two employees see the same order and the order is not persisted.
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
 export async function GET(request: Request) {
   try {
     const userId = request.headers.get("x-user-id");
@@ -68,12 +80,12 @@ export async function GET(request: Request) {
             name: quarter.name,
             totalQuestions: assignedQuestions.length
           },
-          questions: assignedQuestions.map(aq => ({
+          questions: shuffle(assignedQuestions.map(aq => ({
             id: aq.question.id,
             text: aq.question.text,
             textHindi: aq.question.textHindi,
             category: aq.question.category
-          }))
+          })))
         }
       })
     }
@@ -110,12 +122,12 @@ export async function GET(request: Request) {
           name: quarter.name,
           totalQuestions: quarterQuestions.length
         },
-        questions: quarterQuestions.map(qq => ({
+        questions: shuffle(quarterQuestions.map(qq => ({
           id: qq.question.id,
           text: qq.question.text,
           textHindi: qq.question.textHindi,
           category: qq.question.category
-        }))
+        })))
       }
     })
   } catch (error) {

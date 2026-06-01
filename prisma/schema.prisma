@@ -136,6 +136,7 @@ model Quarter {
   bmQuestionCount       Int                        @default(15)
   hodQuestionCount      Int                        @default(15)
   cmQuestionCount       Int                        @default(10)
+  questionSelectionMode String                     @default("AUTO")
   createdAt             DateTime                   @default(now())
   updatedAt             DateTime                   @updatedAt
   bestEmployees         BestEmployee[]
@@ -172,6 +173,7 @@ model Question {
   category            QuestionCategory
   level               EvaluationLevel
   isActive            Boolean                    @default(true)
+  includedInQuarter   Boolean                    @default(true)
   createdAt           DateTime                   @default(now())
   updatedAt           DateTime                   @updatedAt
   textHindi           String                     @default("")

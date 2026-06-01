@@ -10,6 +10,7 @@ import { resolveBranch } from "../../../../../../lib/resolveBranch";
 import {
     assertBmAssignable,
     applyBmAssignment,
+    syncLegacyBmDepartmentCache,
     clearBmAssignment,
     BM_ERR_BRANCH_TAKEN,
     BM_ERR_USER_TAKEN,
@@ -156,17 +157,20 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             override: data.password,
         });
 
-        // Atomic: assignment row + user.role/branchId + password + legacy department cache.
+        // Atomic: assignment row + user.role/branchId + password. The legacy
+        // department cache is synced separately, post-commit, so a dirty-data
+        // failure there can never roll back (or 500) the authoritative write.
         let assignment;
+        let priorDepartmentId = null;
         try {
-            assignment = await prisma.$transaction(async (tx) => {
+            ({ assignment, priorDepartmentId } = await prisma.$transaction(async (tx) => {
                 return applyBmAssignment(tx, {
                     userId: bmUser.id,
                     branchId,
                     assignedBy: user.userId,
                     passwordHash,
                 });
-            });
+            }));
         } catch (err) {
             // Belt-and-braces: if a concurrent admin won the race, the unique
             // index will fire (P2002). Translate to the spec error message.
@@ -179,6 +183,10 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             }
             throw err;
         }
+
+        // Best-effort, post-commit: keep the legacy Department.branchManagerId /
+        // DepartmentRoleMapping cache pointing at the BM. Never throws.
+        await syncLegacyBmDepartmentCache({ userId: bmUser.id, branchId, priorDepartmentId });
 
         await prisma.auditLog.create({
             data: {

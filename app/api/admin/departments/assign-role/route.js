@@ -134,6 +134,9 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
             return conflict("This branch already has a Branch Manager assigned.");
         }
         console.error("Assign role error:", err);
+        // Surface known data-integrity failures as a 4xx instead of a bare 500.
+        if (err && err.code === "P2025") return fail("Referenced user or department no longer exists.");
+        if (err && err.code === "P2003") return fail("Assignment references a record that does not exist.");
         return serverError();
     }
 });

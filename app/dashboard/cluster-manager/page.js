@@ -19,6 +19,17 @@ async function api(url, opts) {
     return json.data;
 }
 
+// Fisher-Yates shuffle — returns a new array. Used to give each evaluated
+// employee a different question order without persisting the sequence.
+function shuffle(arr) {
+    const a = [...(arr || [])];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
 export default function ClusterManagerDashboard() {
     const [user, setUser] = useState(null);
     const [currentQuarterName, setCurrentQuarterName] = useState("");
@@ -47,6 +58,13 @@ export default function ClusterManagerDashboard() {
             total: (departmentsData || []).reduce((n, d) => n + (d.totalToEvaluate || 0), 0),
         }),
         [departmentsData]
+    );
+
+    // Re-shuffle the question order whenever the CM opens a different
+    // employee — so the sequence is random per employee, not fixed for all.
+    const shuffledQuestions = useMemo(
+        () => shuffle(questions),
+        [questions, selectedEmployee?.userId]
     );
 
     // selectedBranchId is always a real assigned-branch id once loaded.
@@ -330,7 +348,7 @@ export default function ClusterManagerDashboard() {
                     </div>
 
                     <EvaluationForm
-                        questions={questions}
+                        questions={shuffledQuestions}
                         onSubmit={handleEvaluate}
                         submitLabel={`Submit Final Evaluation for ${selectedEmployee.name.split(" ")[0]}`}
                         draftKey={user?.id && selectedBranchId ? `draft_eval_${user.id}_${selectedEmployee.userId}_${selectedBranchId}` : null}
