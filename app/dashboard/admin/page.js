@@ -1413,7 +1413,7 @@ export default function AdminDashboard() {
                                                             <div className="flex items-center justify-between mb-1.5">
                                                                 <span className="text-[12px] font-bold text-[#333333]">{s.label}</span>
                                                                 {started ? (
-                                                                    <span className="text-[10px] text-[#666666]"><span className="font-bold" style={{ color: s.color }}>{s.total}</span> in stage</span>
+                                                                    <span className="text-[12px] text-[#666666]"><span className="font-black text-[18px] align-middle" style={{ color: s.color }}>{s.total}</span> in stage</span>
                                                                 ) : (
                                                                     <span className="text-[10px] font-bold text-[#999999] bg-[#F5F5F5] border border-[#E0E0E0] px-1.5 py-0.5 rounded-full">Not started</span>
                                                                 )}
