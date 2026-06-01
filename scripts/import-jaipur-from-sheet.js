@@ -20,10 +20,14 @@
  *     importer's keyword logic is intentionally left untouched.
  *   - Department.collarType = majority vote of its employees' collar (keeps the
  *     big-branch HOD blue-collar pool working). Department names stay neutral.
- *   - Full replacement of Jaipur only: archive stale EMPLOYEE/HOD into
- *     ArchivedEmployee, delete EMPLOYEE/HOD + departments for Jaipur, recreate.
+ *   - Non-destructive sync of Jaipur only: employees in the sheet are UPDATED
+ *     IN PLACE (matched by empCode) so their User.id — and every Stage 1 /
+ *     evaluation record FK'd to it — survives a department/profile change.
+ *     Departed employees (absent from the sheet) are archived, then detached
+ *     from the branch when they carry assessment history (kept so old
+ *     assessments stay visible) or hard-deleted only when they have none.
  *     ADMIN and current BM/CM/HR/Committee role-holders are never demoted.
- *   - EMPLOYEE password = empCode.
+ *   - New EMPLOYEE password = empCode (existing passwords are left untouched).
  *
  * Run a preview first:  node scripts/import-jaipur-from-sheet.js --dry
  * Then the real import: node scripts/import-jaipur-from-sheet.js
@@ -110,7 +114,45 @@ function extractRows(workbook) {
   return rows;
 }
 
-async function replaceBranch(branch, branchRows) {
+// History-bearing tables keyed to a User. Used to decide whether a departed
+// employee may be hard-deleted or must be detach-and-kept so their Stage 1 and
+// later-stage evaluation records stay visible on the site.
+async function userIdsWithHistory(tx, userIds) {
+  if (userIds.length === 0) return new Set();
+  const byUser = { userId: { in: userIds } };
+  const byEmp = { employeeId: { in: userIds } };
+  const rows = await Promise.all([
+    tx.selfAssessment.findMany({ where: byUser, select: { userId: true } }),
+    tx.branchShortlistStage1.findMany({ where: byUser, select: { userId: true } }),
+    tx.branchShortlistStage2.findMany({ where: byUser, select: { userId: true } }),
+    tx.branchShortlistStage3.findMany({ where: byUser, select: { userId: true } }),
+    tx.branchShortlistStage4.findMany({ where: byUser, select: { userId: true } }),
+    tx.branchBestEmployee.findMany({ where: byUser, select: { userId: true } }),
+    tx.shortlistStage1.findMany({ where: byUser, select: { userId: true } }),
+    tx.shortlistStage2.findMany({ where: byUser, select: { userId: true } }),
+    tx.shortlistStage3.findMany({ where: byUser, select: { userId: true } }),
+    tx.bestEmployee.findMany({ where: byUser, select: { userId: true } }),
+    tx.supervisorEvaluation.findMany({ where: byEmp, select: { employeeId: true } }),
+    tx.hodEvaluation.findMany({ where: byEmp, select: { employeeId: true } }),
+    tx.branchManagerEvaluation.findMany({ where: byEmp, select: { employeeId: true } }),
+    tx.clusterManagerEvaluation.findMany({ where: byEmp, select: { employeeId: true } }),
+    tx.hrEvaluation.findMany({ where: byEmp, select: { employeeId: true } }),
+  ]);
+  const set = new Set();
+  for (const list of rows) for (const r of list) set.add(r.userId ?? r.employeeId);
+  return set;
+}
+
+// Non-destructive sync of one branch from the sheet.
+//
+// Employees present in the sheet are UPDATED IN PLACE (matched by empCode) so
+// their User.id — and therefore every Stage 1 / evaluation record FK'd to it —
+// survives a department or profile change. This is the core fix: the previous
+// delete+recreate cascade-deleted history whenever a re-imported employee moved
+// department. Departed employees (not in the sheet) are archived and then either
+// hard-deleted (only when they carry NO assessment history) or detached from the
+// branch (when they do), so valid historical assessment data is never lost.
+async function importBranch(branch, branchRows) {
   const branchId = branch.id;
   const deptTally = new Map();
   for (const r of branchRows) {
@@ -123,9 +165,60 @@ async function replaceBranch(branch, branchRows) {
     name, collarType: t.blue > t.white ? "BLUE_COLLAR" : "WHITE_COLLAR",
   }));
   const keptCodes = [...new Set(branchRows.map((r) => r.empCode))];
-  const passwords = await Promise.all(branchRows.map((r) => bcrypt.hash(String(r.empCode), SALT_ROUNDS)));
 
   return prisma.$transaction(async (tx) => {
+    // 1) Upsert departments (create missing, refresh collar on existing). No
+    //    department is deleted while it may still own employees.
+    for (const d of deptDefs) {
+      await tx.department.upsert({
+        where: { name_branchId: { name: d.name, branchId } },
+        update: { collarType: d.collarType },
+        create: { name: d.name, branchId, collarType: d.collarType },
+      });
+    }
+    const freshDepts = await tx.department.findMany({ where: { branchId }, select: { id: true, name: true } });
+    const deptIdByName = new Map(freshDepts.map((d) => [d.name, d.id]));
+
+    // 2) Upsert employees by empCode. Existing rows are UPDATED (id preserved →
+    //    history preserved); only genuinely new rows are created. Role and
+    //    password are left untouched on update so org structure and existing
+    //    credentials survive a profile/department change.
+    const existing = await tx.user.findMany({
+      where: { empCode: { in: keptCodes } },
+      select: { id: true, empCode: true },
+    });
+    const idByCode = new Map(existing.map((u) => [u.empCode, u.id]));
+    let created = 0, updated = 0;
+    for (const r of branchRows) {
+      const departmentId = r.deptName ? (deptIdByName.get(r.deptName) || null) : null;
+      const existingId = idByCode.get(r.empCode);
+      if (existingId) {
+        await tx.user.update({
+          where: { id: existingId },
+          data: {
+            name: r.name,
+            branchId,
+            departmentId,
+            collarType: r.employeeCollar,
+            designation: r.designation || null,
+            mobile: r.mobile || null,
+          },
+        });
+        updated++;
+      } else {
+        await tx.user.create({
+          data: {
+            empCode: r.empCode, name: r.name,
+            password: await bcrypt.hash(String(r.empCode), SALT_ROUNDS),
+            role: "EMPLOYEE", branchId, departmentId,
+            collarType: r.employeeCollar, designation: r.designation || null, mobile: r.mobile || null,
+          },
+        });
+        created++;
+      }
+    }
+
+    // 3) Departed employees (in this branch, EMPLOYEE/HOD, absent from sheet).
     const staleUsers = await tx.user.findMany({
       where: {
         AND: [
@@ -137,35 +230,52 @@ async function replaceBranch(branch, branchRows) {
       },
       select: { id: true, empCode: true, name: true, mobile: true, designation: true, createdAt: true, department: { select: { name: true } } },
     });
+    let archived = 0, detached = 0, removed = 0;
     if (staleUsers.length > 0) {
       await tx.archivedEmployee.createMany({
         data: staleUsers.map((u) => ({
           empCode: u.empCode, name: u.name, mobile: u.mobile, designation: u.designation,
           department: u.department?.name || "Unknown", joiningDate: u.createdAt,
-          reasonLeaving: `Replaced by branch sheet import (${branch.name})`,
+          reasonLeaving: `Not present in latest ${branch.name} sheet import`,
           archivedBy: "script:import-jaipur", originalUserId: u.id,
         })),
       });
+      archived = staleUsers.length;
+
+      const staleIds = staleUsers.map((u) => u.id);
+      const withHistory = await userIdsWithHistory(tx, staleIds);
+      const detachIds = staleIds.filter((id) => withHistory.has(id));
+      const deleteIds = staleIds.filter((id) => !withHistory.has(id));
+
+      // Keep history-bearing leavers but pull them out of the active branch so
+      // their old assessments remain visible without cluttering current lists.
+      if (detachIds.length > 0) {
+        await tx.user.updateMany({
+          where: { id: { in: detachIds } },
+          data: { departmentId: null, branchId: null },
+        });
+        detached = detachIds.length;
+      }
+      // Safe to hard-delete only those with no assessment history at all.
+      if (deleteIds.length > 0) {
+        await tx.user.deleteMany({ where: { id: { in: deleteIds } } });
+        removed = deleteIds.length;
+      }
     }
-    await tx.user.deleteMany({
-      where: { role: { in: ["EMPLOYEE", "HOD"] }, OR: [{ branchId }, { department: { branchId } }, { empCode: { in: keptCodes } }] },
+
+    // 4) Remove now-empty departments left behind by the sheet (no employees,
+    //    no FK shortcuts) so the org tree stays clean. Departments still owning
+    //    users are never touched.
+    const emptyDepts = await tx.department.findMany({
+      where: { branchId, users: { none: {} } },
+      select: { id: true },
     });
-    await tx.department.deleteMany({ where: { branchId } });
-    if (deptDefs.length > 0) {
-      await tx.department.createMany({ data: deptDefs.map((d) => ({ name: d.name, branchId, collarType: d.collarType })) });
+    if (emptyDepts.length > 0) {
+      await tx.department.deleteMany({ where: { id: { in: emptyDepts.map((d) => d.id) } } });
     }
-    const freshDepts = await tx.department.findMany({ where: { branchId }, select: { id: true, name: true } });
-    const deptIdByName = new Map(freshDepts.map((d) => [d.name, d.id]));
-    await tx.user.createMany({
-      data: branchRows.map((r, i) => ({
-        empCode: r.empCode, name: r.name, password: passwords[i], role: "EMPLOYEE", branchId,
-        departmentId: r.deptName ? (deptIdByName.get(r.deptName) || null) : null,
-        collarType: r.employeeCollar, designation: r.designation || null, mobile: r.mobile || null,
-      })),
-      skipDuplicates: true,
-    });
-    return { departmentsCreated: deptDefs, employeesImported: branchRows.length, archived: staleUsers.length };
-  }, { timeout: 60000, maxWait: 15000 });
+
+    return { departmentsCreated: deptDefs, employeesImported: branchRows.length, created, updated, archived, detached, removed };
+  }, { timeout: 120000, maxWait: 20000 });
 }
 
 async function main() {
@@ -243,11 +353,11 @@ async function main() {
     return;
   }
 
-  const res = await replaceBranch(branch, importable);
+  const res = await importBranch(branch, importable);
   console.log(`\nBranch: ${branch.name}`);
-  console.log(`  Employees imported: ${res.employeesImported}`);
+  console.log(`  Employees in sheet: ${res.employeesImported} (updated in place: ${res.updated}, newly created: ${res.created})`);
   console.log(`  Departments: ${res.departmentsCreated.map((d) => `${d.name}[${d.collarType === "BLUE_COLLAR" ? "BLUE" : "WHITE"}]`).join(", ")}`);
-  console.log(`  Stale employees archived: ${res.archived}`);
+  console.log(`  Departed employees archived: ${res.archived} (detached, history kept: ${res.detached}; removed, no history: ${res.removed})`);
   if (errors.length > 0) { console.log("\nErrors / skipped:"); errors.forEach((e) => console.log("  " + e)); }
 }
 
