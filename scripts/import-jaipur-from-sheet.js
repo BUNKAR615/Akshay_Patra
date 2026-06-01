@@ -6,23 +6,26 @@
  * then a real header row: "Sr. No. | Emp Code | Employee Name | DOJ |
  * Department | Designation | Mobile No.".
  *
- * Behaviour (mirrors scripts/import-udp-chg-branches.js — small-branch full
- * replacement — but scoped to ONLY the Jaipur branch and with a Jaipur-only
- * collar rule):
- *   - Department NAME = the neutral `Department` column value (e.g.
- *     "Distribution", "Production"). This merges the split tabs
- *     (Distribution-White Collar + Distribution-Driver -> Distribution) and the
- *     duplicate "Distribution- Driver" / "Distribution-Driver" tabs. Falls back
- *     to the tab name stripped of a collar suffix only if the column is blank.
+ * Behaviour (Jaipur-only, non-destructive sync):
+ *   - Department NAME = the SHEET TAB NAME, used exactly as written (e.g.
+ *     "Distribution-White Collar", "Distribution-Driver", "Production-Helper",
+ *     "Administration"). The tabs ARE the departments — we no longer merge them
+ *     via the neutral `Department` column or strip a collar suffix. Only `MainF`
+ *     is ignored. Duplicate driver tabs ("Distribution- Driver" /
+ *     "Distribution-Driver") collapse naturally: empCode dedupe keeps the last
+ *     tab, and a tab that ends up with no employees is never created.
+ *   - Collar is handled at the EMPLOYEE level ONLY — departments are NEVER
+ *     tagged blue/white. A single department may hold both collars (e.g.
+ *     "Administration" has an Executive (white) and an Office Boy (blue)).
  *   - Per-employee collar (JAIPUR-ONLY rule): WHITE if the designation contains
  *     any of supervisor/manager/officer/executive/agm/gm (case-insensitive
  *     substring); otherwise BLUE. Blank designation -> BLUE. The shared
  *     importer's keyword logic is intentionally left untouched.
- *   - Department.collarType = majority vote of its employees' collar (keeps the
- *     big-branch HOD blue-collar pool working). Department names stay neutral.
  *   - Non-destructive sync of Jaipur only: employees in the sheet are UPDATED
  *     IN PLACE (matched by empCode) so their User.id — and every Stage 1 /
- *     evaluation record FK'd to it — survives a department/profile change.
+ *     evaluation record FK'd to it — survives a department/profile change. Only
+ *     changed profile fields (name, department, collar, designation, mobile)
+ *     are written; scores and evaluation history are never touched.
  *     Departed employees (absent from the sheet) are archived, then detached
  *     from the branch when they carry assessment history (kept so old
  *     assessments stay visible) or hard-deleted only when they have none.
@@ -56,13 +59,6 @@ const HEADER_HINTS = new Set([...EMPCODE_KEYS, ...NAME_KEYS, ...DEPT_KEYS, ...MO
 const WHITE_KEYWORDS = ["supervisor", "manager", "officer", "executive", "agm", "gm"];
 const collarFromDesignationJaipur = (d) =>
   WHITE_KEYWORDS.some((k) => String(d || "").toLowerCase().includes(k)) ? "WHITE_COLLAR" : "BLUE_COLLAR";
-
-// Strip a trailing collar descriptor from a tab name, e.g.
-// "Production-Helper" -> "Production", "Distribution-White Collar" -> "Distribution".
-const deptNameFromTab = (tab) =>
-  String(tab || "")
-    .replace(/\s*[-–]\s*(white collar|driver|helper|blue collar)\s*$/i, "")
-    .trim();
 
 function pick(obj, keys) {
   for (const k of keys) {
@@ -154,26 +150,20 @@ async function userIdsWithHistory(tx, userIds) {
 // branch (when they do), so valid historical assessment data is never lost.
 async function importBranch(branch, branchRows) {
   const branchId = branch.id;
-  const deptTally = new Map();
-  for (const r of branchRows) {
-    if (!r.deptName) continue;
-    const t = deptTally.get(r.deptName) || { blue: 0, white: 0 };
-    if (r.employeeCollar === "BLUE_COLLAR") t.blue++; else t.white++;
-    deptTally.set(r.deptName, t);
-  }
-  const deptDefs = [...deptTally.entries()].map(([name, t]) => ({
-    name, collarType: t.blue > t.white ? "BLUE_COLLAR" : "WHITE_COLLAR",
-  }));
+  // Departments = the sheet tab names that survive empCode dedupe. Collar is an
+  // EMPLOYEE attribute only, so departments carry no collar tag here.
+  const deptNames = [...new Set(branchRows.map((r) => r.deptName).filter(Boolean))];
   const keptCodes = [...new Set(branchRows.map((r) => r.empCode))];
 
   return prisma.$transaction(async (tx) => {
-    // 1) Upsert departments (create missing, refresh collar on existing). No
-    //    department is deleted while it may still own employees.
-    for (const d of deptDefs) {
+    // 1) Upsert departments by tab name (create missing; leave existing rows
+    //    untouched — we never write a department-level collar). No department
+    //    is deleted while it may still own employees or bear history.
+    for (const name of deptNames) {
       await tx.department.upsert({
-        where: { name_branchId: { name: d.name, branchId } },
-        update: { collarType: d.collarType },
-        create: { name: d.name, branchId, collarType: d.collarType },
+        where: { name_branchId: { name, branchId } },
+        update: {},
+        create: { name, branchId },
       });
     }
     const freshDepts = await tx.department.findMany({ where: { branchId }, select: { id: true, name: true } });
@@ -263,18 +253,29 @@ async function importBranch(branch, branchRows) {
       }
     }
 
-    // 4) Remove now-empty departments left behind by the sheet (no employees,
-    //    no FK shortcuts) so the org tree stays clean. Departments still owning
-    //    users are never touched.
+    // 4) Remove now-empty departments left behind by the sheet so the org tree
+    //    stays clean — but ONLY when they carry no employees AND no history of
+    //    any kind. A department that still owns shortlist / best-employee /
+    //    HOD / role-mapping rows is KEPT so historical evaluations are never
+    //    cascade-deleted (spec: "do not delete historical evaluations").
     const emptyDepts = await tx.department.findMany({
-      where: { branchId, users: { none: {} } },
+      where: {
+        branchId,
+        users: { none: {} },
+        shortlistStage1: { none: {} },
+        shortlistStage2: { none: {} },
+        shortlistStage3: { none: {} },
+        bestEmployees: { none: {} },
+        hodAssignments: { none: {} },
+        departmentRoles: { none: {} },
+      },
       select: { id: true },
     });
     if (emptyDepts.length > 0) {
       await tx.department.deleteMany({ where: { id: { in: emptyDepts.map((d) => d.id) } } });
     }
 
-    return { departmentsCreated: deptDefs, employeesImported: branchRows.length, created, updated, archived, detached, removed };
+    return { departmentNames: deptNames, employeesImported: branchRows.length, created, updated, archived, detached, removed };
   }, { timeout: 120000, maxWait: 20000 });
 }
 
@@ -287,7 +288,9 @@ async function main() {
   for (const r of raw) {
     if (!r.empCode) { errors.push(`${r.rowRef}: missing empCode — skipped`); continue; }
     if (!r.name) { errors.push(`${r.rowRef}: missing name — skipped`); continue; }
-    r.deptName = r.department || deptNameFromTab(r.sheetName);
+    // Department NAME = the sheet tab name, exactly as written (MainF already
+    // excluded in extractRows). The tabs ARE the departments.
+    r.deptName = String(r.sheetName).trim();
     r.employeeCollar = collarFromDesignationJaipur(r.designation);
     validRows.push(r);
   }
@@ -333,10 +336,9 @@ async function main() {
   console.log(DRY_RUN ? "=== DRY RUN (no writes) ===" : "=== IMPORT (Jaipur) ===");
   console.log("Scanned rows:", raw.length, "| Valid:", validRows.length, "| Deduped:", deduped.length, "| Importable:", importable.length);
   console.log(`White-collar: ${whiteCount} | Blue-collar: ${blueCount}`);
-  console.log(`Departments (${deptBreakdown.size}):`);
+  console.log(`Departments (${deptBreakdown.size}) — names taken verbatim from sheet tabs, no department-level collar:`);
   for (const [name, t] of [...deptBreakdown.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    const collar = t.blue > t.white ? "BLUE" : "WHITE";
-    console.log(`  ${name}: ${t.white + t.blue} (white ${t.white}, blue ${t.blue}) -> dept[${collar}]`);
+    console.log(`  ${name}: ${t.white + t.blue} employees (white ${t.white}, blue ${t.blue})`);
   }
   if (protectedUsers.length > 0) {
     console.log("Protected (skipped):", protectedUsers.map((u) => `${u.empCode} (${u.role})`).join(", "));
@@ -356,7 +358,7 @@ async function main() {
   const res = await importBranch(branch, importable);
   console.log(`\nBranch: ${branch.name}`);
   console.log(`  Employees in sheet: ${res.employeesImported} (updated in place: ${res.updated}, newly created: ${res.created})`);
-  console.log(`  Departments: ${res.departmentsCreated.map((d) => `${d.name}[${d.collarType === "BLUE_COLLAR" ? "BLUE" : "WHITE"}]`).join(", ")}`);
+  console.log(`  Departments (${res.departmentNames.length}): ${res.departmentNames.join(", ")}`);
   console.log(`  Departed employees archived: ${res.archived} (detached, history kept: ${res.detached}; removed, no history: ${res.removed})`);
   if (errors.length > 0) { console.log("\nErrors / skipped:"); errors.forEach((e) => console.log("  " + e)); }
 }

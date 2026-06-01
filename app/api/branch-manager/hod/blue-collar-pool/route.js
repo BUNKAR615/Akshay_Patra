@@ -8,13 +8,16 @@ import { resolveScopeBranch } from "../../../../../lib/auth/resolveScopeBranch";
 
 /**
  * GET /api/branch-manager/hod/blue-collar-pool
- *   - No `departmentId` → list every BLUE_COLLAR department in the BM's branch,
- *     plus the count of employees in each.
- *   - `?departmentId=...` → list every employee in that BC department, with
- *     their CURRENT HOD assignment (if any) so the UI can show
- *     "Currently under: <HOD name>" and prompt before reassigning.
+ *   - No `departmentId` → list EVERY department in the BM's branch (departments
+ *     are not collar-tagged), each with a count of its blue-collar employees who
+ *     have cleared Stage 1.
+ *   - `?departmentId=...` → list the blue-collar, Stage-1-cleared employees in
+ *     that department, with their CURRENT HOD assignment (if any) so the UI can
+ *     show "Currently under: <HOD name>" and prompt before reassigning.
  *
- * Big branches only — small branches do not have HODs.
+ * Collar is read from the employee's own stored category (User.collarType);
+ * white-collar employees are never included. Big branches only — small branches
+ * do not have HODs.
  */
 export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
     try {
@@ -28,28 +31,32 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         const { searchParams } = new URL(request.url);
         const departmentId = (searchParams.get("departmentId") || "").trim();
 
+        // Blue-collar = the employee's own stored category. We include
+        // unclassified (null) employees too — they are not white-collar, so
+        // they belong in the blue-collar queue — but never WHITE_COLLAR ones.
+        const blueCollarUserFilter = {
+            role: "EMPLOYEE",
+            OR: [{ collarType: "BLUE_COLLAR" }, { collarType: null }],
+        };
+
         if (!departmentId) {
-            // Mode 1 — list BC departments in the branch with employee counts.
-            // The counts shown here are STAGE-1 SHORTLISTED counts (matching
-            // Mode 2's listing). Spec: "Inside each blue-collar department,
-            // show only employees who have passed Stage 1 according to the
-            // Stage 1 formula." Showing the raw employee count would
-            // mislead the BM — they'd open a dept expecting N people and
-            // find only the Stage-1 subset.
+            // Mode 1 — list EVERY department in the branch (no collar gate), each
+            // with the count of its blue-collar employees who cleared Stage 1.
+            // The count matches Mode 2's listing exactly so the BM isn't misled.
+            // A department with only white-collar staff simply shows a count of 0
+            // but stays in the list (spec: show all departments).
             const depts = await prisma.department.findMany({
-                where: { branchId, collarType: "BLUE_COLLAR" },
-                select: { id: true, name: true, collarType: true },
+                where: { branchId },
+                select: { id: true, name: true },
                 orderBy: { name: "asc" },
             });
             const deptIds = depts.map((d) => d.id);
-            // Stage 1 shortlist for this branch + active quarter, narrowed
-            // to BC users in the BC departments above.
             const stage1Rows = deptIds.length > 0
                 ? await prisma.branchShortlistStage1.findMany({
                     where: {
                         branchId,
                         quarterId: quarter.id,
-                        user: { departmentId: { in: deptIds }, role: "EMPLOYEE" },
+                        user: { departmentId: { in: deptIds }, ...blueCollarUserFilter },
                     },
                     select: { user: { select: { departmentId: true } } },
                 })
@@ -62,31 +69,27 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
             }
             return ok({
                 departments: depts.map((d) => ({
-                    id: d.id, name: d.name, collarType: d.collarType,
+                    id: d.id, name: d.name,
                     employeeCount: countByDept.get(d.id) || 0,
                 })),
             });
         }
 
-        // Mode 2 — employees in a specific BC department who have PASSED
-        // STAGE 1 (per spec). We read the Stage-1 shortlist for this
-        // branch+quarter and intersect with the department's BC employees.
+        // Mode 2 — blue-collar employees in a specific department who have
+        // PASSED STAGE 1 (per spec). Any department may be opened; we read the
+        // Stage-1 shortlist for this branch+quarter and intersect with the
+        // department's blue-collar employees. White-collar staff never appear.
         const dept = await prisma.department.findUnique({
             where: { id: departmentId },
-            select: { id: true, name: true, branchId: true, collarType: true },
+            select: { id: true, name: true, branchId: true },
         });
         if (!dept || dept.branchId !== branchId) return fail("Department not in your branch");
-        if (dept.collarType !== "BLUE_COLLAR") return fail("Department is not a blue-collar department");
 
         const stage1 = await prisma.branchShortlistStage1.findMany({
             where: {
                 branchId,
                 quarterId: quarter.id,
-                user: {
-                    departmentId: dept.id,
-                    role: "EMPLOYEE",
-                    OR: [{ collarType: "BLUE_COLLAR" }, { collarType: null }],
-                },
+                user: { departmentId: dept.id, ...blueCollarUserFilter },
             },
             select: {
                 user: {
@@ -111,7 +114,7 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         const hodByEmp = new Map(empHodRows.map((r) => [r.employeeId, r]));
 
         return ok({
-            department: { id: dept.id, name: dept.name, collarType: dept.collarType },
+            department: { id: dept.id, name: dept.name },
             employees: employees.map((e) => {
                 const cur = hodByEmp.get(e.id);
                 return {

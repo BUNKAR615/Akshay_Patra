@@ -28,76 +28,73 @@ export const GET = withRole(["BRANCH_MANAGER", "ADMIN"], async (request, { user 
         const { branch } = await resolveScopeBranch(user);
         if (!branch) return fail("No branch is assigned to this user. Please contact admin.");
 
-        // All employees in this branch (role EMPLOYEE).
-        // Match the admin branch-summary filter so BM counts stay in sync.
-        const allEmployees = await prisma.user.findMany({
-            where: {
-                role: "EMPLOYEE",
-                OR: [{ branchId: branch.id }, { department: { branchId: branch.id } }],
-            },
-            select: { id: true, collarType: true, department: { select: { collarType: true } } },
-        });
+        // All branch-scoped counts/lists below are independent once the quarter
+        // and branch are known — run them concurrently so the BM dashboard isn't
+        // gated on ~6 serial Neon round-trips.
+        const branchEmpFilter = { OR: [{ branchId: branch.id }, { department: { branchId: branch.id } }] };
+        const [
+            allEmployees,
+            selfSubs,
+            stage1Rows,
+            stage2Rows,
+            bmEvaluations,
+            hodEvals,
+            hodEmpAssignments,
+        ] = await Promise.all([
+            // All employees in this branch (role EMPLOYEE).
+            // Match the admin branch-summary filter so BM counts stay in sync.
+            prisma.user.findMany({
+                where: { role: "EMPLOYEE", ...branchEmpFilter },
+                select: { id: true, collarType: true },
+            }),
+            // Stage 1: self assessment submissions (same branch predicate as allEmployees)
+            prisma.selfAssessment.count({
+                where: { quarterId: quarter.id, user: branchEmpFilter },
+            }),
+            // Stage 1 (branch) shortlisted = those that passed the cutoff -> go to Stage 2 pool
+            prisma.branchShortlistStage1.findMany({
+                where: { branchId: branch.id, quarterId: quarter.id },
+                select: { userId: true, collarType: true },
+            }),
+            // Stage 2 shortlist (post BM/HOD evaluation) — separate from Stage 1 count.
+            prisma.branchShortlistStage2.findMany({
+                where: { branchId: branch.id, quarterId: quarter.id },
+                select: { collarType: true },
+            }),
+            // Stage 2: BM evaluates WC. BM evaluations count (for WC in this branch)
+            prisma.branchManagerEvaluation.findMany({
+                where: { managerId: user.userId, quarterId: quarter.id },
+                select: { employeeId: true },
+            }),
+            // HOD evaluations for BC in this branch
+            prisma.hodEvaluation.findMany({
+                where: { quarterId: quarter.id, employee: { department: { branchId: branch.id } } },
+                select: { hodId: true, employeeId: true, hod: { select: { id: true, name: true, empCode: true } } },
+            }),
+            // HOD assignments
+            prisma.employeeHodAssignment.findMany({
+                where: { quarterId: quarter.id, employee: { department: { branchId: branch.id } } },
+                select: { hodUserId: true, employeeId: true },
+            }),
+        ]);
 
-        const getCollar = (e) => e.collarType || e.department?.collarType || "BLUE_COLLAR";
+        // Collar is the employee's own stored category — departments are not
+        // collar-tagged. Unclassified employees count as blue-collar.
+        const getCollar = (e) => e.collarType || "BLUE_COLLAR";
         const totalEmployees = allEmployees.length;
         const totalWhiteCollar = allEmployees.filter(e => getCollar(e) === "WHITE_COLLAR").length;
         const totalBlueCollar = allEmployees.filter(e => getCollar(e) === "BLUE_COLLAR").length;
 
-        // Stage 1: self assessment submissions (same branch predicate as allEmployees)
-        const selfSubs = await prisma.selfAssessment.count({
-            where: {
-                quarterId: quarter.id,
-                user: { OR: [{ branchId: branch.id }, { department: { branchId: branch.id } }] },
-            },
-        });
-
-        // Stage 1 (branch) shortlisted = those that passed the cutoff -> go to Stage 2 pool
-        const stage1Rows = await prisma.branchShortlistStage1.findMany({
-            where: { branchId: branch.id, quarterId: quarter.id },
-            select: { userId: true, collarType: true },
-        });
         const stage1Count = stage1Rows.length;
         const stage1Wc = stage1Rows.filter(r => r.collarType === "WHITE_COLLAR").length;
         const stage1Bc = stage1Rows.filter(r => r.collarType === "BLUE_COLLAR").length;
 
-        // Stage 2 shortlist (post BM/HOD evaluation) — separate from Stage 1 count.
-        const stage2Rows = await prisma.branchShortlistStage2.findMany({
-            where: { branchId: branch.id, quarterId: quarter.id },
-            select: { collarType: true },
-        });
         const stage2Count = stage2Rows.length;
         const stage2Wc = stage2Rows.filter(r => r.collarType === "WHITE_COLLAR").length;
         const stage2Bc = stage2Rows.filter(r => r.collarType === "BLUE_COLLAR").length;
 
-        // Stage 2: BM evaluates WC; HODs evaluate BC
-        // BM evaluations count (for WC in this branch)
-        const bmEvaluations = await prisma.branchManagerEvaluation.findMany({
-            where: {
-                managerId: user.userId,
-                quarterId: quarter.id,
-            },
-            select: { employeeId: true },
-        });
         const bmEvaluatedCount = bmEvaluations.length;
-
-        // HOD evaluations for BC in this branch
-        const hodEvals = await prisma.hodEvaluation.findMany({
-            where: {
-                quarterId: quarter.id,
-                employee: { department: { branchId: branch.id } },
-            },
-            select: { hodId: true, employeeId: true, hod: { select: { id: true, name: true, empCode: true } } },
-        });
         const totalBcEvaluated = hodEvals.length;
-
-        // HOD assignments
-        const hodEmpAssignments = await prisma.employeeHodAssignment.findMany({
-            where: {
-                quarterId: quarter.id,
-                employee: { department: { branchId: branch.id } },
-            },
-            select: { hodUserId: true, employeeId: true },
-        });
 
         const byHodAssign = new Map();
         for (const a of hodEmpAssignments) {

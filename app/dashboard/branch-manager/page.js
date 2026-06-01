@@ -191,7 +191,7 @@ function ManageBcPanel({ hodUserId, hodName, onChanged }) {
                 {currentLoading ? (
                     <p className="text-[12px] text-[#666666]">Loading...</p>
                 ) : currentEmployees.length === 0 ? (
-                    <p className="text-[12px] text-[#999999] italic">None yet — pick a blue-collar department below to attach employees.</p>
+                    <p className="text-[12px] text-[#999999] italic">None yet — pick a department below to attach blue-collar employees.</p>
                 ) : (
                     <div className="flex flex-wrap gap-2">
                         {currentEmployees.map(e => (
@@ -214,13 +214,14 @@ function ManageBcPanel({ hodUserId, hodName, onChanged }) {
                 )}
             </div>
 
-            {/* BC department picker */}
+            {/* Department picker — every department is listed; the count shows
+                how many blue-collar, Stage-1-cleared employees each holds. */}
             <div>
-                <p className="text-[12px] font-bold uppercase tracking-wider text-[#666666] mb-2">Add employees from a blue-collar department</p>
+                <p className="text-[12px] font-bold uppercase tracking-wider text-[#666666] mb-2">Add blue-collar employees from a department</p>
                 {bcDeptsLoading ? (
                     <p className="text-[12px] text-[#666666]">Loading departments...</p>
                 ) : bcDepts.length === 0 ? (
-                    <p className="text-[12px] text-[#999999] italic">No blue-collar departments in your branch.</p>
+                    <p className="text-[12px] text-[#999999] italic">No departments found in your branch.</p>
                 ) : (
                     <div className="flex flex-wrap gap-2">
                         {bcDepts.map(d => (
@@ -247,7 +248,7 @@ function ManageBcPanel({ hodUserId, hodName, onChanged }) {
                     {deptEmployeesLoading ? (
                         <p className="text-[12px] text-[#666666]">Loading employees...</p>
                     ) : deptEmployees.length === 0 ? (
-                        <p className="text-[12px] text-[#999999] italic">No employees in this department.</p>
+                        <p className="text-[12px] text-[#999999] italic">No blue-collar employees in this department have cleared Stage 1 yet.</p>
                     ) : (
                         <>
                             <div className="space-y-1.5 max-h-72 overflow-y-auto">
@@ -442,10 +443,10 @@ export default function BranchManagerDashboard() {
         };
     }, [refreshLive]);
 
-    // HOD candidate lookup — runs once the BM picks a white-collar department.
-    // The search box acts as an in-list filter within that department. The
-    // server already enforces WHITE_COLLAR; we still client-filter defensively
-    // in case the response ever drifts.
+    // HOD candidate lookup — runs once the BM picks a department (any
+    // department is selectable). The search box acts as an in-list filter
+    // within that department. The server enforces WHITE_COLLAR from the
+    // employee's own stored category; we still client-filter defensively.
     useEffect(() => {
         const q = hodSearchQuery.trim();
         if (!hodDeptId) { setHodCandidates([]); return; }
@@ -457,10 +458,7 @@ export default function BranchManagerDashboard() {
                 if (q) params.set("q", q);
                 params.set("departmentId", hodDeptId);
                 const data = await api(`/api/branch-manager/hod/search?${params.toString()}`);
-                const wcOnly = (data.candidates || []).filter(c => {
-                    const eff = c.effectiveCollar || c.departmentCollar;
-                    return eff === "WHITE_COLLAR";
-                });
+                const wcOnly = (data.candidates || []).filter(c => c.effectiveCollar === "WHITE_COLLAR");
                 setHodCandidates(wcOnly);
             } catch {
                 setHodCandidates([]);
@@ -541,13 +539,11 @@ export default function BranchManagerDashboard() {
         }
     };
 
-    // White-collar departments — drive the "Browse by WC department" mode of
-    // the HOD picker. Departments come from /api/branch-manager/departments
-    // which already scopes to the BM's own branch.
-    const wcDepartments = useMemo(
-        () => (departments || []).filter((d) => d.collarType === "WHITE_COLLAR"),
-        [departments]
-    );
+    // HOD nomination shows ALL departments (departments are not collar-tagged).
+    // Departments come from /api/branch-manager/departments which already
+    // scopes to the BM's own branch. A department with no white-collar staff is
+    // still selectable; it just yields no HOD candidates.
+    const hodDepartments = departments || [];
 
     // Group the branch-wide shortlist by department for the Evaluate tab render.
     const groupedShortlist = useMemo(() => {
@@ -558,7 +554,6 @@ export default function BranchManagerDashboard() {
                 groups.set(key, {
                     id: key,
                     name: row.department?.name || "Unassigned",
-                    collarType: row.department?.collarType || null,
                     rows: [],
                 });
             }
@@ -776,8 +771,8 @@ export default function BranchManagerDashboard() {
                                         }}
                                         className="w-full px-3 py-2.5 bg-white border border-[#E0E0E0] rounded-lg text-[14px] text-[#333333] font-medium focus:outline-none focus:ring-2 focus:ring-[#003087] appearance-none cursor-pointer"
                                     >
-                                        <option value="">Select white-collar department...</option>
-                                        {wcDepartments.map(dept => (
+                                        <option value="">Select department...</option>
+                                        {hodDepartments.map(dept => (
                                             <option key={dept.id} value={dept.id}>{dept.name}</option>
                                         ))}
                                     </select>
@@ -844,7 +839,6 @@ export default function BranchManagerDashboard() {
                                             </div>
                                             <p className="text-[12px] text-[#666666]">
                                                 {c.designation ? `${c.designation} · ` : ""}{c.departmentName}
-                                                {c.departmentCollar && <span className="ml-2 text-[11px] font-bold text-[#003087]">[{c.departmentCollar === "WHITE_COLLAR" ? "WC" : "BC"}]</span>}
                                             </p>
                                         </button>
                                     );
@@ -949,11 +943,6 @@ export default function BranchManagerDashboard() {
                                 <div key={group.id}>
                                     <div className="flex items-center gap-2 mb-3">
                                         <p className="text-[14px] font-bold uppercase tracking-wider text-[#003087]">{group.name}</p>
-                                        {group.collarType && (
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${group.collarType === "WHITE_COLLAR" ? "bg-[#F5F5F5] text-[#666666] border-[#E0E0E0]" : "bg-[#E3F2FD] text-[#003087] border-[#90CAF9]"}`}>
-                                                {group.collarType === "WHITE_COLLAR" ? "White Collar" : "Blue Collar"}
-                                            </span>
-                                        )}
                                         <span className="text-[12px] text-[#666666] font-medium">· {group.rows.length}</span>
                                     </div>
                                     <div className="grid grid-cols-1 gap-4">

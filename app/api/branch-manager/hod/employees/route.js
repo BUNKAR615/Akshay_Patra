@@ -129,13 +129,17 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         });
         if (!hasNomination) return fail("This user is not currently nominated as HOD. Nominate them first.");
 
-        // Validate every candidate employee: belongs to BM's branch AND is BC.
+        // Validate every candidate employee: belongs to BM's branch AND is not
+        // white-collar. Collar is the employee's own stored category — never
+        // inferred from the department. White-collar employees may never be
+        // assigned to an HOD; unclassified (null) employees belong to the
+        // blue-collar queue, matching the blue-collar-pool listing.
         const uniqueEmpIds = Array.from(new Set(employeeIds));
         const employees = await prisma.user.findMany({
             where: { id: { in: uniqueEmpIds } },
             select: {
                 id: true, name: true, collarType: true, branchId: true,
-                department: { select: { branchId: true, collarType: true } },
+                department: { select: { branchId: true } },
             },
         });
         if (employees.length !== uniqueEmpIds.length) return fail("One or more employees not found");
@@ -143,9 +147,8 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         for (const e of employees) {
             const empBranchId = e.branchId || e.department?.branchId || null;
             if (empBranchId !== scope.branchId) return fail(`${e.name} is not in your branch`);
-            const collar = e.collarType || e.department?.collarType || null;
-            if (collar !== "BLUE_COLLAR") {
-                return fail(`${e.name} is not a blue-collar employee — only blue-collar employees can be assigned to an HOD`);
+            if (e.collarType === "WHITE_COLLAR") {
+                return fail(`${e.name} is a white-collar employee — only blue-collar employees can be assigned to an HOD`);
             }
             if (e.id === hodUserId) {
                 return fail("HOD cannot be assigned to themselves");

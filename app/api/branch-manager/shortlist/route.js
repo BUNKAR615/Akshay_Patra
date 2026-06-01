@@ -53,7 +53,7 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
                         empCode: true,
                         designation: true,
                         collarType: true,
-                        department: { select: { id: true, name: true, collarType: true } },
+                        department: { select: { id: true, name: true } },
                     },
                 },
             },
@@ -76,7 +76,10 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
 
         const candidates = stage1.filter((s) => {
             if (branch.branchType === "BIG") {
-                const collar = s.collarType || s.user.collarType || s.user.department?.collarType;
+                // Collar from the employee's stored category only (Stage-1
+                // snapshot first, then the live User.collarType) — never the
+                // department.
+                const collar = s.collarType || s.user.collarType;
                 if (collar === "WHITE_COLLAR") return true;
                 // Blue-collar (or unknown) — only include orphaned ones (no active HOD).
                 return !assignedBcIds.has(s.userId);
@@ -96,7 +99,7 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
 
         const employees = shuffleArray(candidates.map((s) => {
             const ev = evalMap.get(s.userId);
-            const collar = s.collarType || s.user.collarType || s.user.department?.collarType || null;
+            const collar = s.collarType || s.user.collarType || null;
             return {
                 userId: s.userId,
                 id: s.user.id,
@@ -105,7 +108,7 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
                 designation: s.user.designation || "",
                 collarType: collar,
                 department: s.user.department
-                    ? { id: s.user.department.id, name: s.user.department.name, collarType: s.user.department.collarType }
+                    ? { id: s.user.department.id, name: s.user.department.name }
                     : null,
                 alreadyEvaluated: !!ev,
                 isEvaluated: !!ev,

@@ -12,18 +12,19 @@ import { resolveScopeBranch } from "../../../../../lib/auth/resolveScopeBranch";
  *
  * Filters:
  *   - Must be in the BM's own branch (branch isolation).
- *   - Must be effectively WHITE_COLLAR. Effective collar = User.collarType when
- *     set, else Department.collarType (matches the assign-route enforcement at
- *     app/api/branch-manager/hod/assign/route.js:67). Spec: only white-collar
- *     employees may be nominated as HOD.
+ *   - Must be WHITE_COLLAR by the employee's OWN stored category
+ *     (User.collarType) in this branch — never inferred from the department or
+ *     another branch. Spec: only white-collar employees may be nominated as
+ *     HOD, and the check comes from the employee's stored collar.
  *   - Excludes the BM themselves (a BM cannot nominate themselves).
  */
 /**
  * Modes:
  *   - q only            → free-text search across empCode/name/department.
- *   - departmentId only → browse mode: every WC employee in that one
- *                         department (the BM's "click a WC dept to see its
- *                         employees" flow).
+ *   - departmentId only → browse mode: every white-collar employee in that one
+ *                         department. ANY department may be picked; a department
+ *                         with no white-collar employees simply returns an empty
+ *                         candidate list (spec: still selectable, no candidates).
  *   - both              → free-text within the chosen department.
  *   - neither           → first 50 WC candidates in the branch (existing
  *                         empty-query behaviour, preserved for back-compat).
@@ -43,14 +44,9 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         const { branchId } = await resolveScopeBranch(user);
         if (!branchId) return fail("Could not determine your branch");
 
-        // Effective WHITE_COLLAR: either the user is explicitly WC, or
-        // their dept is WC and the user's own collar is unset (null).
-        const whiteCollarFilter = {
-            OR: [
-                { collarType: "WHITE_COLLAR" },
-                { collarType: null, department: { is: { collarType: "WHITE_COLLAR" } } },
-            ],
-        };
+        // WHITE_COLLAR comes from the employee's OWN stored category only —
+        // never inferred from the department (departments are not collar-tagged).
+        const whiteCollarFilter = { collarType: "WHITE_COLLAR" };
 
         const where = {
             AND: [
@@ -60,20 +56,18 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
             ],
         };
 
-        // Browse-by-department: when the BM clicks a WC department tile, we
-        // scope the candidate list to that single department. We still
-        // confirm the department belongs to the BM's branch (defence in
-        // depth — the assign route does its own re-check too).
+        // Browse-by-department: when the BM clicks a department tile, scope the
+        // candidate list to that single department. ANY department in the branch
+        // may be browsed (no collar gate) — one with no white-collar employees
+        // just yields an empty list. We still confirm the department belongs to
+        // the BM's branch (defence in depth — the assign route re-checks too).
         if (departmentId) {
             const dept = await prisma.department.findUnique({
                 where: { id: departmentId },
-                select: { id: true, branchId: true, collarType: true },
+                select: { id: true, branchId: true },
             });
             if (!dept || dept.branchId !== branchId) {
                 return fail("Department not in your branch");
-            }
-            if (dept.collarType !== "WHITE_COLLAR") {
-                return fail("Only white-collar departments can supply HOD candidates");
             }
             where.AND.push({ departmentId });
         }
@@ -96,7 +90,7 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
                 empCode: true,
                 designation: true,
                 collarType: true,
-                department: { select: { id: true, name: true, collarType: true } },
+                department: { select: { id: true, name: true } },
             },
             orderBy: [{ department: { name: "asc" } }, { name: "asc" }],
             // Slightly higher cap when browsing a single dept so the BM sees
@@ -137,8 +131,7 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
                 designation: c.designation || "",
                 departmentId: c.department?.id,
                 departmentName: c.department?.name,
-                departmentCollar: c.department?.collarType,
-                effectiveCollar: c.collarType || c.department?.collarType || null,
+                effectiveCollar: c.collarType || null,
                 // Empty array when not currently HOD — keeps the field
                 // shape stable for the dashboard.
                 currentHodDepartments: currentHodByUser.get(c.id) || [],

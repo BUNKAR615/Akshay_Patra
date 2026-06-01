@@ -37,17 +37,14 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         });
         if (!dept || dept.branchId !== branchId) return fail("Department does not belong to your branch");
 
-        // Verify HOD user exists. Fetch User.collarType + the user's dept
-        // collar/branch so we can derive the effective collar without leaning
-        // on User.collarType alone (older / seeded users may have a null
-        // User.collarType even though their dept is WHITE_COLLAR — e.g. the
-        // Rishpal/IT case), and so we can verify branch membership defensively.
+        // Verify HOD user exists. Fetch User.collarType (the collar source of
+        // truth) plus branch info so we can verify branch membership defensively.
         const hodUser = await prisma.user.findUnique({
             where: { id: hodUserId },
             select: {
                 id: true, name: true, empCode: true, departmentId: true,
                 collarType: true, role: true, passwordHod: true, branchId: true,
-                department: { select: { collarType: true, branchId: true } },
+                department: { select: { branchId: true } },
             }
         });
         if (!hodUser) return fail("HOD user not found");
@@ -60,13 +57,12 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
             return fail(`${hodUser.name} is not in your branch`);
         }
 
-        // Spec rule: only WHITE_COLLAR employees may act as HOD.
-        // Collar source of truth is the employee's stored category in the
-        // CURRENT branch — User.collarType when set, otherwise the dept's
-        // collar (departments are branch-scoped, so this stays branch-correct).
-        const effectiveCollar = hodUser.collarType || hodUser.department?.collarType || null;
-        if (effectiveCollar !== "WHITE_COLLAR") {
-            return fail(`${hodUser.name} cannot be HOD — only WHITE_COLLAR employees can act as HOD`);
+        // Spec rule: only WHITE_COLLAR employees may act as HOD. The check comes
+        // from the employee's OWN stored category in this branch
+        // (User.collarType) — never from the department (departments carry no
+        // collar) or another branch.
+        if (hodUser.collarType !== "WHITE_COLLAR") {
+            return fail(`${hodUser.name} cannot be HOD — only white-collar employees can act as HOD`);
         }
 
         // Ensure the dual-login passwordHod is populated. Without passwordHod
