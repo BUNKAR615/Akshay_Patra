@@ -443,20 +443,23 @@ export default function BranchManagerDashboard() {
         };
     }, [refreshLive]);
 
-    // HOD candidate lookup — runs once the BM picks a department (any
-    // department is selectable). The search box acts as an in-list filter
-    // within that department. The server enforces WHITE_COLLAR from the
-    // employee's own stored category; we still client-filter defensively.
+    // HOD candidate lookup. Two modes that work together:
+    //   - a department is picked  → browse/filter white-collar employees in it
+    //   - a search query is typed → find white-collar employees by emp code or
+    //     name across the WHOLE branch, even before a department is picked
+    //     (selecting a result auto-fills that employee's department below).
+    // The server enforces WHITE_COLLAR from the employee's own stored category;
+    // we still client-filter defensively.
     useEffect(() => {
         const q = hodSearchQuery.trim();
-        if (!hodDeptId) { setHodCandidates([]); return; }
+        if (!hodDeptId && !q) { setHodCandidates([]); return; }
 
         setHodSearching(true);
         const t = setTimeout(async () => {
             try {
                 const params = new URLSearchParams();
                 if (q) params.set("q", q);
-                params.set("departmentId", hodDeptId);
+                if (hodDeptId) params.set("departmentId", hodDeptId);
                 const data = await api(`/api/branch-manager/hod/search?${params.toString()}`);
                 const wcOnly = (data.candidates || []).filter(c => c.effectiveCollar === "WHITE_COLLAR");
                 setHodCandidates(wcOnly);
@@ -789,9 +792,8 @@ export default function BranchManagerDashboard() {
                                     type="text"
                                     value={hodSearchQuery}
                                     onChange={(e) => { setHodSearchQuery(e.target.value); setHodSelected(null); }}
-                                    placeholder="Filter by employee code or name..."
-                                    disabled={!hodDeptId}
-                                    className="w-full px-3 py-2.5 bg-white border border-[#E0E0E0] rounded-lg text-[14px] text-[#333333] font-medium focus:outline-none focus:ring-2 focus:ring-[#003087] placeholder:text-[#AAAAAA] disabled:bg-[#F5F5F5] disabled:cursor-not-allowed"
+                                    placeholder="Search by employee code or name..."
+                                    className="w-full px-3 py-2.5 bg-white border border-[#E0E0E0] rounded-lg text-[14px] text-[#333333] font-medium focus:outline-none focus:ring-2 focus:ring-[#003087] placeholder:text-[#AAAAAA]"
                                 />
                             </div>
                             <div className="flex items-end">
@@ -810,11 +812,15 @@ export default function BranchManagerDashboard() {
                             HOD. Already-HOD candidates stay in the list with
                             a clear badge so the BM doesn't double-nominate by
                             accident. */}
-                        {hodDeptId && !hodSelected && (
+                        {(hodDeptId || hodSearchQuery.trim()) && !hodSelected && (
                             <div className="mt-3 bg-white border border-[#E0E0E0] rounded-lg max-h-64 overflow-y-auto">
                                 {hodSearching && <p className="text-[13px] text-[#666666] p-3">Searching...</p>}
                                 {!hodSearching && hodCandidates.length === 0 && (
-                                    <p className="text-[13px] text-[#666666] p-3">No white-collar employees found.</p>
+                                    <p className="text-[13px] text-[#666666] p-3">
+                                        {hodSearchQuery.trim()
+                                            ? `No white-collar employees match "${hodSearchQuery.trim()}".`
+                                            : "No white-collar employees found."}
+                                    </p>
                                 )}
                                 {!hodSearching && hodCandidates.map((c) => {
                                     const alreadyHodIn = c.currentHodDepartments || [];
@@ -823,7 +829,12 @@ export default function BranchManagerDashboard() {
                                         <button
                                             key={c.id}
                                             type="button"
-                                            onClick={() => setHodSelected(c)}
+                                            onClick={() => {
+                                                setHodSelected(c);
+                                                // Branch-wide search result: adopt the candidate's
+                                                // own department so the Assign step has one.
+                                                if (!hodDeptId && c.departmentId) setHodDeptId(c.departmentId);
+                                            }}
                                             className="w-full text-left px-4 py-2.5 border-b border-[#F0F0F0] last:border-b-0 hover:bg-[#F5F7FA] cursor-pointer"
                                         >
                                             <div className="flex items-center gap-2 flex-wrap">
