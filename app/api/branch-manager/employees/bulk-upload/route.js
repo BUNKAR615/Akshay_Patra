@@ -83,15 +83,11 @@ export const POST = withRole(["ADMIN", "BRANCH_MANAGER"], async (request, { user
 
         if (rows.length === 0) return fail("No valid rows to process");
 
-        // Validate collar consistency
-        const deptCollarMap = new Map();
-        for (const r of rows) {
-            const existing = deptCollarMap.get(r.department);
-            if (existing && existing !== r.collarType) {
-                return fail(`Department "${r.department}" has mixed collar types`, 400);
-            }
-            deptCollarMap.set(r.department, r.collarType);
-        }
+        // Departments are NOT collar-tagged — a single department may hold both
+        // blue- and white-collar employees, so we never derive a department
+        // collar and never reject a "mixed" department. Collar is stored per
+        // employee only (on the user upsert below).
+        const deptNames = [...new Set(rows.map((r) => r.department))];
 
         // Pre-hash default passwords. EMPLOYEE → empCode (per spec).
         const hashes = new Map();
@@ -104,10 +100,10 @@ export const POST = withRole(["ADMIN", "BRANCH_MANAGER"], async (request, { user
             // Upsert departments
             const deptMap = new Map();
             const deptsCreated = [];
-            for (const [deptName, collarType] of deptCollarMap) {
+            for (const deptName of deptNames) {
                 let dept = await tx.department.findFirst({ where: { name: deptName, branchId } });
                 if (!dept) {
-                    dept = await tx.department.create({ data: { name: deptName, branchId, collarType } });
+                    dept = await tx.department.create({ data: { name: deptName, branchId } });
                     deptsCreated.push(deptName);
                 }
                 deptMap.set(deptName, dept.id);

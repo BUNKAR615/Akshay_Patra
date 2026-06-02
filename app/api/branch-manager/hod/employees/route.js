@@ -79,7 +79,7 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
                 employee: {
                     select: {
                         id: true, name: true, empCode: true, designation: true, collarType: true,
-                        department: { select: { id: true, name: true, collarType: true } },
+                        department: { select: { id: true, name: true } },
                     },
                 },
             },

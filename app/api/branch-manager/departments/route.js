@@ -25,9 +25,11 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         if (!branch) return fail("No branch is assigned to this Branch Manager. Please contact admin.");
 
         const [depts, empGroups] = await Promise.all([
+            // Departments are NOT collar-tagged — collar is an employee-level
+            // attribute only, so we never read or surface a department collar here.
             prisma.department.findMany({
                 where: { branchId: branch.id },
-                select: { id: true, name: true, collarType: true },
+                select: { id: true, name: true },
                 orderBy: { name: "asc" },
             }),
             prisma.user.groupBy({
@@ -41,7 +43,6 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         const departments = depts.map((d) => ({
             id: d.id,
             name: d.name,
-            collarType: d.collarType,
             employeeCount: countByDept.get(d.id) || 0,
         }));
 
