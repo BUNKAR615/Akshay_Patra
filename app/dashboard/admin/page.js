@@ -659,7 +659,11 @@ export default function AdminDashboard() {
         if (!selectedQuarterId) return;
         if (tab === "dashboard") {
             fetchProgress(selectedQuarterId);
-            fetchReport();
+            // NOTE: the quarter-report (CSV) is intentionally NOT prefetched
+            // here. It is a heavy endpoint that the blind-scoring rule rejects
+            // with 400 for ACTIVE quarters, and its result is only consumed as
+            // a fallback by the CSV export button — which fetches its own fresh
+            // copy on click. Prefetching it just burned a request on every load.
         }
         if (tab === "pipeline" || tab === "quarter") {
             fetchProgress(selectedQuarterId);
@@ -1165,26 +1169,42 @@ export default function AdminDashboard() {
                             {/* SECTION — Branch-wise Stage Progress */}
                             {quarterProgress.branches && quarterProgress.branches.length > 0 && (
                                 <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 sm:p-6">
-                                    <h3 className="text-lg font-bold text-[#003087] mb-4 flex items-center gap-2">
+                                    <h3 className="text-lg font-bold text-[#003087] mb-1 flex items-center gap-2">
                                         Branch-wise Stage Progress
                                     </h3>
+                                    <p className="text-[11px] text-[#666666] mb-4 leading-relaxed">
+                                        Each stage shows <b className="text-[#1A1A2E]">In</b> (in stage) ·
+                                        {" "}<b className="text-[#003087]">Ev</b> (evaluated) ·
+                                        {" "}<b className="text-[#00843D]">Cl</b> (cleared) ·
+                                        {" "}<b className="text-[#E65100]">Pe</b> (pending).
+                                        {" "}Employees cleared in one stage flow into the next stage&apos;s <b className="text-[#1A1A2E]">In</b> count.
+                                    </p>
                                     <div className="overflow-x-auto">
-                                        <table className="w-full text-[12px] border-collapse min-w-[880px]">
+                                        <table className="w-full text-[12px] border-collapse min-w-[1200px]">
                                             <thead className="bg-[#F5F5F5]">
                                                 <tr>
                                                     <th className="text-left px-3 py-2 font-bold text-[#333333]">Branch</th>
                                                     <th className="text-left px-3 py-2 font-bold text-[#333333]">Type</th>
                                                     <th className="text-right px-3 py-2 font-bold text-[#333333]">Employees</th>
-                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 1<br /><span className="text-[9px] font-medium text-[#666666]">Submitted / Shortlisted</span></th>
-                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 2<br /><span className="text-[9px] font-medium text-[#666666]">BM / HOD evals</span></th>
-                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 3<br /><span className="text-[9px] font-medium text-[#666666]">CM evals</span></th>
-                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 4<br /><span className="text-[9px] font-medium text-[#666666]">HR evals</span></th>
+                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 1<br /><span className="text-[9px] font-medium text-[#666666]">Self assessment</span></th>
+                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 2<br /><span className="text-[9px] font-medium text-[#666666]">BM / HOD</span></th>
+                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 3<br /><span className="text-[9px] font-medium text-[#666666]">Cluster Manager</span></th>
+                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 4<br /><span className="text-[9px] font-medium text-[#666666]">HR</span></th>
                                                     <th className="text-center px-3 py-2 font-bold text-[#F57C00]">Winners<br /><span className="text-[9px] font-medium text-[#666666]">(of expected)</span></th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {quarterProgress.branches.map((b) => {
                                                     const expected = b.branchType === "BIG" ? 4 : 3;
+                                                    // Stage flow — each stage's "In stage" pool is the prior
+                                                    // stage's cleared (shortlisted) count, so passes cascade
+                                                    // Stage 1 → 2 → 3 → 4 automatically.
+                                                    const stages = [
+                                                        { total: b.totalEmployees, evaluated: b.stage1.submitted, cleared: b.stage1.shortlisted },
+                                                        { total: b.stage1.shortlisted, evaluated: (b.stage2.evaluatedByBm || 0) + (b.stage2.evaluatedByHod || 0), cleared: b.stage2.shortlisted },
+                                                        { total: b.stage2.shortlisted, evaluated: b.stage3.evaluatedByCm, cleared: b.stage3.shortlisted },
+                                                        { total: b.stage3.shortlisted, evaluated: b.stage4.evaluatedByHr, cleared: b.stage4.shortlisted },
+                                                    ];
                                                     return (
                                                         <tr key={b.branchId} className="border-t border-[#E0E0E0] hover:bg-[#FAFCFF]">
                                                             <td className="px-3 py-2 font-bold text-[#1A1A2E]">{b.branchName}</td>
@@ -1192,26 +1212,29 @@ export default function AdminDashboard() {
                                                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${b.branchType === "BIG" ? "bg-[#F3E5F5] text-[#6A1B9A] border-[#CE93D8]" : "bg-[#FFF8E1] text-[#F57F17] border-[#FFE082]"}`}>{b.branchType}</span>
                                                             </td>
                                                             <td className="px-3 py-2 text-right font-bold">{b.totalEmployees}</td>
-                                                            <td className="px-3 py-2 text-right">
-                                                                <span className="font-bold text-[#003087]">{b.stage1.submitted}</span>
-                                                                <span className="text-[#999999]"> / </span>
-                                                                <span className="font-bold text-[#00843D]">{b.stage1.shortlisted}</span>
-                                                            </td>
-                                                            <td className="px-3 py-2 text-right">
-                                                                <span className="font-bold text-[#003087]">{b.stage2.evaluatedByBm + b.stage2.evaluatedByHod}</span>
-                                                                <span className="text-[#999999]"> / </span>
-                                                                <span className="font-bold text-[#00843D]">{b.stage2.shortlisted}</span>
-                                                            </td>
-                                                            <td className="px-3 py-2 text-right">
-                                                                <span className="font-bold text-[#003087]">{b.stage3.evaluatedByCm}</span>
-                                                                <span className="text-[#999999]"> / </span>
-                                                                <span className="font-bold text-[#00843D]">{b.stage3.shortlisted}</span>
-                                                            </td>
-                                                            <td className="px-3 py-2 text-right">
-                                                                <span className="font-bold text-[#003087]">{b.stage4.evaluatedByHr}</span>
-                                                                <span className="text-[#999999]"> / </span>
-                                                                <span className="font-bold text-[#00843D]">{b.stage4.shortlisted}</span>
-                                                            </td>
+                                                            {stages.map((s, i) => {
+                                                                const started = s.total > 0;
+                                                                // Clamp evaluated to the in-stage pool so In = Ev + Pe always reads cleanly.
+                                                                const evaluated = Math.min(s.evaluated, s.total);
+                                                                const pending = Math.max(0, s.total - evaluated);
+                                                                return (
+                                                                    <td key={i} className="px-3 py-2 text-right">
+                                                                        {started ? (
+                                                                            <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px]">
+                                                                                <span className="text-[#888888]">In <b className="text-[#1A1A2E]">{s.total}</b></span>
+                                                                                <span className="text-[#DDDDDD]">·</span>
+                                                                                <span className="text-[#888888]">Ev <b className="text-[#003087]">{evaluated}</b></span>
+                                                                                <span className="text-[#DDDDDD]">·</span>
+                                                                                <span className="text-[#888888]">Cl <b className="text-[#00843D]">{s.cleared}</b></span>
+                                                                                <span className="text-[#DDDDDD]">·</span>
+                                                                                <span className="text-[#888888]">Pe <b className="text-[#E65100]">{pending}</b></span>
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-[10px] text-[#BBBBBB]">Not started</span>
+                                                                        )}
+                                                                    </td>
+                                                                );
+                                                            })}
                                                             <td className="px-3 py-2 text-center">
                                                                 <span className={`font-bold ${b.winners.length >= expected ? "text-[#00843D]" : "text-[#F57C00]"}`}>{b.winners.length} / {expected}</span>
                                                             </td>
@@ -1943,9 +1966,9 @@ export default function AdminDashboard() {
             {tab === "employees" && (
                 <div className="space-y-6">
                     <div className="bg-white border rounded-xl p-3 sm:p-5 shadow-sm border-[#E0E0E0] space-y-3 sm:space-y-0 sm:flex sm:flex-row sm:gap-4 sm:justify-between sm:items-center">
-                        <div className="relative w-full sm:flex-1 sm:max-w-xs">
+                        <div className="relative w-full sm:flex-1 sm:max-w-sm">
                             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#999999]"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></span>
-                            <input type="text" placeholder="Search name or code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-10 pl-10 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
+                            <input type="text" placeholder="Search name or code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-10 pl-10 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-[15px] text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
                         </div>
                         <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-4 sm:w-auto">
                             <select value={empFilter.branch} onChange={(e) => setEmpFilter({ ...empFilter, branch: e.target.value, department: "" })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-40">
