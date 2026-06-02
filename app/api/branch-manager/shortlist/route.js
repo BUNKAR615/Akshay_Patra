@@ -76,10 +76,12 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
 
         const candidates = stage1.filter((s) => {
             if (branch.branchType === "BIG") {
-                // Collar from the employee's stored category only (Stage-1
-                // snapshot first, then the live User.collarType) — never the
-                // department.
-                const collar = s.collarType || s.user.collarType;
+                // Collar from the employee's stored category. The live
+                // User.collarType (sourced from the uploaded sheet) is the
+                // source of truth and ALWAYS wins; the Stage-1 snapshot is only
+                // a fallback for the rare case where User.collarType is null.
+                // Stage logic must never override the sheet — never the dept.
+                const collar = s.user.collarType || s.collarType;
                 if (collar === "WHITE_COLLAR") return true;
                 // Blue-collar (or unknown) — only include orphaned ones (no active HOD).
                 return !assignedBcIds.has(s.userId);
@@ -99,7 +101,10 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
 
         const employees = shuffleArray(candidates.map((s) => {
             const ev = evalMap.get(s.userId);
-            const collar = s.collarType || s.user.collarType || null;
+            // Source-of-truth-first: live User.collarType (from the sheet) wins
+            // over the Stage-1 snapshot so the BM page can never show a collar
+            // that disagrees with the uploaded sheet.
+            const collar = s.user.collarType || s.collarType || null;
             return {
                 userId: s.userId,
                 id: s.user.id,
