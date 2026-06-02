@@ -69,20 +69,39 @@ export async function POST(request) {
             return fail("Invalid employee code or password", 401);
         }
 
+        // Dual-login staff: a staff-role user (e.g. a Branch Manager / HR) who is
+        // ALSO a member of a department. Their PRIMARY password (empCode) opens
+        // the normal EMPLOYEE dashboard, while their SECONDARY password
+        // (Firstname_##, stored in passwordHod) opens their own staff dashboard.
+        // This mirrors the HOD dual-login but resolves to the user's own staff
+        // role instead of HOD. It only activates when a user has BOTH a
+        // departmentId AND a secondary password set, so every existing account
+        // (staff carry no departmentId; HODs are role HOD) is unaffected.
+        const DUAL_LOGIN_STAFF_ROLES = new Set(["BRANCH_MANAGER", "CLUSTER_MANAGER", "HR", "COMMITTEE"]);
+        const isDualLoginStaff = !!user.departmentId && !!user.passwordHod && DUAL_LOGIN_STAFF_ROLES.has(user.role);
+
         let resolvedRole = null;
         if (user.password) {
             const ok1 = await bcrypt.compare(data.password, user.password);
-            if (ok1) resolvedRole = user.role === "HOD" ? "EMPLOYEE" : user.role;
+            // empCode (primary) → employee dashboard for HODs and dual-login
+            // staff; the user's own role otherwise.
+            if (ok1) resolvedRole = (user.role === "HOD" || isDualLoginStaff) ? "EMPLOYEE" : user.role;
         }
 
         if (!resolvedRole && user.passwordHod) {
-            const hasHodAssignment = await prisma.hodAssignment.findFirst({
-                where: { hodUserId: user.id, quarter: { status: "ACTIVE" } },
-                select: { id: true },
-            });
-            if (hasHodAssignment) {
-                const ok2 = await bcrypt.compare(data.password, user.passwordHod);
-                if (ok2) resolvedRole = "HOD";
+            const ok2 = await bcrypt.compare(data.password, user.passwordHod);
+            if (ok2) {
+                if (isDualLoginStaff) {
+                    // Firstname_## (secondary) → this user's own staff dashboard.
+                    resolvedRole = user.role;
+                } else {
+                    // HOD secondary password — gated on an active HOD assignment.
+                    const hasHodAssignment = await prisma.hodAssignment.findFirst({
+                        where: { hodUserId: user.id, quarter: { status: "ACTIVE" } },
+                        select: { id: true },
+                    });
+                    if (hasHodAssignment) resolvedRole = "HOD";
+                }
             }
         }
 
@@ -177,8 +196,12 @@ export async function POST(request) {
             branchId = user.department?.branchId || "";
         }
 
-        // departmentIds for downstream routes — keep empty for pure evaluators (BM/CM/HR/COMMITTEE).
-        const departmentIds = user.departmentId ? [user.departmentId] : [];
+        // departmentIds for downstream routes — keep empty for pure evaluators
+        // (BM/CM/HR/COMMITTEE), even for dual-login staff who also hold a
+        // department membership: that department scopes ONLY their EMPLOYEE
+        // login, never their staff dashboard.
+        const PURE_EVALUATOR_ROLES = new Set(["BRANCH_MANAGER", "CLUSTER_MANAGER", "HR", "COMMITTEE"]);
+        const departmentIds = (user.departmentId && !PURE_EVALUATOR_ROLES.has(resolvedRole)) ? [user.departmentId] : [];
         if (resolvedRole === "HOD") {
             const hodAssignments = await prisma.hodAssignment.findMany({
                 where: { hodUserId: user.id, quarter: { status: "ACTIVE" } },
