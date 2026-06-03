@@ -8,7 +8,7 @@ import { evaluateSchema } from "../../../../lib/validators";
 import { createNotification } from "../../../../lib/notifications";
 import { normalizeScore, calculateFinalScore, calculateBranchStage3Score } from "../../../../lib/scoreCalculator";
 import { getEvaluatorPool } from "../../../../lib/evaluatorPool";
-import { getBigBranchCollarLimits } from "../../../../lib/branchRules";
+import { regenerateBranchStage3 } from "../../../../lib/branchPromotion";
 
 /**
  * POST /api/cluster-manager/evaluate
@@ -101,31 +101,33 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
                 },
             });
 
-            // Check if CM has evaluated ALL branch Stage 2 employees
+            // ── Partial promotion (Rule 1) + round-locking (Rule 2) ──
+            // Rebuild the branch's Stage 3 shortlist from the CM evaluations
+            // done so far (top-N per collar track, pruning anyone who dropped
+            // out). No-ops once the HR round has started for this branch.
+            const { locked: stage3Locked, added } = await regenerateBranchStage3(prisma, {
+                branchId,
+                branchType,
+                quarterId: activeQuarter.id,
+            });
+            const stage3Generated = !stage3Locked && added.length > 0;
+            for (const shortlistedId of added) {
+                await createNotification(shortlistedId, "You have advanced to Stage 3! HR will evaluate next.")
+                    .catch((err) => { console.error(`[CM-EVALUATE] Stage 3 notification failed for user ${shortlistedId}:`, err); });
+            }
+
+            // Progress for the CM UI (generation no longer waits for completion).
             const allStage2 = await prisma.branchShortlistStage2.findMany({
-                where: { branchId, quarterId: activeQuarter.id }
+                where: { branchId, quarterId: activeQuarter.id },
+                select: { userId: true },
             });
             const cmEvalCount = await prisma.clusterManagerEvaluation.count({
                 where: {
                     clusterId: user.userId,
                     quarterId: activeQuarter.id,
-                    employeeId: { in: allStage2.map(s => s.userId) }
-                }
+                    employeeId: { in: allStage2.map((s) => s.userId) },
+                },
             });
-
-            let stage3Generated = false;
-            if (cmEvalCount >= allStage2.length && allStage2.length > 0) {
-                // Guard against concurrent CM submissions both regenerating Stage 3 +
-                // resending the "advanced to Stage 3" notification. Only the first
-                // caller for this branch+quarter actually generates.
-                const existingStage3 = await prisma.branchShortlistStage3.count({
-                    where: { branchId, quarterId: activeQuarter.id }
-                });
-                if (existingStage3 === 0) {
-                    stage3Generated = true;
-                    await generateBranchStage3(branchId, branchType, activeQuarter.id);
-                }
-            }
 
             await prisma.auditLog.create({
                 data: {
@@ -228,85 +230,3 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         return handleApiError(err, "CM-EVALUATE");
     }
 });
-
-/**
- * Generate branch-level Stage 3 shortlist after CM completes evaluations.
- * Forwards top N to HR (not to BestEmployee).
- */
-async function generateBranchStage3(branchId, branchType, quarterId) {
-    // Get all CM evaluations for branch Stage 2 employees
-    const stage2Entries = await prisma.branchShortlistStage2.findMany({
-        where: { branchId, quarterId }
-    });
-    const stage2UserIds = stage2Entries.map(s => s.userId);
-
-    const cmEvals = await prisma.clusterManagerEvaluation.findMany({
-        where: { quarterId, employeeId: { in: stage2UserIds } },
-        include: { employee: { select: { collarType: true } } }
-    });
-
-    // Map evaluations by employee
-    const evalsByEmployee = new Map();
-    for (const ev of cmEvals) {
-        if (!evalsByEmployee.has(ev.employeeId)) evalsByEmployee.set(ev.employeeId, []);
-        evalsByEmployee.get(ev.employeeId).push(ev);
-    }
-
-    // Merge with Stage 2 data and calculate Stage 3 scores
-    const candidates = stage2Entries.map(s2 => {
-        const evals = evalsByEmployee.get(s2.userId) || [];
-        const avgCmNorm = evals.length > 0
-            ? evals.reduce((sum, e) => sum + e.cmNormalized, 0) / evals.length
-            : 0;
-        return {
-            userId: s2.userId,
-            collarType: s2.collarType,
-            selfScore: s2.selfScore,
-            evaluatorScore: s2.evaluatorScore,
-            cmScore: avgCmNorm,
-            combinedScore: s2.selfScore + s2.evaluatorScore + Math.round((avgCmNorm / 100) * 30 * 100) / 100
-        };
-    });
-
-    if (branchType === "BIG") {
-        // Separate WC and BC tracks
-        const wc = candidates.filter(c => c.collarType === "WHITE_COLLAR").sort((a, b) => b.combinedScore - a.combinedScore);
-        const bc = candidates.filter(c => c.collarType === "BLUE_COLLAR").sort((a, b) => b.combinedScore - a.combinedScore);
-
-        const wcLimits = getBigBranchCollarLimits("WHITE_COLLAR");
-        const bcLimits = getBigBranchCollarLimits("BLUE_COLLAR");
-
-        const wcTop = wc.slice(0, wcLimits.stage3Limit); // top 2
-        const bcTop = bc.slice(0, bcLimits.stage3Limit); // top 5
-
-        const allTop = [...wcTop, ...bcTop];
-        for (let i = 0; i < allTop.length; i++) {
-            const c = allTop[i];
-            await prisma.branchShortlistStage3.upsert({
-                where: { userId_quarterId: { userId: c.userId, quarterId } },
-                update: { selfScore: c.selfScore, evaluatorScore: c.evaluatorScore, cmScore: c.cmScore, combinedScore: c.combinedScore, rank: i + 1 },
-                create: { userId: c.userId, quarterId, branchId, collarType: c.collarType, selfScore: c.selfScore, evaluatorScore: c.evaluatorScore, cmScore: c.cmScore, combinedScore: c.combinedScore, rank: i + 1 }
-            });
-        }
-    } else {
-        // Small branch: top 5 overall
-        const sorted = candidates.sort((a, b) => b.combinedScore - a.combinedScore);
-        const top5 = sorted.slice(0, 5);
-
-        for (let i = 0; i < top5.length; i++) {
-            const c = top5[i];
-            await prisma.branchShortlistStage3.upsert({
-                where: { userId_quarterId: { userId: c.userId, quarterId } },
-                update: { selfScore: c.selfScore, evaluatorScore: c.evaluatorScore, cmScore: c.cmScore, combinedScore: c.combinedScore, rank: i + 1 },
-                create: { userId: c.userId, quarterId, branchId, collarType: c.collarType || "BLUE_COLLAR", selfScore: c.selfScore, evaluatorScore: c.evaluatorScore, cmScore: c.cmScore, combinedScore: c.combinedScore, rank: i + 1 }
-            });
-        }
-    }
-
-    // Notify shortlisted employees
-    const stage3List = await prisma.branchShortlistStage3.findMany({ where: { branchId, quarterId }, select: { userId: true } });
-    for (const s of stage3List) {
-        await createNotification(s.userId, "You have advanced to Stage 3! HR will evaluate next.")
-            .catch((err) => { console.error(`[CM-EVALUATE] Stage 3 notification failed for user ${s.userId}:`, err); });
-    }
-}

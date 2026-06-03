@@ -6,6 +6,7 @@ import { withRole } from "../../../../lib/withRole";
 import { ok, fail, validateBody, handleApiError } from "../../../../lib/api-response";
 import { hrEvaluateSchema } from "../../../../lib/validators";
 import { normalizeScore, calculateBranchFinalScore } from "../../../../lib/scoreCalculator";
+import { regenerateBranchStage4 } from "../../../../lib/branchPromotion";
 import { createNotification } from "../../../../lib/notifications";
 
 /**
@@ -97,18 +98,21 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
             }
         }).catch((err) => { console.error("[HR-EVALUATE] Audit log failed:", err); });
 
-        // Check if ALL Stage 3 employees have been evaluated by HR
+        // ── Partial promotion (Rule 1) ──
+        // Rebuild the branch's Best Employee list from the HR evaluations done
+        // so far. Stage 4 is terminal — there's no later round to lock against —
+        // so it always reflects the current HR evaluations (top 1 WC + 3 BC for
+        // big branches, top 3 for small).
         const branchId = stage3Entry.branchId;
-        const allStage3 = await prisma.branchShortlistStage3.findMany({
-            where: { branchId, quarterId: quarter.id }
+        const branch = await prisma.branch.findUnique({ where: { id: branchId }, select: { branchType: true } });
+        const { added } = await regenerateBranchStage4(prisma, {
+            branchId,
+            branchType: branch?.branchType,
+            quarterId: quarter.id,
         });
-        const hrEvalCount = await prisma.hrEvaluation.count({
-            where: { quarterId: quarter.id, employee: { department: { branchId } } }
-        });
-
-        if (hrEvalCount >= allStage3.length && allStage3.length > 0) {
-            // Generate Stage 4 shortlist (best employees)
-            await generateStage4Shortlist(branchId, quarter.id);
+        for (const winnerId of added) {
+            await createNotification(winnerId, "Congratulations! You have been selected as Best Employee of the Quarter!")
+                .catch((err) => { console.error(`[HR-EVALUATE] Best Employee notification failed for user ${winnerId}:`, err); });
         }
 
         return ok({ message: "HR evaluation submitted", finalScore });
@@ -116,100 +120,3 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
         return handleApiError(err, "HR-EVALUATE");
     }
 });
-
-async function generateStage4Shortlist(branchId, quarterId) {
-    const branch = await prisma.branch.findUnique({ where: { id: branchId }, select: { branchType: true } });
-
-    // Get all HR evaluations for this branch
-    const hrEvals = await prisma.hrEvaluation.findMany({
-        where: { quarterId, employee: { department: { branchId } } },
-        include: { employee: { select: { id: true, collarType: true } } },
-        orderBy: { stage4CombinedScore: "desc" }
-    });
-
-    if (branch.branchType === "BIG") {
-        // Big branch: 1 WC + 3 BC
-        const wcEvals = hrEvals.filter(e => e.employee.collarType === "WHITE_COLLAR");
-        const bcEvals = hrEvals.filter(e => e.employee.collarType === "BLUE_COLLAR");
-
-        if (wcEvals.length === 0) {
-            console.warn(`[HR-EVALUATE] Big branch ${branchId} (quarter ${quarterId}) has zero WHITE_COLLAR HR evaluations — Best Employee pool will not include a WC winner.`);
-        }
-        if (bcEvals.length < 3) {
-            console.warn(`[HR-EVALUATE] Big branch ${branchId} (quarter ${quarterId}) has only ${bcEvals.length} BLUE_COLLAR HR evaluations — fewer than 3 BC winners will be selected.`);
-        }
-
-        const wcWinners = wcEvals.slice(0, 1);
-        const bcWinners = bcEvals.slice(0, 3);
-        const allWinners = [...wcWinners, ...bcWinners];
-
-        for (let i = 0; i < allWinners.length; i++) {
-            const ev = allWinners[i];
-            await prisma.branchBestEmployee.upsert({
-                where: { userId_quarterId: { userId: ev.employeeId, quarterId } },
-                update: {
-                    selfScore: ev.selfContribution,
-                    evaluatorScore: ev.evaluatorContribution,
-                    cmScore: ev.cmContribution,
-                    hrScore: ev.hrContribution,
-                    finalScore: ev.stage4CombinedScore,
-                    attendancePct: ev.attendancePct,
-                    workingHours: ev.workingHours,
-                    referenceSheetUrl: ev.referenceSheetUrl,
-                },
-                create: {
-                    userId: ev.employeeId,
-                    quarterId,
-                    branchId,
-                    collarType: ev.employee.collarType,
-                    selfScore: ev.selfContribution,
-                    evaluatorScore: ev.evaluatorContribution,
-                    cmScore: ev.cmContribution,
-                    hrScore: ev.hrContribution,
-                    finalScore: ev.stage4CombinedScore,
-                    attendancePct: ev.attendancePct,
-                    workingHours: ev.workingHours,
-                    referenceSheetUrl: ev.referenceSheetUrl,
-                }
-            });
-            await createNotification(ev.employeeId, "Congratulations! You have been selected as Best Employee of the Quarter!")
-                .catch((err) => { console.error(`[HR-EVALUATE] Best Employee notification failed for user ${ev.employeeId}:`, err); });
-        }
-    } else {
-        // Small branch: top 3 overall
-        const winners = hrEvals.slice(0, 3);
-
-        for (let i = 0; i < winners.length; i++) {
-            const ev = winners[i];
-            await prisma.branchBestEmployee.upsert({
-                where: { userId_quarterId: { userId: ev.employeeId, quarterId } },
-                update: {
-                    selfScore: ev.selfContribution,
-                    evaluatorScore: ev.evaluatorContribution,
-                    cmScore: ev.cmContribution,
-                    hrScore: ev.hrContribution,
-                    finalScore: ev.stage4CombinedScore,
-                    attendancePct: ev.attendancePct,
-                    workingHours: ev.workingHours,
-                    referenceSheetUrl: ev.referenceSheetUrl,
-                },
-                create: {
-                    userId: ev.employeeId,
-                    quarterId,
-                    branchId,
-                    collarType: ev.employee.collarType || "BLUE_COLLAR",
-                    selfScore: ev.selfContribution,
-                    evaluatorScore: ev.evaluatorContribution,
-                    cmScore: ev.cmContribution,
-                    hrScore: ev.hrContribution,
-                    finalScore: ev.stage4CombinedScore,
-                    attendancePct: ev.attendancePct,
-                    workingHours: ev.workingHours,
-                    referenceSheetUrl: ev.referenceSheetUrl,
-                }
-            });
-            await createNotification(ev.employeeId, "Congratulations! You have been selected as Best Employee of the Quarter!")
-                .catch((err) => { console.error(`[HR-EVALUATE] Best Employee notification failed for user ${ev.employeeId}:`, err); });
-        }
-    }
-}

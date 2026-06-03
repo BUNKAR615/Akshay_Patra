@@ -6,7 +6,7 @@ import { withRole } from "../../../../lib/withRole";
 import { ok, fail, validateBody, handleApiError } from "../../../../lib/api-response";
 import { evaluateSchema } from "../../../../lib/validators";
 import { normalizeScore, calculateBranchStage2Score } from "../../../../lib/scoreCalculator";
-import { getBigBranchCollarLimits } from "../../../../lib/branchRules";
+import { regenerateBranchStage2 } from "../../../../lib/branchPromotion";
 import { createNotification } from "../../../../lib/notifications";
 
 /**
@@ -129,79 +129,21 @@ export const POST = withRole(["HOD"], async (request, { user }) => {
             }
         }).catch(() => {});
 
-        // Check if ALL HODs have evaluated ALL their assigned blue collar Stage 1 employees.
-        //
-        // Same shift as above: with per-employee EmployeeHodAssignment we no
-        // longer match HOD ⇄ employee through `department`. For each BC
-        // Stage-1 employee we read their per-employee HOD link; only
-        // employees that ARE attached to some HOD count toward completion
-        // (unassigned ones legitimately stay with the BM and shouldn't
-        // block Stage-2 generation).
+        // ── Partial promotion (Rule 1) + round-locking (Rule 2) ──
+        // HODs only operate in BIG branches. Rebuild the whole branch Stage 2
+        // shortlist (BM-driven WC track + HOD-driven BC track) from the
+        // evaluations done so far, top-N per track, pruning anyone who dropped
+        // out. No-ops once the Cluster Manager round has started for the branch.
         const branchId = employee.department.branchId;
-        const bcStage1 = await prisma.branchShortlistStage1.findMany({
-            where: { branchId, quarterId: quarter.id, collarType: "BLUE_COLLAR" },
-            select: { userId: true },
+        const { locked, added } = await regenerateBranchStage2(prisma, {
+            branchId,
+            branchType: "BIG",
+            quarterId: quarter.id,
         });
-        const bcUserIds = bcStage1.map((s) => s.userId);
-        const empHodRows = bcUserIds.length > 0
-            ? await prisma.employeeHodAssignment.findMany({
-                where: { quarterId: quarter.id, employeeId: { in: bcUserIds } },
-                select: { employeeId: true, hodUserId: true },
-            })
-            : [];
-        const hodByEmp = new Map(empHodRows.map((r) => [r.employeeId, r.hodUserId]));
-
-        let allComplete = true;
-        for (const emp of bcStage1) {
-            const hodUserId = hodByEmp.get(emp.userId);
-            if (!hodUserId) continue; // Not attached to any HOD — BM evaluates.
-            const evalExists = await prisma.hodEvaluation.findUnique({
-                where: { hodId_employeeId_quarterId: { hodId: hodUserId, employeeId: emp.userId, quarterId: quarter.id } },
-            });
-            if (!evalExists) { allComplete = false; break; }
-        }
-
-        if (allComplete && bcStage1.length > 0) {
-            // Generate Stage 2 shortlist for BC track
-            const bcLimits = getBigBranchCollarLimits("BLUE_COLLAR");
-
-            // Get all HOD evaluations for BC employees
-            const allEvals = await prisma.hodEvaluation.findMany({
-                where: { quarterId: quarter.id, employee: { department: { branchId }, collarType: "BLUE_COLLAR" } },
-                orderBy: { stage2CombinedScore: "desc" }
-            });
-
-            // Take top N
-            const topN = allEvals.slice(0, bcLimits.stage2Limit);
-
-            for (let i = 0; i < topN.length; i++) {
-                const ev = topN[i];
-                await prisma.branchShortlistStage2.upsert({
-                    where: { userId_quarterId: { userId: ev.employeeId, quarterId: quarter.id } },
-                    update: {
-                        collarType: "BLUE_COLLAR",
-                        selfScore: ev.selfContribution,
-                        evaluatorScore: ev.hodContribution,
-                        combinedScore: ev.stage2CombinedScore,
-                        rank: i + 1
-                    },
-                    create: {
-                        userId: ev.employeeId,
-                        quarterId: quarter.id,
-                        branchId,
-                        collarType: "BLUE_COLLAR",
-                        selfScore: ev.selfContribution,
-                        evaluatorScore: ev.hodContribution,
-                        combinedScore: ev.stage2CombinedScore,
-                        rank: i + 1
-                    }
-                });
-            }
-
-            // Notify shortlisted employees
-            for (const ev of topN) {
-                await createNotification(ev.employeeId, "You have been shortlisted to Stage 2 (HOD evaluation complete). Cluster Manager will evaluate next.")
-                    .catch((err) => { console.error(`[HOD-EVALUATE] Stage 2 notification failed for user ${ev.employeeId}:`, err); });
+        if (!locked) {
+            for (const shortlistedId of added) {
+                await createNotification(shortlistedId, "You have been shortlisted to Stage 2! Cluster Manager will evaluate next.")
+                    .catch((err) => { console.error(`[HOD-EVALUATE] Stage 2 notification failed for user ${shortlistedId}:`, err); });
             }
         }
 

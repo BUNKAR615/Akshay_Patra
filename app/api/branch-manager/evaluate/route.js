@@ -8,7 +8,7 @@ import { resolveScopeBranch } from "../../../../lib/auth/resolveScopeBranch";
 import { evaluateSchema } from "../../../../lib/validators";
 import { createNotification } from "../../../../lib/notifications";
 import { normalizeScore, calculateBranchStage2Score } from "../../../../lib/scoreCalculator";
-import { getBigBranchCollarLimits } from "../../../../lib/branchRules";
+import { regenerateBranchStage2 } from "../../../../lib/branchPromotion";
 
 /**
  * POST /api/branch-manager/evaluate
@@ -110,85 +110,39 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
             },
         });
 
-        // Completion check: has the BM evaluated every Stage 1 target for this branch?
-        const stage1Employees = await prisma.branchShortlistStage1.findMany({
-            where: { branchId: bmBranchId, quarterId: activeQuarter.id },
+        // ── Partial promotion (Rule 1) + round-locking (Rule 2) ──
+        // Rebuild the branch's Stage 2 shortlist from the evaluations done so
+        // far (top-N per track, pruning anyone who has dropped out). The helper
+        // no-ops once the Cluster Manager round has started for this branch, so
+        // a late BM evaluation can't reshuffle a round CM is already working on.
+        const { locked: stage2Locked, added } = await regenerateBranchStage2(prisma, {
+            branchId: bmBranchId,
+            branchType,
+            quarterId: activeQuarter.id,
         });
-        const bmTargets = branchType === "BIG"
-            ? stage1Employees.filter((s) => s.collarType === "WHITE_COLLAR")
-            : stage1Employees;
-
-        const bmEvalCount = await prisma.branchManagerEvaluation.count({
-            where: {
-                managerId: user.userId,
-                quarterId: activeQuarter.id,
-                employeeId: { in: bmTargets.map((s) => s.userId) },
-            },
-        });
-
-        let stage2Generated = false;
-        if (bmEvalCount >= bmTargets.length && bmTargets.length > 0) {
-            stage2Generated = true;
-
-            // Resolve stage 2 limit: BranchEvalConfig if set, else collar/branch defaults.
-            const evalConfig = await prisma.branchEvalConfig.findUnique({
-                where: { branchId_quarterId: { branchId: bmBranchId, quarterId: activeQuarter.id } },
-                select: { stage2Limit: true },
-            });
-            let limit;
-            if (evalConfig?.stage2Limit != null) {
-                limit = evalConfig.stage2Limit;
-            } else if (branchType === "BIG") {
-                limit = getBigBranchCollarLimits("WHITE_COLLAR").stage2Limit; // 3
-            } else {
-                limit = 10; // SMALL branch default (matches branchRules.ts)
-            }
-
-            const allBmEvals = await prisma.branchManagerEvaluation.findMany({
-                where: {
-                    quarterId: activeQuarter.id,
-                    employeeId: { in: bmTargets.map((s) => s.userId) },
-                },
-                orderBy: { stage3CombinedScore: "desc" },
-            });
-
-            const topN = allBmEvals.slice(0, limit);
-            const stage1ById = new Map(stage1Employees.map((s) => [s.userId, s]));
-
-            for (let i = 0; i < topN.length; i++) {
-                const ev = topN[i];
-                const stage1Row = stage1ById.get(ev.employeeId);
-                const collarType = branchType === "BIG"
-                    ? "WHITE_COLLAR"
-                    : (stage1Row?.collarType || "BLUE_COLLAR");
-                await prisma.branchShortlistStage2.upsert({
-                    where: { userId_quarterId: { userId: ev.employeeId, quarterId: activeQuarter.id } },
-                    update: {
-                        selfScore: ev.selfContribution,
-                        evaluatorScore: ev.bmContribution,
-                        combinedScore: ev.stage3CombinedScore,
-                        rank: i + 1,
-                    },
-                    create: {
-                        userId: ev.employeeId,
-                        quarterId: activeQuarter.id,
-                        branchId: bmBranchId,
-                        collarType,
-                        selfScore: ev.selfContribution,
-                        evaluatorScore: ev.bmContribution,
-                        combinedScore: ev.stage3CombinedScore,
-                        rank: i + 1,
-                    },
-                });
-            }
-
-            for (const ev of topN) {
-                await createNotification(
-                    ev.employeeId,
-                    "You have been shortlisted to Stage 2! Cluster Manager will evaluate next."
-                ).catch((err) => { console.error(`[BM-EVALUATE] Stage 2 notification failed for user ${ev.employeeId}:`, err); });
-            }
+        const stage2Generated = !stage2Locked && added.length > 0;
+        for (const shortlistedId of added) {
+            await createNotification(
+                shortlistedId,
+                "You have been shortlisted to Stage 2! Cluster Manager will evaluate next."
+            ).catch((err) => { console.error(`[BM-EVALUATE] Stage 2 notification failed for user ${shortlistedId}:`, err); });
         }
+
+        // Progress for the BM UI (generation no longer waits for completion).
+        const stage1Targets = await prisma.branchShortlistStage1.findMany({
+            where: {
+                branchId: bmBranchId,
+                quarterId: activeQuarter.id,
+                ...(branchType === "BIG" ? { collarType: "WHITE_COLLAR" } : {}),
+            },
+            select: { userId: true },
+        });
+        const targetIds = stage1Targets.map((s) => s.userId);
+        const bmEvalCount = targetIds.length
+            ? await prisma.branchManagerEvaluation.count({
+                where: { managerId: user.userId, quarterId: activeQuarter.id, employeeId: { in: targetIds } },
+            })
+            : 0;
 
         await prisma.auditLog.create({
             data: {
@@ -207,7 +161,7 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         return created({
             message: "Evaluation submitted successfully",
             evaluation: { id: evaluation.id, employeeId: data.employeeId, evaluated: true },
-            progress: { evaluated: bmEvalCount, total: bmTargets.length },
+            progress: { evaluated: bmEvalCount, total: targetIds.length },
             stage2Generated,
         });
     } catch (err) {
