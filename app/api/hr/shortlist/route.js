@@ -6,6 +6,14 @@ import { withRole } from "../../../../lib/withRole";
 import { ok, fail, forbidden, serverError } from "../../../../lib/api-response";
 import { resolveScopeBranch, resolveAllScopeBranches } from "../../../../lib/auth/resolveScopeBranch";
 
+// An HR person must never see THEMSELVES as a candidate, and pure staff
+// (HR / BM / CM / Committee / Admin) are never Best-Employee candidates — they
+// only evaluate. This guards against a staff member who was shortlisted while
+// still an EMPLOYEE (stale Stage-1..3 rows that survive promotion) resurfacing
+// in — and being evaluable through — their OWN HR dashboard. It mirrors the
+// shortlist *generation* filter (role: 'EMPLOYEE') in lib/shortlistManager.ts.
+const NON_CANDIDATE_ROLES = ["HR", "BRANCH_MANAGER", "CLUSTER_MANAGER", "COMMITTEE", "ADMIN"];
+
 /**
  * GET /api/hr/shortlist
  *
@@ -87,8 +95,16 @@ export const GET = withRole(["HR", "ADMIN"], async (request, { user }) => {
         const branchById = new Map(targetBranches.map((b) => [b.id, b]));
 
         // Stage 3 shortlisted employees across the target branches.
+        // Exclude the HR viewer themselves and any staff role-holder so no one
+        // can be a candidate in a branch they evaluate (no self-evaluation,
+        // and an HR person never appears as a Best-Employee candidate).
         const shortlisted = await prisma.branchShortlistStage3.findMany({
-            where: { branchId: { in: targetBranchIds }, quarterId: quarter.id },
+            where: {
+                branchId: { in: targetBranchIds },
+                quarterId: quarter.id,
+                userId: { not: user.userId },
+                user: { role: { notIn: NON_CANDIDATE_ROLES } },
+            },
             include: {
                 user: {
                     select: {
@@ -133,7 +149,12 @@ export const GET = withRole(["HR", "ADMIN"], async (request, { user }) => {
         const assignedBranches = await Promise.all(
             allAssignedBranches.map(async (b) => {
                 const stage3Count = await prisma.branchShortlistStage3.count({
-                    where: { branchId: b.id, quarterId: quarter.id },
+                    where: {
+                        branchId: b.id,
+                        quarterId: quarter.id,
+                        userId: { not: user.userId },
+                        user: { role: { notIn: NON_CANDIDATE_ROLES } },
+                    },
                 });
                 const evaluatedHere = stage3Count > 0
                     ? await prisma.hrEvaluation.count({
