@@ -125,34 +125,52 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             return conflict(capacity.message);
         }
 
-        // Reset password to the staff formula ("Firstname_##") on every
-        // assign call. Admins can override via data.password.
-        const passwordHash = await hashStaffDefaultPassword({
-            role: "HR",
-            empCode: hrUser.empCode,
-            name: hrUser.name,
-            override: data.password,
-        });
+        // Build the user-profile write for this HR assignment. The branch a
+        // person belongs to as an EMPLOYEE (their "main branch") is owned by
+        // their department; assigning them as HR in another branch must never
+        // overwrite it. Two cases, decided by whether they already have an
+        // employee identity (a departmentId):
+        //
+        //  (1) EXISTING EMPLOYEE → preserve their main branch. We keep
+        //      departmentId / branchId / collarType untouched and configure the
+        //      DUAL-LOGIN the auth route already understands (login/route.js →
+        //      isDualLoginStaff):
+        //        - password    = empCode       → their EMPLOYEE dashboard (main branch)
+        //        - passwordHod = Firstname_##  → their HR dashboard (this branch)
+        //      Their evaluation stays owned by their main branch (shortlists are
+        //      keyed off department.branchId); the HR branch only ever sees them
+        //      through HrBranchAssignment, never as one of its employees.
+        //
+        //  (2) PURE STAFF (no department) → original detach-on-promote: the
+        //      staff formula is the primary password and the employee fields
+        //      stay null. User.branchId is intentionally NOT written for HR —
+        //      HrBranchAssignment is the single source of truth.
+        let userProfileWrite;
+        if (hrUser.departmentId) {
+            const staffPlain = data.password || defaultPasswordFor({ role: "HR", empCode: hrUser.empCode, name: hrUser.name });
+            userProfileWrite = {
+                role: "HR",
+                // Employee identity + main branch preserved on purpose —
+                // departmentId / branchId / collarType are left untouched.
+                password: await bcrypt.hash(String(hrUser.empCode), SALT_ROUNDS),
+                passwordHod: await bcrypt.hash(staffPlain, SALT_ROUNDS),
+            };
+        } else {
+            userProfileWrite = {
+                role: "HR",
+                password: await hashStaffDefaultPassword({ role: "HR", empCode: hrUser.empCode, name: hrUser.name, override: data.password }),
+                departmentId: null,
+                branchId: null,
+                passwordHod: null,
+                collarType: null,
+            };
+        }
 
-        // Detach-on-promote + assignment upsert in one transaction.
-        //   - role flipped to HR
-        //   - password reset to staff formula ("Firstname_##")
-        //   - departmentId / branchId / passwordHod / collarType nulled so
-        //     the user no longer appears in their old branch's employee list
-        //     and bulk-uploads of that branch can't silently demote them
-        //   - User.branchId is intentionally NOT written for HR —
-        //     HrBranchAssignment is the single source of truth.
+        // Profile write + assignment upsert in one transaction.
         const assignment = await prisma.$transaction(async (tx) => {
             await tx.user.update({
                 where: { id: hrUser.id },
-                data: {
-                    role: "HR",
-                    password: passwordHash,
-                    departmentId: null,
-                    branchId: null,
-                    passwordHod: null,
-                    collarType: null,
-                },
+                data: userProfileWrite,
             });
             return tx.hrBranchAssignment.upsert({
                 where: { hrUserId_branchId: { hrUserId: hrUser.id, branchId } },
@@ -168,7 +186,7 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             data: {
                 userId: user.userId,
                 action: "HR_ASSIGNED_TO_BRANCH",
-                details: { branchId, hrUserId: hrUser.id, empCode: hrUser.empCode },
+                details: { branchId, hrUserId: hrUser.id, empCode: hrUser.empCode, preservedEmployeeIdentity: !!hrUser.departmentId },
             },
         }).catch(() => {});
 
