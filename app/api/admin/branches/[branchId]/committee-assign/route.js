@@ -9,7 +9,7 @@ import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScop
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
 import { defaultPasswordFor } from "../../../../../../lib/auth/defaultPassword";
 import { hashStaffDefaultPassword } from "../../../../../../lib/auth/applyStaffPassword";
-import { assertSingleActiveRole, assertCommitteeCapacity } from "../../../../../../lib/auth/roleAssignmentRules";
+import { assertSingleActiveRole, assertCommitteeCapacity, assertCommitteeEligible } from "../../../../../../lib/auth/roleAssignmentRules";
 import { z } from "zod";
 
 const SALT_ROUNDS = 10;
@@ -94,6 +94,21 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             }
         } else {
             return fail("Either memberUserId or empCode is required");
+        }
+
+        // Eligibility — only role-holders may join the committee. A normal
+        // employee (role EMPLOYEE with no evaluator/department role) is rejected.
+        // Freshly created members above are role COMMITTEE, so they pass.
+        const eligibility = await assertCommitteeEligible(member.id);
+        if (!eligibility.ok) {
+            await prisma.auditLog.create({
+                data: {
+                    userId: user.userId,
+                    action: "ASSIGNMENT_REJECTED",
+                    details: { type: "COMMITTEE", reason: "NOT_ELIGIBLE", message: eligibility.message, branchId, targetUserId: member.id, empCode: member.empCode },
+                },
+            }).catch(() => {});
+            return conflict(eligibility.message);
         }
 
         // Rule A — a person may actively hold only ONE of BM/CM/HR/Committee.
