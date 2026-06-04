@@ -352,7 +352,9 @@ export default function AdminDashboard() {
             // (S.No 2), then everyone else. Derived from the same result set so a
             // branch-filtered export surfaces that branch's BM/CM.
             const hasRole = (e, roleKey) =>
-                [...(e.roles || [e.role]), ...((e.evaluatorRoles || []).map(er => er.role))].includes(roleKey);
+                e.role === roleKey ||
+                (e.roles || []).includes(roleKey) ||
+                (e.evaluatorRoles || []).some(er => er.role === roleKey);
             const bm = all.find(e => hasRole(e, "BRANCH_MANAGER"));
             const cm = all.find(e => hasRole(e, "CLUSTER_MANAGER"));
             const leaders = [];
