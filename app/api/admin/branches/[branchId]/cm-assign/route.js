@@ -233,9 +233,15 @@ export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
                 where: { cmUserId },
             });
             if (remaining === 0) {
+                // A dual-role member (CM + Committee) who loses their CM role
+                // falls back to COMMITTEE — not EMPLOYEE — so their committee
+                // login keeps working.
+                const stillCommittee = await tx.committeeBranchAssignment.findFirst({
+                    where: { memberUserId: cmUserId }, select: { id: true },
+                });
                 await tx.user.updateMany({
                     where: { id: cmUserId, role: "CLUSTER_MANAGER" },
-                    data: { role: "EMPLOYEE" },
+                    data: { role: stillCommittee ? "COMMITTEE" : "EMPLOYEE" },
                 });
             }
         });

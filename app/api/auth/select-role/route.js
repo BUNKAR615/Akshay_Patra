@@ -9,6 +9,7 @@ import {
 } from "../../../../lib/auth";
 import { ok, fail, serverError } from "../../../../lib/api-response";
 import { selectRoleSchema } from "../../../../lib/validators";
+import { resolveRoleScope } from "../../../../lib/auth/loginRoles";
 
 /**
  * POST /api/auth/select-role
@@ -57,44 +58,20 @@ export async function POST(request) {
         });
         if (!user) return fail("Account not found.", 401);
 
-        // Re-verify the chosen role is still actually available — a HodAssignment
-        // could have been removed between login stage 1 and this request.
-        if (role === "HOD") {
-            const hasHodAssignment = await prisma.hodAssignment.findFirst({
-                where: { hodUserId: userId, quarter: { status: "ACTIVE" } },
-                select: { id: true },
-            });
-            if (!hasHodAssignment) return fail("HOD role is no longer assigned to your account.", 403);
-        } else {
-            // For non-HOD roles, the stored User.role must match the chosen one.
-            if (user.role !== role) return fail("That role is no longer available for your account.", 403);
+        // Re-verify the chosen role is still actually held — assignments can
+        // change between login stage 1 and this request, and a stale cookie must
+        // never grant a role the user no longer has. Each role is checked against
+        // its authoritative source (assignment table, or User.role for ADMIN).
+        const stillAvailable = await roleStillAvailable(userId, role, user);
+        if (!stillAvailable) {
+            return fail("That role is no longer available for your account.", 403);
         }
 
-        // Branch + departmentIds in the issued token, role-aware.
-        let branchId = "";
-        let branchType = user.department?.branch?.branchType || "";
-        let branchName = user.department?.branch?.name || "";
-        const departmentIds = user.departmentId ? [user.departmentId] : [];
-
-        if (role === "HOD") {
-            // HOD's branch comes from any of their HodAssignment rows (all same branch).
-            const hodAssignments = await prisma.hodAssignment.findMany({
-                where: { hodUserId: userId, quarter: { status: "ACTIVE" } },
-                select: {
-                    departmentId: true,
-                    branch: { select: { id: true, name: true, branchType: true } },
-                },
-            });
-            for (const a of hodAssignments) {
-                if (!departmentIds.includes(a.departmentId)) departmentIds.push(a.departmentId);
-                if (!branchId && a.branch) {
-                    branchId = a.branch.id;
-                    branchType = a.branch.branchType;
-                    branchName = a.branch.name;
-                }
-            }
-        }
-        // ADMIN has no branch scope — leave branchId/branchType blank/derived.
+        // Branch + department scope for the JWT — the same resolver login uses,
+        // so a picked role yields a token identical to a direct single-role login.
+        const scope = await resolveRoleScope(userId, role, user);
+        if (scope.error) return fail(scope.error, 401);
+        const { branchId, branchType, branchName, departmentIds } = scope;
 
         const tokenPayload = {
             userId: user.id,
@@ -150,5 +127,38 @@ export async function POST(request) {
     } catch (err) {
         console.error("[SELECT-ROLE] Error:", err?.code, err?.message);
         return serverError();
+    }
+}
+
+/**
+ * Confirm `userId` still legitimately holds `role`, checking the authoritative
+ * source for each role. Defends against a stale stage1 cookie granting a role
+ * that was removed between login and this request.
+ */
+async function roleStillAvailable(userId, role, user) {
+    switch (role) {
+        case "HOD":
+            return !!(await prisma.hodAssignment.findFirst({
+                where: { hodUserId: userId, quarter: { status: "ACTIVE" } }, select: { id: true },
+            }));
+        case "BRANCH_MANAGER":
+            return !!(await prisma.branchManagerAssignment.findUnique({
+                where: { bmUserId: userId }, select: { id: true },
+            }));
+        case "CLUSTER_MANAGER":
+            return !!(await prisma.clusterManagerBranchAssignment.findFirst({
+                where: { cmUserId: userId }, select: { id: true },
+            }));
+        case "HR":
+            return !!(await prisma.hrBranchAssignment.findFirst({
+                where: { hrUserId: userId }, select: { id: true },
+            }));
+        case "COMMITTEE":
+            return !!(await prisma.committeeBranchAssignment.findFirst({
+                where: { memberUserId: userId }, select: { id: true },
+            }));
+        default:
+            // ADMIN / EMPLOYEE — backed by the stored primary role.
+            return user.role === role;
     }
 }

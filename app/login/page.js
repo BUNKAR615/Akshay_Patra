@@ -359,11 +359,19 @@ const ROLE_LABEL = {
 const ROLE_PICK_LABEL = {
     ADMIN: "Admin",
     HOD: "HOD (Head of Department)",
+    BRANCH_MANAGER: "Branch Manager",
+    CLUSTER_MANAGER: "Cluster Manager",
+    HR: "HR",
+    COMMITTEE: "Committee Member",
 };
 
 const ROLE_PICK_DESC = {
     ADMIN: "Manage users, branches, departments, and quarter setup.",
     HOD: "Evaluate the blue-collar employees assigned to you.",
+    BRANCH_MANAGER: "Evaluate your branch's employees and manage HODs.",
+    CLUSTER_MANAGER: "Run the cluster-manager evaluation stage for your branches.",
+    HR: "Complete the HR evaluation stage and upload reference sheets.",
+    COMMITTEE: "Review and confirm the best-employee winners across branches.",
 };
 
 function RolePicker({ rolePicker, setRolePicker, onSubmit, submitting, error, onSwitchUser }) {

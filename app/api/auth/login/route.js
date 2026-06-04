@@ -9,6 +9,7 @@ import { ok, fail, serverError, validateBody } from "../../../../lib/api-respons
 import { loginSchema } from "../../../../lib/validators";
 import { getClientIp, withDbRetry } from "../../../../lib/http";
 import { sanitize } from "../../../../lib/sanitize";
+import { computeOfferedRoles, resolveRoleScope } from "../../../../lib/auth/loginRoles";
 
 /**
  * POST /api/auth/login
@@ -121,96 +122,40 @@ export async function POST(request) {
             },
         }).catch(() => {});
 
-        // Admin+HOD role picker — spec: "If a person is both Admin and HOD, the
-        // system must show a role selection screen after login when both roles
-        // exist." Both passwords resolve to `Firstname_##` (defaultPasswordFor
-        // for ADMIN === defaultHodSecondaryPasswordFor for HOD), so when the
-        // primary password matched and the user is ADMIN with an active HOD
-        // assignment, we surface the picker. Otherwise the resolved role is
-        // used as-is.
-        if (resolvedRole === "ADMIN" && user.passwordHod) {
-            const hasHodAssignment = await prisma.hodAssignment.findFirst({
-                where: { hodUserId: user.id, quarter: { status: "ACTIVE" } },
-                select: { id: true },
+        // Multi-role "Continue as …" picker. A user may legitimately act as more
+        // than one role — an evaluator (BM/CM/HR) who is ALSO a Committee member,
+        // or the legacy Admin+HOD pairing. When more than one role is available
+        // we issue a short-lived stage1 token and let them choose on the login
+        // page (POST /api/auth/select-role). The same staff-format password
+        // ("Firstname_##") unlocks every offered role, so one credential is enough.
+        const offeredRoles = await computeOfferedRoles(user, resolvedRole);
+        if (offeredRoles.length > 1) {
+            const stage1 = await signRoleSelectToken({ userId: user.id, roles: offeredRoles });
+            const response = ok({
+                needsRoleSelection: true,
+                roles: offeredRoles,
+                user: { id: user.id, empCode: user.empCode, name: user.name },
             });
-            if (hasHodAssignment) {
-                const offered = ["ADMIN", "HOD"];
-                const stage1 = await signRoleSelectToken({ userId: user.id, roles: offered });
-                const response = ok({
-                    needsRoleSelection: true,
-                    roles: offered,
-                    user: {
-                        id: user.id,
-                        empCode: user.empCode,
-                        name: user.name,
-                    },
-                });
-                response.cookies.set("roleSelectToken", stage1, {
-                    httpOnly: true,
-                    secure: process.env.NODE_ENV === "production",
-                    sameSite: "lax",
-                    maxAge: 5 * 60,
-                    path: "/",
-                });
-                // Clear any stale stage1 branch-select cookie too.
-                response.cookies.set("branchSelectToken", "", {
-                    httpOnly: true, sameSite: "lax", path: "/", maxAge: 0,
-                });
-                return response;
-            }
+            response.cookies.set("roleSelectToken", stage1, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge: 5 * 60,
+                path: "/",
+            });
+            // Clear any stale stage1 branch-select cookie too.
+            response.cookies.set("branchSelectToken", "", {
+                httpOnly: true, sameSite: "lax", path: "/", maxAge: 0,
+            });
+            return response;
         }
 
-        // Branch resolution — role-aware, assignment-table-authoritative for staff.
-        let branchId = "";
-        let branchType = user.department?.branch?.branchType || "";
-        let branchName = user.department?.branch?.name || "";
-
-        if (resolvedRole === "BRANCH_MANAGER") {
-            const bm = await prisma.branchManagerAssignment.findUnique({
-                where: { bmUserId: user.id },
-                select: { branch: { select: { id: true, name: true, branchType: true } } },
-            });
-            if (bm?.branch) {
-                branchId = bm.branch.id;
-                branchType = bm.branch.branchType;
-                branchName = bm.branch.name;
-            }
-        } else if (resolvedRole === "CLUSTER_MANAGER" || resolvedRole === "HR" || resolvedRole === "COMMITTEE") {
-            // Multi-branch staff (CM / HR / COMMITTEE) — the spec changed:
-            // the dashboard now owns branch selection via an in-page Total /
-            // per-branch dropdown. We MUST NOT show the pre-dashboard branch
-            // picker anymore. The JWT still carries one branchId (the first
-            // assignment, deterministically ordered by `assignedAt`) so any
-            // legacy code path that reads `user.branchId` keeps working; the
-            // dashboard then drives the in-page filter by calling its API
-            // with no `?branchId=` for Total, or `?branchId=<id>` to focus.
-            const branches = await listStaffBranches(user.id, resolvedRole);
-            if (branches.length === 0) {
-                return fail("No branch assignment found for this account. Please contact your administrator.", 401);
-            }
-            branchId = branches[0].id;
-            branchType = branches[0].branchType || branchType;
-            branchName = branches[0].name || branchName;
-        } else {
-            // EMPLOYEE / HOD / ADMIN — fall back to user.department.branchId.
-            branchId = user.department?.branchId || "";
-        }
-
-        // departmentIds for downstream routes — keep empty for pure evaluators
-        // (BM/CM/HR/COMMITTEE), even for dual-login staff who also hold a
-        // department membership: that department scopes ONLY their EMPLOYEE
-        // login, never their staff dashboard.
-        const PURE_EVALUATOR_ROLES = new Set(["BRANCH_MANAGER", "CLUSTER_MANAGER", "HR", "COMMITTEE"]);
-        const departmentIds = (user.departmentId && !PURE_EVALUATOR_ROLES.has(resolvedRole)) ? [user.departmentId] : [];
-        if (resolvedRole === "HOD") {
-            const hodAssignments = await prisma.hodAssignment.findMany({
-                where: { hodUserId: user.id, quarter: { status: "ACTIVE" } },
-                select: { departmentId: true },
-            });
-            for (const a of hodAssignments) {
-                if (!departmentIds.includes(a.departmentId)) departmentIds.push(a.departmentId);
-            }
-        }
+        // Branch + department scope for the JWT — role-aware and
+        // assignment-table-authoritative. Shared with /api/auth/select-role so a
+        // single-role login and a picked role produce identical tokens.
+        const scope = await resolveRoleScope(user.id, resolvedRole, user);
+        if (scope.error) return fail(scope.error, 401);
+        const { branchId, branchType, branchName, departmentIds } = scope;
 
         const { password: _p, passwordHod: _ph, department: _dept, ...safeUser } = user;
 
@@ -273,36 +218,4 @@ export async function POST(request) {
         }
         return serverError();
     }
-}
-
-/**
- * List every branch a CM/HR/Committee user is assigned to. The assignment
- * table is the single source of truth — User.branchId is NOT consulted.
- */
-async function listStaffBranches(userId, role) {
-    if (role === "CLUSTER_MANAGER") {
-        const rows = await prisma.clusterManagerBranchAssignment.findMany({
-            where: { cmUserId: userId },
-            select: { branch: { select: { id: true, name: true, branchType: true } } },
-            orderBy: { assignedAt: "asc" },
-        });
-        return rows.map((r) => r.branch).filter(Boolean);
-    }
-    if (role === "HR") {
-        const rows = await prisma.hrBranchAssignment.findMany({
-            where: { hrUserId: userId },
-            select: { branch: { select: { id: true, name: true, branchType: true } } },
-            orderBy: { assignedAt: "asc" },
-        });
-        return rows.map((r) => r.branch).filter(Boolean);
-    }
-    if (role === "COMMITTEE") {
-        const rows = await prisma.committeeBranchAssignment.findMany({
-            where: { memberUserId: userId },
-            select: { branch: { select: { id: true, name: true, branchType: true } } },
-            orderBy: { assignedAt: "asc" },
-        });
-        return rows.map((r) => r.branch).filter(Boolean);
-    }
-    return [];
 }

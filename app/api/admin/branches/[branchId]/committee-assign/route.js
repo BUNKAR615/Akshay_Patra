@@ -113,8 +113,10 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
 
         // NOTE: the single-active-role gate (Rule A) is intentionally NOT applied
         // for committee. A role-holder (Branch Manager, Cluster Manager, HR, HOD,
-        // Admin, …) may be elected to the committee; their prior BM/CM/HR
-        // assignment is cleared during the conversion below so nothing dangles.
+        // Admin, …) may be elected to the committee. An evaluator (BM/CM/HR)
+        // KEEPS their existing role and becomes dual-role — they choose which hat
+        // to wear at login. Any other role-holder is converted to a pure
+        // committee member. See the `keepEvaluatorRole` branch below.
 
         // Rule E — at most 3 committee members (counted globally).
         const capacity = await assertCommitteeCapacity(member.id);
@@ -129,48 +131,56 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             return conflict(capacity.message);
         }
 
-        // Reset password to the staff formula ("Firstname_##") on every
-        // assign call. Admins can override via data.password.
-        const passwordHash = await hashStaffDefaultPassword({
-            role: "COMMITTEE",
-            empCode: member.empCode,
-            name: member.name,
-            override: data.password,
-        });
+        // Does this person already hold an evaluator assignment (BM/CM/HR)? If
+        // so, electing them to the committee makes them DUAL-ROLE: we keep their
+        // existing evaluator role, assignment, password and anchors intact and
+        // simply ADD committee membership — they pick which role to act as at
+        // login. Only a non-evaluator (a plain employee, HOD, supervisor or
+        // admin) is converted into a pure committee member.
+        const [existingBm, existingCm, existingHr] = await Promise.all([
+            prisma.branchManagerAssignment.findUnique({ where: { bmUserId: member.id }, select: { id: true } }),
+            prisma.clusterManagerBranchAssignment.findFirst({ where: { cmUserId: member.id }, select: { id: true } }),
+            prisma.hrBranchAssignment.findFirst({ where: { hrUserId: member.id }, select: { id: true } }),
+        ]);
+        const keepEvaluatorRole = !!(existingBm || existingCm || existingHr);
+
+        // Pure-committee conversion resets the password to the staff formula
+        // ("Firstname_##"); admins can override via data.password. A dual-role
+        // evaluator keeps their working password untouched — the formula is
+        // identical for both roles, so their credentials already open committee.
+        const passwordHash = keepEvaluatorRole
+            ? null
+            : await hashStaffDefaultPassword({
+                role: "COMMITTEE",
+                empCode: member.empCode,
+                name: member.name,
+                override: data.password,
+            });
 
         // Committee is global: assign the member to EVERY branch in one go.
         const allBranches = await prisma.branch.findMany({ select: { id: true } });
 
-        // Detach-on-promote + assignment upsert in one transaction.
-        //   - role flipped to COMMITTEE
-        //   - password reset to staff formula ("Firstname_##")
-        //   - departmentId / branchId / passwordHod / collarType nulled so
-        //     the user no longer appears in their old branch's employee list
-        //     and bulk-uploads of that branch can't silently demote them
-        //   - User.branchId is intentionally NOT written for COMMITTEE —
-        //     CommitteeBranchAssignment is the single source of truth.
         const assignment = await prisma.$transaction(async (tx) => {
-            // Electing a sitting role-holder converts them to COMMITTEE. Remove
-            // their authoritative BM/CM/HR assignment rows so no stale, unusable
-            // role assignment dangles. deleteMany is a safe no-op when there are
-            // none. The legacy BM department-cache cleanup is done AFTER commit
-            // (best-effort) so a stray write on inconsistent legacy data can
-            // never abort this transaction and surface as a 500.
-            await tx.branchManagerAssignment.deleteMany({ where: { bmUserId: member.id } });
-            await tx.clusterManagerBranchAssignment.deleteMany({ where: { cmUserId: member.id } });
-            await tx.hrBranchAssignment.deleteMany({ where: { hrUserId: member.id } });
-
-            await tx.user.update({
-                where: { id: member.id },
-                data: {
-                    role: "COMMITTEE",
-                    password: passwordHash,
-                    departmentId: null,
-                    branchId: null,
-                    passwordHod: null,
-                    collarType: null,
-                },
-            });
+            // Pure-committee conversion only — flip role to COMMITTEE, reset the
+            // password and null the employee/HOD anchors so the member no longer
+            // appears in their old branch's roster and a bulk-upload can't
+            // silently demote them. User.branchId is never written for COMMITTEE
+            // (CommitteeBranchAssignment is the source of truth). A dual-role
+            // evaluator skips this block entirely: their evaluator assignment,
+            // role and anchors are preserved and committee is purely additive.
+            if (!keepEvaluatorRole) {
+                await tx.user.update({
+                    where: { id: member.id },
+                    data: {
+                        role: "COMMITTEE",
+                        password: passwordHash,
+                        departmentId: null,
+                        branchId: null,
+                        passwordHod: null,
+                        collarType: null,
+                    },
+                });
+            }
             // Upsert one assignment row per branch — committee is global.
             for (const b of allBranches) {
                 await tx.committeeBranchAssignment.upsert({
@@ -190,18 +200,22 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
         });
 
         // Best-effort, post-commit: clear legacy BM department-cache pointers for
-        // a former Branch Manager. Mirrors the BM-assign route's split so a
-        // failure here can never roll back the committee assignment. Never throws.
-        try {
-            await prisma.department.updateMany({
-                where: { branchManagerId: member.id },
-                data: { branchManagerId: null },
-            });
-            await prisma.departmentRoleMapping.deleteMany({
-                where: { userId: member.id, role: "BRANCH_MANAGER" },
-            });
-        } catch (legacyErr) {
-            console.error("[COMMITTEE-ASSIGN] Legacy BM cache cleanup skipped (non-fatal):", legacyErr?.message || legacyErr);
+        // a former Branch Manager we just converted to a pure committee member.
+        // Skipped for dual-role evaluators — a BM who keeps their role must keep
+        // their department-cache pointers. Mirrors the BM-assign route's split so
+        // a failure here can never roll back the committee assignment. Never throws.
+        if (!keepEvaluatorRole) {
+            try {
+                await prisma.department.updateMany({
+                    where: { branchManagerId: member.id },
+                    data: { branchManagerId: null },
+                });
+                await prisma.departmentRoleMapping.deleteMany({
+                    where: { userId: member.id, role: "BRANCH_MANAGER" },
+                });
+            } catch (legacyErr) {
+                console.error("[COMMITTEE-ASSIGN] Legacy BM cache cleanup skipped (non-fatal):", legacyErr?.message || legacyErr);
+            }
         }
 
         await prisma.auditLog.create({
