@@ -10,7 +10,6 @@ import { resolveBranch } from "../../../../../../lib/resolveBranch";
 import { defaultPasswordFor } from "../../../../../../lib/auth/defaultPassword";
 import { hashStaffDefaultPassword } from "../../../../../../lib/auth/applyStaffPassword";
 import { assertCommitteeCapacity, assertCommitteeEligible } from "../../../../../../lib/auth/roleAssignmentRules";
-import { clearBmAssignment } from "../../../../../../lib/auth/bmAssignment";
 import { z } from "zod";
 
 const SALT_ROUNDS = 10;
@@ -151,14 +150,13 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
         //   - User.branchId is intentionally NOT written for COMMITTEE —
         //     CommitteeBranchAssignment is the single source of truth.
         const assignment = await prisma.$transaction(async (tx) => {
-            // Electing a sitting role-holder converts them to COMMITTEE, so clear
-            // any prior BM/CM/HR assignment first (the manual "remove the existing
-            // role" step, automated) to avoid a stale, unusable role assignment.
-            const bmRow = await tx.branchManagerAssignment.findUnique({
-                where: { bmUserId: member.id },
-                select: { branchId: true },
-            });
-            if (bmRow) await clearBmAssignment(tx, { branchId: bmRow.branchId });
+            // Electing a sitting role-holder converts them to COMMITTEE. Remove
+            // their authoritative BM/CM/HR assignment rows so no stale, unusable
+            // role assignment dangles. deleteMany is a safe no-op when there are
+            // none. The legacy BM department-cache cleanup is done AFTER commit
+            // (best-effort) so a stray write on inconsistent legacy data can
+            // never abort this transaction and surface as a 500.
+            await tx.branchManagerAssignment.deleteMany({ where: { bmUserId: member.id } });
             await tx.clusterManagerBranchAssignment.deleteMany({ where: { cmUserId: member.id } });
             await tx.hrBranchAssignment.deleteMany({ where: { hrUserId: member.id } });
 
@@ -190,6 +188,21 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
                 },
             });
         });
+
+        // Best-effort, post-commit: clear legacy BM department-cache pointers for
+        // a former Branch Manager. Mirrors the BM-assign route's split so a
+        // failure here can never roll back the committee assignment. Never throws.
+        try {
+            await prisma.department.updateMany({
+                where: { branchManagerId: member.id },
+                data: { branchManagerId: null },
+            });
+            await prisma.departmentRoleMapping.deleteMany({
+                where: { userId: member.id, role: "BRANCH_MANAGER" },
+            });
+        } catch (legacyErr) {
+            console.error("[COMMITTEE-ASSIGN] Legacy BM cache cleanup skipped (non-fatal):", legacyErr?.message || legacyErr);
+        }
 
         await prisma.auditLog.create({
             data: {
