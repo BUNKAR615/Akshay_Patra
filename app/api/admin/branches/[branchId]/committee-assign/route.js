@@ -9,7 +9,8 @@ import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScop
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
 import { defaultPasswordFor } from "../../../../../../lib/auth/defaultPassword";
 import { hashStaffDefaultPassword } from "../../../../../../lib/auth/applyStaffPassword";
-import { assertSingleActiveRole, assertCommitteeCapacity, assertCommitteeEligible } from "../../../../../../lib/auth/roleAssignmentRules";
+import { assertCommitteeCapacity, assertCommitteeEligible } from "../../../../../../lib/auth/roleAssignmentRules";
+import { clearBmAssignment } from "../../../../../../lib/auth/bmAssignment";
 import { z } from "zod";
 
 const SALT_ROUNDS = 10;
@@ -111,18 +112,10 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             return conflict(eligibility.message);
         }
 
-        // Rule A — a person may actively hold only ONE of BM/CM/HR/Committee.
-        const roleCheck = await assertSingleActiveRole(member.id, "COMMITTEE");
-        if (!roleCheck.ok) {
-            await prisma.auditLog.create({
-                data: {
-                    userId: user.userId,
-                    action: "ASSIGNMENT_REJECTED",
-                    details: { type: "COMMITTEE", reason: "ROLE_CONFLICT", message: roleCheck.message, branchId, targetUserId: member.id, empCode: member.empCode },
-                },
-            }).catch(() => {});
-            return conflict(roleCheck.message);
-        }
+        // NOTE: the single-active-role gate (Rule A) is intentionally NOT applied
+        // for committee. A role-holder (Branch Manager, Cluster Manager, HR, HOD,
+        // Admin, …) may be elected to the committee; their prior BM/CM/HR
+        // assignment is cleared during the conversion below so nothing dangles.
 
         // Rule E — at most 3 committee members (counted globally).
         const capacity = await assertCommitteeCapacity(member.id);
@@ -158,6 +151,17 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
         //   - User.branchId is intentionally NOT written for COMMITTEE —
         //     CommitteeBranchAssignment is the single source of truth.
         const assignment = await prisma.$transaction(async (tx) => {
+            // Electing a sitting role-holder converts them to COMMITTEE, so clear
+            // any prior BM/CM/HR assignment first (the manual "remove the existing
+            // role" step, automated) to avoid a stale, unusable role assignment.
+            const bmRow = await tx.branchManagerAssignment.findUnique({
+                where: { bmUserId: member.id },
+                select: { branchId: true },
+            });
+            if (bmRow) await clearBmAssignment(tx, { branchId: bmRow.branchId });
+            await tx.clusterManagerBranchAssignment.deleteMany({ where: { cmUserId: member.id } });
+            await tx.hrBranchAssignment.deleteMany({ where: { hrUserId: member.id } });
+
             await tx.user.update({
                 where: { id: member.id },
                 data: {
