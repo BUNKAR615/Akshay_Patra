@@ -344,24 +344,24 @@ export default function AdminDashboard() {
             const d = await api(`/api/admin/employees?${params}`);
             const all = d.employees || [];
 
-            // Last column now shows the employee's collar/category (not evaluator role).
+            // Last column shows the employee's collar/category (not evaluator role).
             const collarLabel = (ct) =>
                 ct === "WHITE_COLLAR" ? "White Collar" : ct === "BLUE_COLLAR" ? "Blue Collar" : "—";
 
-            // Branch Manager / Cluster Manager names, derived from the same result set
-            // (a branch-filtered export yields that branch's BM/CM). Shown on top.
-            const namesForRole = (roleKey) => {
-                const set = new Set();
-                for (const e of all) {
-                    const held = [...(e.roles || [e.role]), ...((e.evaluatorRoles || []).map(er => er.role))];
-                    if (held.includes(roleKey)) set.add(e.name);
-                }
-                return Array.from(set).join(", ");
-            };
-            const bmName = namesForRole("BRANCH_MANAGER") || "—";
-            const cmName = namesForRole("CLUSTER_MANAGER") || "—";
+            // Branch Manager leads the list (S.No 1), Cluster Manager second
+            // (S.No 2), then everyone else. Derived from the same result set so a
+            // branch-filtered export surfaces that branch's BM/CM.
+            const hasRole = (e, roleKey) =>
+                [...(e.roles || [e.role]), ...((e.evaluatorRoles || []).map(er => er.role))].includes(roleKey);
+            const bm = all.find(e => hasRole(e, "BRANCH_MANAGER"));
+            const cm = all.find(e => hasRole(e, "CLUSTER_MANAGER"));
+            const leaders = [];
+            if (bm) leaders.push(bm);
+            if (cm && cm !== bm) leaders.push(cm);
+            const leaderIds = new Set(leaders.map(e => e.id));
+            const ordered = [...leaders, ...all.filter(e => !leaderIds.has(e.id))];
 
-            const rows = all.map((e, i) => ({
+            const rows = ordered.map((e, i) => ({
                 "S.No": i + 1,
                 "Emp Code": e.empCode || "—",
                 "Name": e.name,
@@ -372,13 +372,7 @@ export default function AdminDashboard() {
                 "Role": (e.roles || [e.role]).join(", ").replace(/_/g, " "),
                 "Collar / Category": collarLabel(e.collarType),
             }));
-            // Header block: Branch Manager + Cluster Manager on top, blank spacer
-            // (row 3), then the employee table from row 4 onward.
-            const ws = XLSX.utils.aoa_to_sheet([
-                ["Branch Manager", bmName],
-                ["Cluster Manager", cmName],
-            ]);
-            XLSX.utils.sheet_add_json(ws, rows, { origin: "A4" });
+            const ws = XLSX.utils.json_to_sheet(rows);
             // Auto-size columns
             const colWidths = Object.keys(rows[0] || {}).map(key => ({
                 wch: Math.max(key.length, ...rows.map(r => String(r[key] || "").length)) + 2,
