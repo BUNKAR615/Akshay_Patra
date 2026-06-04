@@ -149,6 +149,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
                 mobile: u.mobile || null,
                 department: u.department?.name || (u.departmentRoles.length > 0 ? u.departmentRoles[0].department.name : "—"),
                 departmentObj: u.department || null,
+                collarType: u.collarType || null,
                 evaluatorRoles,
             };
         });

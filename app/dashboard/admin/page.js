@@ -342,7 +342,26 @@ export default function AdminDashboard() {
             if (empFilter.role) params.set("role", empFilter.role);
             if (empFilter.branch) params.set("branch", empFilter.branch);
             const d = await api(`/api/admin/employees?${params}`);
-            const rows = (d.employees || []).map((e, i) => ({
+            const all = d.employees || [];
+
+            // Last column now shows the employee's collar/category (not evaluator role).
+            const collarLabel = (ct) =>
+                ct === "WHITE_COLLAR" ? "White Collar" : ct === "BLUE_COLLAR" ? "Blue Collar" : "—";
+
+            // Branch Manager / Cluster Manager names, derived from the same result set
+            // (a branch-filtered export yields that branch's BM/CM). Shown on top.
+            const namesForRole = (roleKey) => {
+                const set = new Set();
+                for (const e of all) {
+                    const held = [...(e.roles || [e.role]), ...((e.evaluatorRoles || []).map(er => er.role))];
+                    if (held.includes(roleKey)) set.add(e.name);
+                }
+                return Array.from(set).join(", ");
+            };
+            const bmName = namesForRole("BRANCH_MANAGER") || "—";
+            const cmName = namesForRole("CLUSTER_MANAGER") || "—";
+
+            const rows = all.map((e, i) => ({
                 "S.No": i + 1,
                 "Emp Code": e.empCode || "—",
                 "Name": e.name,
@@ -351,9 +370,15 @@ export default function AdminDashboard() {
                 "Designation": e.designation || "—",
                 "Mobile": e.mobile || "",
                 "Role": (e.roles || [e.role]).join(", ").replace(/_/g, " "),
-                "Evaluator Roles": (e.evaluatorRoles || []).map(er => `${er.role.replace(/_/g, " ")} — ${er.department}`).join("; "),
+                "Collar / Category": collarLabel(e.collarType),
             }));
-            const ws = XLSX.utils.json_to_sheet(rows);
+            // Header block: Branch Manager + Cluster Manager on top, blank spacer
+            // (row 3), then the employee table from row 4 onward.
+            const ws = XLSX.utils.aoa_to_sheet([
+                ["Branch Manager", bmName],
+                ["Cluster Manager", cmName],
+            ]);
+            XLSX.utils.sheet_add_json(ws, rows, { origin: "A4" });
             // Auto-size columns
             const colWidths = Object.keys(rows[0] || {}).map(key => ({
                 wch: Math.max(key.length, ...rows.map(r => String(r[key] || "").length)) + 2,
