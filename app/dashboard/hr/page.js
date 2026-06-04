@@ -74,7 +74,10 @@ export default function HRDashboard() {
     const [progressTotals, setProgressTotals] = useState({ evaluated: 0, total: 0 });
 
     // Per-employee UI state keyed by employeeId
-    const [attendancePcts, setAttendancePcts] = useState({}); // { [empId]: number }
+    // Attendance is no longer entered as a direct % — HR enters days present
+    // and total working days, and the % is derived as (present / total) * 100.
+    const [daysPresentMap, setDaysPresentMap] = useState({});          // { [empId]: number }
+    const [totalWorkingDaysMap, setTotalWorkingDaysMap] = useState({}); // { [empId]: number }
     const [workingHoursMap, setWorkingHoursMap] = useState({}); // { [empId]: number }
     // Reference sheet — TWO independent state buckets so the local file
     // input and the external link input never feed into each other:
@@ -222,19 +225,44 @@ export default function HRDashboard() {
         }
     };
 
+    // Derive attendance % from days present + total working days. Returns a
+    // Number (0-100+) when both inputs are present and numeric, or null so
+    // callers can decide how to display/validate empty/invalid states.
+    const computeAttendancePct = (employeeId) => {
+        const presentRaw = daysPresentMap[employeeId];
+        const totalRaw = totalWorkingDaysMap[employeeId];
+        if (presentRaw === undefined || presentRaw === "" || totalRaw === undefined || totalRaw === "") return null;
+        const present = Number(presentRaw);
+        const total = Number(totalRaw);
+        if (isNaN(present) || isNaN(total) || total <= 0 || present < 0) return null;
+        return (present / total) * 100;
+    };
+
     const handleEvalSubmit = async (employeeId) => {
-        const att = attendancePcts[employeeId];
+        const presentRaw = daysPresentMap[employeeId];
+        const totalDaysRaw = totalWorkingDaysMap[employeeId];
         const hrs = workingHoursMap[employeeId];
-        if (att === undefined || att === "" || hrs === undefined || hrs === "") {
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Please enter attendance % and total working hours" } }));
+        if (presentRaw === undefined || presentRaw === "" || totalDaysRaw === undefined || totalDaysRaw === "" || hrs === undefined || hrs === "") {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Please enter days present, total working days and total working hours" } }));
             return;
         }
-        const numAtt = Number(att);
+        const numPresent = Number(presentRaw);
+        const numTotalDays = Number(totalDaysRaw);
         const numHrs = Number(hrs);
-        if (isNaN(numAtt) || numAtt < 0 || numAtt > 100) {
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Attendance % must be between 0 and 100" } }));
+        if (isNaN(numTotalDays) || numTotalDays <= 0) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Total working days must be greater than 0" } }));
             return;
         }
+        if (isNaN(numPresent) || numPresent < 0) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Days present must be 0 or more" } }));
+            return;
+        }
+        if (numPresent > numTotalDays) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Days present cannot exceed total working days" } }));
+            return;
+        }
+        // Attendance % is derived, never entered directly.
+        const numAtt = (numPresent / numTotalDays) * 100;
         if (isNaN(numHrs) || numHrs < 0) {
             setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Working hours must be a positive number" } }));
             return;
@@ -522,6 +550,12 @@ export default function HRDashboard() {
             {shortlist.map((emp) => {
                 const isAlreadyDone = emp.hrEvaluated || evalDone[emp.id];
                 const msg = evalMessages[emp.id];
+                const computedPct = computeAttendancePct(emp.id);
+                // Already-evaluated rows never stored the day-level breakdown,
+                // so fall back to the saved % just for display.
+                const displayPct = computedPct !== null
+                    ? computedPct
+                    : (isAlreadyDone && emp.attendancePct != null ? Number(emp.attendancePct) : null);
 
                 return (
                     <div key={emp.id} className={`bg-white border-2 rounded-xl shadow-sm transition-colors ${isAlreadyDone ? "border-[#00843D]/40 bg-[#F1F8E9]/30" : "border-[#E0E0E0]"}`}>
@@ -556,19 +590,32 @@ export default function HRDashboard() {
 
                         {/* Body */}
                         <div className="px-5 py-4 space-y-4">
-                            {/* Attendance % + Working Hours */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* Attendance (days present + total working days → auto %) + Working Hours.
+                                HR no longer types the % directly; it is computed below. */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Total Attendance % (0 - 100)</label>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Days Present</label>
                                     <input
                                         type="number"
                                         min={0}
-                                        max={100}
-                                        step="0.01"
-                                        value={attendancePcts[emp.id] ?? (emp.attendancePct ?? "")}
-                                        onChange={(e) => setAttendancePcts(prev => ({ ...prev, [emp.id]: e.target.value }))}
+                                        step="1"
+                                        value={daysPresentMap[emp.id] ?? ""}
+                                        onChange={(e) => setDaysPresentMap(prev => ({ ...prev, [emp.id]: e.target.value }))}
                                         disabled={isAlreadyDone}
-                                        placeholder="e.g. 92.5"
+                                        placeholder="e.g. 56"
+                                        className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Total Working Days</label>
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        step="1"
+                                        value={totalWorkingDaysMap[emp.id] ?? ""}
+                                        onChange={(e) => setTotalWorkingDaysMap(prev => ({ ...prev, [emp.id]: e.target.value }))}
+                                        disabled={isAlreadyDone}
+                                        placeholder="e.g. 60"
                                         className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
                                     />
                                 </div>
@@ -585,6 +632,15 @@ export default function HRDashboard() {
                                         className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
                                     />
                                 </div>
+                            </div>
+
+                            {/* Auto-calculated attendance %, derived from the two day fields above. */}
+                            <div className="flex items-center gap-2 text-sm bg-[#FFF8E1] border border-[#FFE082] rounded-lg px-3 py-2">
+                                <span className="font-bold text-[#666666]">Calculated Attendance %:</span>
+                                <span className="font-black text-[#F57C00]">
+                                    {displayPct !== null ? `${displayPct.toFixed(2)}%` : "—"}
+                                </span>
+                                <span className="text-[11px] text-[#999999]">(days present ÷ total working days × 100)</span>
                             </div>
 
                             {/* Reference Sheet — TWO INDEPENDENT inputs.
