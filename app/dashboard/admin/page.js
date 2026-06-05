@@ -150,6 +150,7 @@ export default function AdminDashboard() {
     const [empLoading, setEmpLoading] = useState(false);
     const [empFilter, setEmpFilter] = useState({ search: "", department: "", role: "", branch: "" });
     const [empBranches, setEmpBranches] = useState([]);
+    const [empDepartmentStats, setEmpDepartmentStats] = useState([]); // [{ name, branch, count }] — used to scope the Department filter to the selected branch
 
     // Employee management — add / remove (inline in admin dashboard)
     // Add employee state
@@ -404,6 +405,7 @@ export default function AdminDashboard() {
             setEmpTotalPages(d.totalPages);
             setEmpPage(pg);
             if (d.departments) setEmpDepartments(d.departments);
+            if (d.departmentStats) setEmpDepartmentStats(d.departmentStats);
             if (d.branches) setEmpBranches(d.branches);
         } catch (err) { console.error("[Admin] fetchEmployees failed:", err); }
         setEmpLoading(false);
@@ -1044,6 +1046,14 @@ export default function AdminDashboard() {
         if (levelQs.length > 0) acc.push({ level, questions: levelQs });
         return acc;
     }, []);
+    // Department filter options — scoped to the selected branch so a Branch + Department
+    // combination always resolves to a real set (never a blank, impossible pairing).
+    // Falls back to the full name list on first paint, before departmentStats has loaded.
+    const empDepartmentOptions = (empDepartmentStats.length > 0
+        ? (empFilter.branch ? empDepartmentStats.filter((d) => d.branch === empFilter.branch) : empDepartmentStats).map((d) => d.name)
+        : empDepartments
+    ).filter((n, i, a) => a.indexOf(n) === i);
+
     const sharePayload = buildAdminSharePayload(quarterProgress?.quarter);
     const encodedShareText = encodeURIComponent(`${sharePayload.text}\n${sharePayload.url}`);
     const encodedShareSubject = encodeURIComponent(sharePayload.title);
@@ -1987,9 +1997,9 @@ export default function AdminDashboard() {
             {tab === "employees" && (
                 <div className="space-y-6">
                     <div className="bg-white border rounded-xl p-3 sm:p-5 shadow-sm border-[#E0E0E0] space-y-3 sm:space-y-0 sm:flex sm:flex-row sm:gap-4 sm:justify-between sm:items-center">
-                        <div className="relative w-full sm:flex-1 sm:max-w-sm">
+                        <div className="relative w-full sm:flex-1 sm:max-w-md">
                             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#999999]"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></span>
-                            <input type="text" placeholder="Search name or code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-10 pl-10 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-[15px] text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
+                            <input type="text" placeholder="Search name or code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-12 pl-11 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-base text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
                         </div>
                         <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-4 sm:w-auto">
                             <select value={empFilter.branch} onChange={(e) => setEmpFilter({ ...empFilter, branch: e.target.value, department: "" })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-40">
@@ -1998,7 +2008,7 @@ export default function AdminDashboard() {
                             </select>
                             <select value={empFilter.department} onChange={(e) => setEmpFilter({ ...empFilter, department: e.target.value })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-48">
                                 <option value="">All Departments</option>
-                                {empDepartments.map(d => <option key={d} value={d}>{d}</option>)}
+                                {empDepartmentOptions.map(d => <option key={d} value={d}>{d}</option>)}
                             </select>
                             <select value={empFilter.role} onChange={(e) => setEmpFilter({ ...empFilter, role: e.target.value })} className="h-10 px-2 sm:px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-40">
                                 <option value="">All Roles</option>

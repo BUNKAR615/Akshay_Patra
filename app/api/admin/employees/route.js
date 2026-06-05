@@ -74,6 +74,8 @@ export const GET = withRole(["ADMIN"], async (request) => {
                 where.departmentRoles = { some: {} };
             } else if (isEvalRole) {
                 where.departmentRoles = { some: { role } };
+            } else if (role === "HR" || role === "COMMITTEE") {
+                where.role = role;
             }
         }
 
