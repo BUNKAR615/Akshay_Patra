@@ -607,7 +607,7 @@ export default function HRDashboard() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Total Working Days</label>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Punct</label>
                                     <input
                                         type="number"
                                         min={1}
@@ -620,7 +620,7 @@ export default function HRDashboard() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Total Working Hours</label>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Punctuality Days(Present on time)</label>
                                     <input
                                         type="number"
                                         min={0}
@@ -628,7 +628,7 @@ export default function HRDashboard() {
                                         value={workingHoursMap[emp.id] ?? (emp.workingHours ?? "")}
                                         onChange={(e) => setWorkingHoursMap(prev => ({ ...prev, [emp.id]: e.target.value }))}
                                         disabled={isAlreadyDone}
-                                        placeholder="e.g. 480"
+                                        placeholder="e.g. 70"
                                         className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
                                     />
                                 </div>
