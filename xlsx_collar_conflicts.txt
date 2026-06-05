@@ -1,0 +1,667 @@
+Conflicting empCodes (in BOTH a WC and a BC tab): 166
+Format: empCode  Name
+  [class] 'tab name'  dept_in_sheet · designation
+
+1801105  Jagdish Prasad Meena
+    [BC] 'Production-Helper blue collor'  Production · Executive
+    [WC] 'Production-White Collar'  Production · Executive
+
+1802153  JAGRAM MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800056  JANSHI RAM MEENA
+    [BC] 'Production-Helper blue collor'  Production · COOK
+    [WC] 'Production-White Collar'  Production · COOK
+
+1801219  JITENDRA RAIGAR
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801220  JYANTI PRASAD SHARMA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801221  KAILASH CHAND
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801872  KAILASH CHAND
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800169  KAILASHI DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801781  KALU RAM RAIGAR
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801167  Kamal Kishore Sharma
+    [BC] 'Production-Helper blue collor'  Production · Vessel Washing
+    [WC] 'Production-White Collar'  Production · Vessel Washing
+
+1801658  Kamal Singh
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801368  Kamlesh Bunkar
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801776  KAMLESH DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802258  KAPIL MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802333  KARAN NARUKA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801745  KAVITA BALAI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802159  KAVITA SISODIYA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802334  KHEMRAJ MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802192  KIRAN DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801225  KULDEEP SINGH RAJAWAT
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801226  KULDEEP VERMA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801227  LAL CHAND MORIYA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800094  LALA RAM MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802374  LALIT MUNDRA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802337  LOKESH KUMAR MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801416  Malu Ram
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802006  MAMTA
+    [BC] 'Production-Helper blue collor'  Production · Helper-Production
+    [WC] 'Production-White Collar'  Production · Helper-Production
+
+1801363  Mamta Devi
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802232  MAMTA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802222  MANISH KUMAR BAIRWA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802299  MANJU
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800133  MANJU DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800106  MANJU DEVI MORYA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802217  MANOJ KUMAR MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801587  MANPHOLI DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802385  MANSHA RAM
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800221  MAYA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800282  MEENA MISHRA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800171  MEERA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800989  MEERA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802378  MEHUL KUMAR SONI
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801232  MOHAR SINGH GURJAR
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802361  MOHIT VERMA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802284  MONU VERMA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801180  Mukesh
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801919  MUKESH JANGID
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801841  MUKESH KUMAR YADAV
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801198  Mukesh Verma
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802253  MUKUT BIHARI SHARMA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800144  NARBADA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802075  NARENDRA KUMAR
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800168  NATHI DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802040  NATHU
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802288  NEPAL SINGH SONDIYA
+    [BC] 'Production-Helper blue collor'  Production · Helper - Production
+    [WC] 'Production-White Collar'  Production · Helper - Production
+
+1802387  NIKITA MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802145  NITU YOGI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801862  OMPRAKASH
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801236  OMPRAKSH GURJAR
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801079  Pappu Lal
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800557  PARMESHWAR MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801187  Pinki Jain
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801237  PRABHU NARAYAN MEENA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800060  PRADHAN GURJAR
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801238  PRAKASH CHAND MEENA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800979  PREM DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800134  PREM DEVI REGAR
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801748  PREMLATA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802188  PUKHRAJ JWALA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801961  PURANMAL
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802328  PUSHPENDRA MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800135  RADHA DEVI BALAI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800160  RADHA SHARMA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801240  RADHESHYAM
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800110  RAJANTI DEVI MORYA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801241  RAJENDRA JAJORIYA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801840  RAJENDRA KUMAR MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801242  RAJENDRA LAKHERA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802324  RAJENDRA PRASAD MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802384  RAJU DAS VAISHNAV
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801243  RAJU LAL
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801767  RAJU TANWAR
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802331  RAKESH KUMAR BUNKAR
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801246  RAM DAYAL SHARMA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801248  RAMAVATAR MEENA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801078  Rambati Devi
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801391  Ramesh Kumar Mali
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801912  RAMESHCHAND
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802049  RAMOTAR RANA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802059  RAMPRASAD MEENA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801607  RAMRAJ MEENA
+    [BC] 'Production-Helper blue collor'  Production · COOK
+    [WC] 'Production-White Collar'  Production · COOK
+
+1800050  RATAN LAL DARJI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801642  RATAN SINGH
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800120  RATNA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802371  RAVINDRA KUMAR
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802289  RAVINDRA KUMAR MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper - Production
+    [WC] 'Production-White Collar'  Production · Helper - Production
+
+1802264  REENA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800153  REETA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802147  REKHA RAWAT
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801735  REWAT SINGH
+    [BC] 'Production-Helper blue collor'  Production · Operator
+    [WC] 'Production-White Collar'  Production · Operator
+
+1801952  RINKU CHOPRA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802244  RINKU MEENA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800082  RODU RAM MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802363  ROHAN KUMAR CHOPRA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802009  ROHITASH KUMAR REDDY
+    [BC] 'Production-Helper blue collor'  Production · Helper-Production
+    [WC] 'Production-White Collar'  Production · Helper-Production
+
+1801252  ROOPNARAYAN MOURYA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801291  ROSHAN LAL
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802152  SACHIN RAISWAL
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802355  SAHIL TANVAR
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802073  SAMAY SINGH
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801253  SANJAY
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801544  SANTOSH DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802141  SANTRA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800137  SANTRA DEVI MAHAWAR
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800112  SANTRA DEVI REIGER
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801747  SANTRA PRAJAPAT
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802240  SATISH TIWARI
+    [BC] 'Production-Helper blue collor'  Production · Operator
+    [WC] 'Production-White Collar'  Production · Operator
+
+1801254  SATYA NARAYAN
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802233  SAVITA BALAI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802099  SAVITA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802090  SEEMA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802377  SEEMA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801878  SEEMA KANWAR
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800496  SEETA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800113  SHAKUNTLA DEVI SHARMA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802119  SHANKAR LAL MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801873  SHANKAR SINGH
+    [BC] 'Production-Helper blue collor'  Production · Operator
+    [WC] 'Production-White Collar'  Production · Operator
+
+1800115  SHANTI DEVI MORYA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801846  SHASHI DEVI SHARMA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802339  SHEKHAR BAIRWA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802269  SHIMLA SHARMA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802375  SHIVKESH MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801053  Shivraj Gurjar
+    [BC] 'Production-Helper blue collor'  Production · COOK
+    [WC] 'Production-White Collar'  Production · COOK
+
+1802057  SHYOJI LAL MEENA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802118  SONIYA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801780  SONU
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802360  SONU
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801892  SONU BUNKER
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802025  SONU DHANAKA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800978  SUKHIYA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801534  SUKHRAM
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800154  SUMITRA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801656  SUNIL KUMAR MOURYA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801947  SUNIL MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802365  SUNIL MEGHWAL
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801924  SUNITA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800117  SUNITA DEVI MORYA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802069  SUNNY MAURYA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801728  SURENDER SINGH
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801768  SURGYAN
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801746  SUSHILA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801025  SUSHILA PRAJAPAT
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800046  SYOJI RAM JAT
+    [BC] 'Production-Helper blue collor'  Production · Supervisor
+    [WC] 'Production-White Collar'  Production · Supervisor
+
+1802383  TARACHAND BHEEL
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801259  TUFAN MEENA
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800143  UGANTI DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802254  UMESH
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802287  VIJAY PAL MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper - Production
+    [WC] 'Production-White Collar'  Production · Helper - Production
+
+1801427  Vijay Vikram Singh
+    [BC] 'Production-Helper blue collor'  Production · Operator
+    [WC] 'Production-White Collar'  Production · Operator
+
+1802345  VIKAS KUMAR MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801938  VIKAS MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801545  VIMALA DEVI
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801853  VINOD KUMAR MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1801260  VINOD RAIGAR
+    [BC] 'Distribution-Helper blue collor'  Distribution · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1800474  VIRENDRA KUMAR
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802281  YADRAM MEENA
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper
+
+1802369  YASHPAL JATAV
+    [BC] 'Production-Helper blue collor'  Production · Helper
+    [WC] 'Production-White Collar'  Production · Helper

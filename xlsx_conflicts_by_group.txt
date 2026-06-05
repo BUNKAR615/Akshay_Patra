@@ -1,0 +1,179 @@
+====================================================================================================
+GROUP (125 people)
+  BC tab(s): ['Production-Helper blue collor']
+  WC tab(s): ['Production-White Collar']
+----------------------------------------------------------------------------------------------------
+    1. 1801105     Jagdish Prasad Meena                      Executive
+    2. 1802153     JAGRAM MEENA                              Helper
+    3. 1800056     JANSHI RAM MEENA                          COOK
+    4. 1801872     KAILASH CHAND                             Helper
+    5. 1800169     KAILASHI DEVI                             Helper
+    6. 1801167     Kamal Kishore Sharma                      Vessel Washing
+    7. 1801368     Kamlesh Bunkar                            Helper
+    8. 1801776     KAMLESH DEVI                              Helper
+    9. 1802258     KAPIL MEENA                               Helper
+   10. 1802333     KARAN NARUKA                              Helper
+   11. 1801745     KAVITA BALAI                              Helper
+   12. 1802159     KAVITA SISODIYA                           Helper
+   13. 1802334     KHEMRAJ MEENA                             Helper
+   14. 1802192     KIRAN DEVI                                Helper
+   15. 1800094     LALA RAM MEENA                            Helper
+   16. 1802337     LOKESH KUMAR MEENA                        Helper
+   17. 1801416     Malu Ram                                  Helper
+   18. 1802006     MAMTA                                     Helper-Production
+   19. 1801363     Mamta Devi                                Helper
+   20. 1802232     MAMTA DEVI                                Helper
+   21. 1802222     MANISH KUMAR BAIRWA                       Helper
+   22. 1802299     MANJU                                     Helper
+   23. 1800133     MANJU DEVI                                Helper
+   24. 1800106     MANJU DEVI MORYA                          Helper
+   25. 1802217     MANOJ KUMAR MEENA                         Helper
+   26. 1801587     MANPHOLI DEVI                             Helper
+   27. 1802385     MANSHA RAM                                Helper
+   28. 1800221     MAYA DEVI                                 Helper
+   29. 1800282     MEENA MISHRA                              Helper
+   30. 1800171     MEERA DEVI                                Helper
+   31. 1800989     MEERA DEVI                                Helper
+   32. 1802361     MOHIT VERMA                               Helper
+   33. 1802284     MONU VERMA                                Helper
+   34. 1801180     Mukesh                                    Helper
+   35. 1801919     MUKESH JANGID                             Helper
+   36. 1801841     MUKESH KUMAR YADAV                        Helper
+   37. 1802253     MUKUT BIHARI SHARMA                       Helper
+   38. 1800144     NARBADA DEVI                              Helper
+   39. 1802075     NARENDRA KUMAR                            Helper
+   40. 1800168     NATHI DEVI                                Helper
+   41. 1802288     NEPAL SINGH SONDIYA                       Helper - Production
+   42. 1802387     NIKITA MEENA                              Helper
+   43. 1802145     NITU YOGI                                 Helper
+   44. 1801079     Pappu Lal                                 Helper
+   45. 1800557     PARMESHWAR MEENA                          Helper
+   46. 1801187     Pinki Jain                                Helper
+   47. 1800060     PRADHAN GURJAR                            Helper
+   48. 1800979     PREM DEVI                                 Helper
+   49. 1800134     PREM DEVI REGAR                           Helper
+   50. 1801748     PREMLATA                                  Helper
+   51. 1802188     PUKHRAJ JWALA                             Helper
+   52. 1802328     PUSHPENDRA MEENA                          Helper
+   53. 1800135     RADHA DEVI BALAI                          Helper
+   54. 1800160     RADHA SHARMA                              Helper
+   55. 1800110     RAJANTI DEVI MORYA                        Helper
+   56. 1801840     RAJENDRA KUMAR MEENA                      Helper
+   57. 1802324     RAJENDRA PRASAD MEENA                     Helper
+   58. 1802384     RAJU DAS VAISHNAV                         Helper
+   59. 1801078     Rambati Devi                              Helper
+   60. 1801391     Ramesh Kumar Mali                         Helper
+   61. 1801912     RAMESHCHAND                               Helper
+   62. 1802049     RAMOTAR RANA                              Helper
+   63. 1801607     RAMRAJ MEENA                              COOK
+   64. 1800050     RATAN LAL DARJI                           Helper
+   65. 1801642     RATAN SINGH                               Helper
+   66. 1800120     RATNA DEVI                                Helper
+   67. 1802371     RAVINDRA KUMAR                            Helper
+   68. 1802289     RAVINDRA KUMAR MEENA                      Helper - Production
+   69. 1802264     REENA DEVI                                Helper
+   70. 1800153     REETA DEVI                                Helper
+   71. 1802147     REKHA RAWAT                               Helper
+   72. 1801735     REWAT SINGH                               Operator
+   73. 1801952     RINKU CHOPRA                              Helper
+   74. 1800082     RODU RAM MEENA                            Helper
+   75. 1802363     ROHAN KUMAR CHOPRA                        Helper
+   76. 1802009     ROHITASH KUMAR REDDY                      Helper-Production
+   77. 1802152     SACHIN RAISWAL                            Helper
+   78. 1802073     SAMAY SINGH                               Helper
+   79. 1801544     SANTOSH DEVI                              Helper
+   80. 1802141     SANTRA                                    Helper
+   81. 1800137     SANTRA DEVI MAHAWAR                       Helper
+   82. 1800112     SANTRA DEVI REIGER                        Helper
+   83. 1801747     SANTRA PRAJAPAT                           Helper
+   84. 1802240     SATISH TIWARI                             Operator
+   85. 1802233     SAVITA BALAI                              Helper
+   86. 1802099     SAVITA DEVI                               Helper
+   87. 1802090     SEEMA DEVI                                Helper
+   88. 1802377     SEEMA DEVI                                Helper
+   89. 1801878     SEEMA KANWAR                              Helper
+   90. 1800496     SEETA                                     Helper
+   91. 1800113     SHAKUNTLA DEVI SHARMA                     Helper
+   92. 1802119     SHANKAR LAL MEENA                         Helper
+   93. 1801873     SHANKAR SINGH                             Operator
+   94. 1800115     SHANTI DEVI MORYA                         Helper
+   95. 1801846     SHASHI DEVI SHARMA                        Helper
+   96. 1802269     SHIMLA SHARMA                             Helper
+   97. 1802375     SHIVKESH MEENA                            Helper
+   98. 1801053     Shivraj Gurjar                            COOK
+   99. 1802118     SONIYA DEVI                               Helper
+  100. 1801780     SONU                                      Helper
+  101. 1802360     SONU                                      Helper
+  102. 1801892     SONU BUNKER                               Helper
+  103. 1800978     SUKHIYA DEVI                              Helper
+  104. 1801534     SUKHRAM                                   Helper
+  105. 1800154     SUMITRA DEVI                              Helper
+  106. 1801947     SUNIL MEENA                               Helper
+  107. 1802365     SUNIL MEGHWAL                             Helper
+  108. 1801924     SUNITA DEVI                               Helper
+  109. 1800117     SUNITA DEVI MORYA                         Helper
+  110. 1801728     SURENDER SINGH                            Helper
+  111. 1801746     SUSHILA DEVI                              Helper
+  112. 1801025     SUSHILA PRAJAPAT                          Helper
+  113. 1800046     SYOJI RAM JAT                             Supervisor
+  114. 1802383     TARACHAND BHEEL                           Helper
+  115. 1800143     UGANTI DEVI                               Helper
+  116. 1802254     UMESH                                     Helper
+  117. 1802287     VIJAY PAL MEENA                           Helper - Production
+  118. 1801427     Vijay Vikram Singh                        Operator
+  119. 1802345     VIKAS KUMAR MEENA                         Helper
+  120. 1801938     VIKAS MEENA                               Helper
+  121. 1801545     VIMALA DEVI                               Helper
+  122. 1801853     VINOD KUMAR MEENA                         Helper
+  123. 1800474     VIRENDRA KUMAR                            Helper
+  124. 1802281     YADRAM MEENA                              Helper
+  125. 1802369     YASHPAL JATAV                             Helper
+
+====================================================================================================
+GROUP (41 people)
+  BC tab(s): ['Distribution-Helper blue collor']
+  WC tab(s): ['Production-White Collar']
+----------------------------------------------------------------------------------------------------
+    1. 1801219     JITENDRA RAIGAR                           Helper
+    2. 1801220     JYANTI PRASAD SHARMA                      Helper
+    3. 1801221     KAILASH CHAND                             Helper
+    4. 1801781     KALU RAM RAIGAR                           Helper
+    5. 1801658     Kamal Singh                               Helper
+    6. 1801225     KULDEEP SINGH RAJAWAT                     Helper
+    7. 1801226     KULDEEP VERMA                             Helper
+    8. 1801227     LAL CHAND MORIYA                          Helper
+    9. 1802374     LALIT MUNDRA                              Helper
+   10. 1802378     MEHUL KUMAR SONI                          Helper
+   11. 1801232     MOHAR SINGH GURJAR                        Helper
+   12. 1801198     Mukesh Verma                              Helper
+   13. 1802040     NATHU                                     Helper
+   14. 1801862     OMPRAKASH                                 Helper
+   15. 1801236     OMPRAKSH GURJAR                           Helper
+   16. 1801237     PRABHU NARAYAN MEENA                      Helper
+   17. 1801238     PRAKASH CHAND MEENA                       Helper
+   18. 1801961     PURANMAL                                  Helper
+   19. 1801240     RADHESHYAM                                Helper
+   20. 1801241     RAJENDRA JAJORIYA                         Helper
+   21. 1801242     RAJENDRA LAKHERA                          Helper
+   22. 1801243     RAJU LAL                                  Helper
+   23. 1801767     RAJU TANWAR                               Helper
+   24. 1802331     RAKESH KUMAR BUNKAR                       Helper
+   25. 1801246     RAM DAYAL SHARMA                          Helper
+   26. 1801248     RAMAVATAR MEENA                           Helper
+   27. 1802059     RAMPRASAD MEENA                           Helper
+   28. 1802244     RINKU MEENA                               Helper
+   29. 1801252     ROOPNARAYAN MOURYA                        Helper
+   30. 1801291     ROSHAN LAL                                Helper
+   31. 1802355     SAHIL TANVAR                              Helper
+   32. 1801253     SANJAY                                    Helper
+   33. 1801254     SATYA NARAYAN                             Helper
+   34. 1802339     SHEKHAR BAIRWA                            Helper
+   35. 1802057     SHYOJI LAL MEENA                          Helper
+   36. 1802025     SONU DHANAKA                              Helper
+   37. 1801656     SUNIL KUMAR MOURYA                        Helper
+   38. 1802069     SUNNY MAURYA                              Helper
+   39. 1801768     SURGYAN                                   Helper
+   40. 1801259     TUFAN MEENA                               Helper
+   41. 1801260     VINOD RAIGAR                              Helper
+
+TOTAL CONFLICTS: 166

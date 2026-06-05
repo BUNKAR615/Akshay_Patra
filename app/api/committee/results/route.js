@@ -40,9 +40,12 @@ export const GET = withRole(["COMMITTEE", "ADMIN"], async (request, { user }) =>
         // Resolve the committee member's assigned branches (drives Total
         // mode and validates a specific-branch focus).
         let assignedBranchIds = [];
+        // Cache the resolved scope rows — they're reused below to build the
+        // dashboard's branch dropdown, so we avoid resolving the same set twice.
+        let scopeRows = null;
         if (user.role !== "ADMIN") {
-            const rows = await resolveAllScopeBranches({ userId: user.userId, role: "COMMITTEE" });
-            assignedBranchIds = rows.map((r) => r.id);
+            scopeRows = await resolveAllScopeBranches({ userId: user.userId, role: "COMMITTEE" });
+            assignedBranchIds = scopeRows.map((r) => r.id);
             if (assignedBranchIds.length === 0) {
                 return forbidden("You are not assigned to any branch. Please contact your administrator.");
             }
@@ -154,7 +157,7 @@ export const GET = withRole(["COMMITTEE", "ADMIN"], async (request, { user }) =>
                 branchType: b.branchType,
             }));
         } else {
-            const rows = await resolveAllScopeBranches({ userId: user.userId, role: "COMMITTEE" });
+            const rows = scopeRows || await resolveAllScopeBranches({ userId: user.userId, role: "COMMITTEE" });
             assignedBranches = rows.map((b) => ({ id: b.id, name: b.name, branchType: b.branchType }));
         }
 

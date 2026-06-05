@@ -1,0 +1,1075 @@
+==============================================
+TAB: 'Administration '  [WHITE_COLLAR]  rows=5
+==============================================
+  5100029     CHETAN SINGH BHATI                   Human Resources            Senior Executive - HR
+  1801445     Bharat Bhushan Arora                 Administration             Executive
+  1802179     JASWANT SINGH TOMER                  Administration             Office Boy
+  1801037     Jitendra kumar Parashar              Administration             Executive
+  1800059     NAND KISHOR JAT                      Administration             Office Boy
+
+==============================================================
+TAB: 'Distribution-Helper blue collor'  [BLUE_COLLAR]  rows=57
+==============================================================
+  1801305     RAJESH KUMAR MEENA                   Distribution               Executive
+  1802342     AJAY KUMAR RAIGAR                    Distribution               Helper
+  1802380     AVINASH                              Distribution               Helper
+  1801822     BABLU SHARMA                         Distribution               Helper
+  1801205     BAJRANG SINGH                        Distribution               Helper
+  1801206     BALWEER SINGH                        Distribution               Helper
+  1801208     BHAGWAN SHAY BAIRWA                  Distribution               Helper
+  1802045     CHARAT KUMAR DHOBI                   Distribution               Helper
+  1802129     CHHOTURAM GUJAR                      Distribution               Helper
+  1802241     GANESH NARAYAN MEENA                 Distribution               Helper
+  1801761     GIRRAJ VERMA                         Distribution               Helper
+  1802295     GOVIND SAIN                          Distribution               Helper - Distribution
+  1801213     GYARSHI LAL MORYA                    Distribution               Helper
+  1802064     HARPHOOL MEENA                       Distribution               Helper
+  1801215     HEERA LAL                            Distribution               Helper
+  1802296     HEERA NAND MAURYA                    Distribution               Helper - Distribution
+  1801219     JITENDRA RAIGAR                      Distribution               Helper
+  1801220     JYANTI PRASAD SHARMA                 Distribution               Helper
+  1801221     KAILASH CHAND                        Distribution               Helper
+  1801781     KALU RAM RAIGAR                      Distribution               Helper
+  1801658     Kamal Singh                          Distribution               Helper
+  1801225     KULDEEP SINGH RAJAWAT                Distribution               Helper
+  1801226     KULDEEP VERMA                        Distribution               Helper
+  1801227     LAL CHAND MORIYA                     Distribution               Helper
+  1802374     LALIT MUNDRA                         Distribution               Helper
+  1802378     MEHUL KUMAR SONI                     Distribution               Helper
+  1801232     MOHAR SINGH GURJAR                   Distribution               Helper
+  1801198     Mukesh Verma                         Distribution               Helper
+  1802040     NATHU                                Distribution               Helper
+  1801862     OMPRAKASH                            Distribution               Helper
+  1801236     OMPRAKSH GURJAR                      Distribution               Helper
+  1801237     PRABHU NARAYAN MEENA                 Distribution               Helper
+  1801238     PRAKASH CHAND MEENA                  Distribution               Helper
+  1801961     PURANMAL                             Distribution               Helper
+  1801240     RADHESHYAM                           Distribution               Helper
+  1801241     RAJENDRA JAJORIYA                    Distribution               Helper
+  1801242     RAJENDRA LAKHERA                     Distribution               Helper
+  1801243     RAJU LAL                             Distribution               Helper
+  1801767     RAJU TANWAR                          Distribution               Helper
+  1802331     RAKESH KUMAR BUNKAR                  Distribution               Helper
+  1801246     RAM DAYAL SHARMA                     Distribution               Helper
+  1801248     RAMAVATAR MEENA                      Distribution               Helper
+  1802059     RAMPRASAD MEENA                      Distribution               Helper
+  1802244     RINKU MEENA                          Distribution               Helper
+  1801252     ROOPNARAYAN MOURYA                   Distribution               Helper
+  1801291     ROSHAN LAL                           Distribution               Helper
+  1802355     SAHIL TANVAR                         Distribution               Helper
+  1801253     SANJAY                               Distribution               Helper
+  1801254     SATYA NARAYAN                        Distribution               Helper
+  1802339     SHEKHAR BAIRWA                       Distribution               Helper
+  1802057     SHYOJI LAL MEENA                     Distribution               Helper
+  1802025     SONU DHANAKA                         Distribution               Helper
+  1801656     SUNIL KUMAR MOURYA                   Distribution               Helper
+  1802069     SUNNY MAURYA                         Distribution               Helper
+  1801768     SURGYAN                              Distribution               Helper
+  1801259     TUFAN MEENA                          Distribution               Helper
+  1801260     VINOD RAIGAR                         Distribution               Helper
+
+=============================================================
+TAB: 'Production-Helper blue collor'  [BLUE_COLLAR]  rows=158
+=============================================================
+  1801105     Jagdish Prasad Meena                 Production                 Executive
+  1802316     AJAY KUMAR                           Production                 Helper
+  1802037     ANITA DEVI                           Production                 Helper
+  1802132     ANITA DEVI                           Production                 Helper
+  1802327     ANITA VERMA                          Production                 Helper
+  1801793     ANJANI                               Production                 Helper
+  1801994     ARJUN LAL MAHAWAR                    Production                 Helper
+  1801990     ARTI DEVI                            Production                 Helper
+  1801869     BABALI DEVI                          Production                 Helper
+  1800128     BABURI DEVI MORYA                    Production                 Helper
+  1802306     BALVEER SINGH                        Production                 Helper
+  1800104     BARDI DEVI PRAJPAT                   Production                 Helper
+  1801765     BHAGWATI DEVI                        Production                 Helper
+  1800463     BHOJRAJ SINGH                        Production                 Helper
+  1802348     BHUROBAI                             Production                 Helper
+  1802286     CHANDAN SINGH                        Production                 Helper - Production
+  1800996     CHANDESHWAR THAKUR                   Production                 Operator
+  1802130     CHHOTI DEVI                          Production                 Helper
+  1800122     CHOTA DEVI REGAR                     Production                 Helper
+  1800314     DAYARAM RAM GURJAR                   Production                 Helper
+  1802376     DEEPAK MEENA                         Production                 Helper
+  1801827     DEEPAK SAINI                         Production                 Helper
+  1800390     DHANRAJ JAT                          Production                 COOK
+  1800086     DHARAM RAJ SAINI                     Production                 Helper
+  1802357     DILIP KUMAR MEENA                    Production                 Helper
+  1800487     DINESH KUMAR MALI                    Production                 Helper
+  1800127     GEETA DEVI                           Production                 Helper
+  1801926     GYAN KANWAR                          Production                 Helper
+  1802320     HANSRAJ MEENA                        Production                 Helper
+  1800258     HANUMAN CHAUDHRAY                    Production                 Helper
+  1802340     HANUMAN NARUKA                       Production                 Helper
+  1802354     HARESH KUMAR KANSAL                  Production                 Helper
+  1802314     HIMANSHU CHOPRA                      Production                 Helper
+  1802153     JAGRAM MEENA                         Production                 Helper
+  1800056     JANSHI RAM MEENA                     Production                 COOK
+  1801872     KAILASH CHAND                        Production                 Helper
+  1800169     KAILASHI DEVI                        Production                 Helper
+  1801167     Kamal Kishore Sharma                 Production                 Vessel Washing
+  1801368     Kamlesh Bunkar                       Production                 Helper
+  1801776     KAMLESH DEVI                         Production                 Helper
+  1802258     KAPIL MEENA                          Production                 Helper
+  1802333     KARAN NARUKA                         Production                 Helper
+  1801745     KAVITA BALAI                         Production                 Helper
+  1802159     KAVITA SISODIYA                      Production                 Helper
+  1802334     KHEMRAJ MEENA                        Production                 Helper
+  1802192     KIRAN DEVI                           Production                 Helper
+  1800094     LALA RAM MEENA                       Production                 Helper
+  1802337     LOKESH KUMAR MEENA                   Production                 Helper
+  1801416     Malu Ram                             Production                 Helper
+  1802006     MAMTA                                Production                 Helper-Production
+  1801363     Mamta Devi                           Production                 Helper
+  1802232     MAMTA DEVI                           Production                 Helper
+  1802222     MANISH KUMAR BAIRWA                  Production                 Helper
+  1802299     MANJU                                Production                 Helper
+  1800133     MANJU DEVI                           Production                 Helper
+  1800106     MANJU DEVI MORYA                     Production                 Helper
+  1802217     MANOJ KUMAR MEENA                    Production                 Helper
+  1801587     MANPHOLI DEVI                        Production                 Helper
+  1802385     MANSHA RAM                           Production                 Helper
+  1800221     MAYA DEVI                            Production                 Helper
+  1800282     MEENA MISHRA                         Production                 Helper
+  1800171     MEERA DEVI                           Production                 Helper
+  1800989     MEERA DEVI                           Production                 Helper
+  1802361     MOHIT VERMA                          Production                 Helper
+  1802284     MONU VERMA                           Production                 Helper
+  1801180     Mukesh                               Production                 Helper
+  1801919     MUKESH JANGID                        Production                 Helper
+  1801841     MUKESH KUMAR YADAV                   Production                 Helper
+  1802253     MUKUT BIHARI SHARMA                  Production                 Helper
+  1800144     NARBADA DEVI                         Production                 Helper
+  1802075     NARENDRA KUMAR                       Production                 Helper
+  1800168     NATHI DEVI                           Production                 Helper
+  1802288     NEPAL SINGH SONDIYA                  Production                 Helper - Production
+  1802387     NIKITA MEENA                         Production                 Helper
+  1802145     NITU YOGI                            Production                 Helper
+  1801079     Pappu Lal                            Production                 Helper
+  1800557     PARMESHWAR MEENA                     Production                 Helper
+  1801187     Pinki Jain                           Production                 Helper
+  1800060     PRADHAN GURJAR                       Production                 Helper
+  1800979     PREM DEVI                            Production                 Helper
+  1800134     PREM DEVI REGAR                      Production                 Helper
+  1801748     PREMLATA                             Production                 Helper
+  1802188     PUKHRAJ JWALA                        Production                 Helper
+  1802328     PUSHPENDRA MEENA                     Production                 Helper
+  1800135     RADHA DEVI BALAI                     Production                 Helper
+  1800160     RADHA SHARMA                         Production                 Helper
+  1800110     RAJANTI DEVI MORYA                   Production                 Helper
+  1801840     RAJENDRA KUMAR MEENA                 Production                 Helper
+  1802324     RAJENDRA PRASAD MEENA                Production                 Helper
+  1802384     RAJU DAS VAISHNAV                    Production                 Helper
+  1801078     Rambati Devi                         Production                 Helper
+  1801391     Ramesh Kumar Mali                    Production                 Helper
+  1801912     RAMESHCHAND                          Production                 Helper
+  1802049     RAMOTAR RANA                         Production                 Helper
+  1801607     RAMRAJ MEENA                         Production                 COOK
+  1800050     RATAN LAL DARJI                      Production                 Helper
+  1801642     RATAN SINGH                          Production                 Helper
+  1800120     RATNA DEVI                           Production                 Helper
+  1802371     RAVINDRA KUMAR                       Production                 Helper
+  1802289     RAVINDRA KUMAR MEENA                 Production                 Helper - Production
+  1802264     REENA DEVI                           Production                 Helper
+  1800153     REETA DEVI                           Production                 Helper
+  1802147     REKHA RAWAT                          Production                 Helper
+  1801735     REWAT SINGH                          Production                 Operator
+  1801952     RINKU CHOPRA                         Production                 Helper
+  1800082     RODU RAM MEENA                       Production                 Helper
+  1802363     ROHAN KUMAR CHOPRA                   Production                 Helper
+  1802009     ROHITASH KUMAR REDDY                 Production                 Helper-Production
+  1802152     SACHIN RAISWAL                       Production                 Helper
+  1802073     SAMAY SINGH                          Production                 Helper
+  1801544     SANTOSH DEVI                         Production                 Helper
+  1802141     SANTRA                               Production                 Helper
+  1800137     SANTRA DEVI MAHAWAR                  Production                 Helper
+  1800112     SANTRA DEVI REIGER                   Production                 Helper
+  1801747     SANTRA PRAJAPAT                      Production                 Helper
+  1802240     SATISH TIWARI                        Production                 Operator
+  1802233     SAVITA BALAI                         Production                 Helper
+  1802099     SAVITA DEVI                          Production                 Helper
+  1802090     SEEMA DEVI                           Production                 Helper
+  1802377     SEEMA DEVI                           Production                 Helper
+  1801878     SEEMA KANWAR                         Production                 Helper
+  1800496     SEETA                                Production                 Helper
+  1800113     SHAKUNTLA DEVI SHARMA                Production                 Helper
+  1802119     SHANKAR LAL MEENA                    Production                 Helper
+  1801873     SHANKAR SINGH                        Production                 Operator
+  1800115     SHANTI DEVI MORYA                    Production                 Helper
+  1801846     SHASHI DEVI SHARMA                   Production                 Helper
+  1802269     SHIMLA SHARMA                        Production                 Helper
+  1802375     SHIVKESH MEENA                       Production                 Helper
+  1801053     Shivraj Gurjar                       Production                 COOK
+  1802118     SONIYA DEVI                          Production                 Helper
+  1801780     SONU                                 Production                 Helper
+  1802360     SONU                                 Production                 Helper
+  1801892     SONU BUNKER                          Production                 Helper
+  1800978     SUKHIYA DEVI                         Production                 Helper
+  1801534     SUKHRAM                              Production                 Helper
+  1800154     SUMITRA DEVI                         Production                 Helper
+  1801947     SUNIL MEENA                          Production                 Helper
+  1802365     SUNIL MEGHWAL                        Production                 Helper
+  1801924     SUNITA DEVI                          Production                 Helper
+  1800117     SUNITA DEVI MORYA                    Production                 Helper
+  1801728     SURENDER SINGH                       Production                 Helper
+  1801746     SUSHILA DEVI                         Production                 Helper
+  1801025     SUSHILA PRAJAPAT                     Production                 Helper
+  1800046     SYOJI RAM JAT                        Production                 Supervisor
+  1802383     TARACHAND BHEEL                      Production                 Helper
+  1800143     UGANTI DEVI                          Production                 Helper
+  1802254     UMESH                                Production                 Helper
+  1802287     VIJAY PAL MEENA                      Production                 Helper - Production
+  1801427     Vijay Vikram Singh                   Production                 Operator
+  1802345     VIKAS KUMAR MEENA                    Production                 Helper
+  1801938     VIKAS MEENA                          Production                 Helper
+  1801545     VIMALA DEVI                          Production                 Helper
+  1801853     VINOD KUMAR MEENA                    Production                 Helper
+  1800474     VIRENDRA KUMAR                       Production                 Helper
+  1802281     YADRAM MEENA                         Production                 Helper
+  1802369     YASHPAL JATAV                        Production                 Helper
+  1802338     Sonu Kumar Meena                     Production                 Helper
+
+=========================================================
+TAB: 'Distribution-White Collar'  [WHITE_COLLAR]  rows=13
+=========================================================
+  1800346     ASHOK KUMAR YADAV                    Distribution               Officer
+  1800031     OM PRAKASH SHARMA                    Distribution               Supervisor
+  1802330     CHANDRASHEKHAR                       Distribution               Supervisor
+  1800544     PRAVEEN SHARMA                       Distribution               Supervisor
+  1801791     PUSHPENDRA YADAV                     Distribution               Supervisor
+  1801362     Rahul Singh CHAUHAN                  Distribution               Supervisor - Distribution
+  1800252     RAKESH KUMAR MEENA                   Distribution               Supervisor
+  1800274     RAMESH CHAND SHARMA                  Distribution               Supervisor
+  1801664     RAVINDRA SHARMA                      Distribution               Supervisor
+  1801378     Sanjay Sharma                        Distribution               Supervisor - Distribution
+  1802143     SARVAGYA KUMAR SHARMA                Distribution               Executive
+  1801598     VEDPRAKASH MEENA                     Distribution               Supervisor
+  1802283     VISHAL SHARMA                        Distribution               Assistant Supervisor
+
+======================================================
+TAB: 'Vehicle-TAPF Blue Collor'  [BLUE_COLLAR]  rows=1
+======================================================
+  1801305     RAJESH KUMAR MEENA                   Distribution               Executive
+
+=======================================================
+TAB: 'Vehicle-Hired Blue Collor'  [BLUE_COLLAR]  rows=2
+=======================================================
+  1800361     SUSHEEL KUMAR MAHAWAR                Distribution               Officer
+  1801637     BABU LAL MEENA                       Distribution               Executive
+
+==============================================================
+TAB: 'Distribution- Driver Blue collo'  [BLUE_COLLAR]  rows=46
+==============================================================
+  1801637     BABU LAL MEENA                       Distribution               Executive
+  1801958     AJAY DHANKA                          Distribution               Driver
+  1801264     ASHOK KUMAR DHANKA                   Distribution               Driver
+  1802113     ASHOK YOGI                           Distribution               Driver
+  1801265     BABU LAL GURJAR                      Distribution               Driver
+  1801267     BIJENDRA SHARMA                      Distribution               Driver
+  1801270     DAYA CHAND VERMA                     Distribution               Driver
+  1802379     DHANRAJ BHEEL                        Distribution               Driver
+  1801271     DHARMENDRA KUMAR                     Distribution               Driver
+  1801654     Dheeraj Yadav                        Distribution               Driver
+  1801272     DINESH KUMAR BALAI                   Distribution               Driver
+  1802373     GAJANAND CHOUDHARY                   Distribution               Driver
+  1801273     GAJANAND RAIGAR                      Distribution               Driver
+  1801274     GOPAL SINGH                          Distribution               Driver
+  1801758     HANSRAJ MEENA                        Distribution               Driver
+  1801279     HUKAM CHAND JANGID                   Distribution               Driver
+  1802029     JAGADISH NARAYAN MEENA               Distribution               Driver
+  1802370     JAYSINGH                             Distribution               Driver
+  1802350     JITENDRA SINGH                       Distribution               Driver
+  1801406     Jitendra Singh Gurjar                Distribution               Driver
+  1801742     KAN SINGH                            Distribution               Driver
+  1802279     KANA RAM MEENA                       Distribution               Driver
+  1802135     KANA RAM YOGI                        Distribution               Driver
+  1801321     Lavleen Gurjar                       Distribution               Driver
+  1802249     MADAN SINGH                          Distribution               Driver
+  1802114     MUKESH KUMAR MALI                    Distribution               Driver
+  1801284     MUKESH KUMAR MEENA                   Distribution               Driver
+  1802372     PINTU MEENA                          Distribution               Driver
+  1802351     RAJU VERMA                           Distribution               Driver
+  1801288     RAKESH KUMAR MEENA                   Distribution               Driver
+  1801754     RAMAVTAR                             Distribution               Driver
+  1802183     RAMESH CHAND                         Distribution               Driver
+  1801591     RANJIT YOGI                          Distribution               Driver
+  1802024     RINKU MORYA                          Distribution               Driver
+  1802386     SAGAR MAL GOME                       Distribution               Driver
+  1802343     SANJAY SHARMA                        Distribution               Driver
+  1802056     SANTOSH KUMAR                        Distribution               Driver
+  1801293     SAYAR LAL SHARMA                     Distribution               Driver
+  1802176     SOHAN LAL                            Distribution               Driver
+  1801366     Suraj Mal Gurjar                     Distribution               Driver
+  1802352     SURESH VERMA                         Distribution               Driver
+  1802250     TEJA RAM GURJAR                      Distribution               Driver
+  1801298     UMMED SINGH                          Distribution               Driver
+  1801759     VIJAY SHANKAR MEENA                  Distribution               Driver
+  1802359     VISHANU YOGI                         Distribution               Driver
+  1801299     YADRAM MEENA                         Distribution               Driver
+
+==============================================
+TAB: 'Human Resources'  [WHITE_COLLAR]  rows=5
+==============================================
+  5100029     CHETAN SINGH BHATI                   Human Resources            Senior Executive - HR
+  1802053     DEEPAK MUNDOTIA                      Human Resources            Executive
+  1801896     KAMAL SINGH MAWARI                   Human Resources            Executive
+  1801716     PANKAJ BHARDWAJ                      Human Resources            Senior Executive
+  1802230     RAMESHWAR DAYAL                      Human Resources            Executive
+
+=====================================================
+TAB: 'Information Technology'  [WHITE_COLLAR]  rows=2
+=====================================================
+  1800349     RISHPAL KUMAWAT                      Information Technology     Assistant Manager
+  1801726     BHARAT KUMAR YADAV                   Information Technology     Executive
+
+=====================================================
+TAB: 'Maintenance Blue collor'  [BLUE_COLLAR]  rows=9
+=====================================================
+  2000448     ANSAR HUSAIN                         Maintenance                Electrician
+  1801920     ASHOK                                Maintenance                Welder - Maintenance
+  1802238     GAJANAND BAIRWA                      Maintenance                Plumber
+  1800001     GAURI SHANKAR SAIN                   Maintenance                Executive
+  1801986     MANSINGH MEENA                       Maintenance                Electrician
+  1801481     Roshan Sharma                        Maintenance                Fitter
+  1802021     SHYAMSUNDAR BHAT                     Maintenance                Operator
+  1800181     SUNIL AGARWAL                        Maintenance                Electrician
+  1802347     VIKASH SINGH                         Maintenance                Operator
+
+===========================================
+TAB: 'Maintenance '  [WHITE_COLLAR]  rows=1
+===========================================
+  1801772     DILIP KUMAR PANDA                    Maintenance                Officer
+
+==========================================
+TAB: 'Procurement'  [WHITE_COLLAR]  rows=8
+==========================================
+  1800012     Rajesh Kumar Sharma                  Procurement                Assistant General Manager
+  1801157     Aashish Arora                        Procurement                Officer
+  1800250     MAHENDRA YADAV                       Procurement                Officer
+  1800029     MANOJ KUMAR JAIN                     Procurement                Senior Officer
+  1800347     MUKESH SHARMA                        Procurement                Officer
+  1800040     NARESH BANSAL                        Procurement                Officer
+  1800012     Rajesh Kumar Sharma                  Procurement                Assistant General Manager
+  1800095     RAKESH VIJAY                         Procurement                Officer
+
+========================================================
+TAB: 'Production-White Collar'  [WHITE_COLLAR]  rows=173
+========================================================
+  1801155     Dashrath kumar                       Production                 Assistant Manager
+  1802087     DASHRATH SINGH YADAV                 Production                 Assistant Supervisor
+  1802078     DESH VANDHU                          Production                 Assistant Supervisor
+  1802153     JAGRAM MEENA                         Production                 Helper
+  1800056     JANSHI RAM MEENA                     Production                 COOK
+  1801219     JITENDRA RAIGAR                      Production                 Helper
+  1801220     JYANTI PRASAD SHARMA                 Production                 Helper
+  1801221     KAILASH CHAND                        Production                 Helper
+  1801872     KAILASH CHAND                        Production                 Helper
+  1800169     KAILASHI DEVI                        Production                 Helper
+  1801781     KALU RAM RAIGAR                      Production                 Helper
+  1801167     Kamal Kishore Sharma                 Production                 Vessel Washing
+  1801658     Kamal Singh                          Production                 Helper
+  1801368     Kamlesh Bunkar                       Production                 Helper
+  1801776     KAMLESH DEVI                         Production                 Helper
+  1802258     KAPIL MEENA                          Production                 Helper
+  1802333     KARAN NARUKA                         Production                 Helper
+  1801745     KAVITA BALAI                         Production                 Helper
+  1802159     KAVITA SISODIYA                      Production                 Helper
+  1802334     KHEMRAJ MEENA                        Production                 Helper
+  1802192     KIRAN DEVI                           Production                 Helper
+  1801225     KULDEEP SINGH RAJAWAT                Production                 Helper
+  1801226     KULDEEP VERMA                        Production                 Helper
+  1801227     LAL CHAND MORIYA                     Production                 Helper
+  1800094     LALA RAM MEENA                       Production                 Helper
+  1802374     LALIT MUNDRA                         Production                 Helper
+  1802337     LOKESH KUMAR MEENA                   Production                 Helper
+  1801416     Malu Ram                             Production                 Helper
+  1801361     Mamraj Raiger                        Production                 Supervisior - Production
+  1802006     MAMTA                                Production                 Helper-Production
+  1801363     Mamta Devi                           Production                 Helper
+  1802232     MAMTA DEVI                           Production                 Helper
+  1802222     MANISH KUMAR BAIRWA                  Production                 Helper
+  1802299     MANJU                                Production                 Helper
+  1800133     MANJU DEVI                           Production                 Helper
+  1800106     MANJU DEVI MORYA                     Production                 Helper
+  1802217     MANOJ KUMAR MEENA                    Production                 Helper
+  1801587     MANPHOLI DEVI                        Production                 Helper
+  1802385     MANSHA RAM                           Production                 Helper
+  1800221     MAYA DEVI                            Production                 Helper
+  1800282     MEENA MISHRA                         Production                 Helper
+  1800171     MEERA DEVI                           Production                 Helper
+  1800989     MEERA DEVI                           Production                 Helper
+  1802378     MEHUL KUMAR SONI                     Production                 Helper
+  1801232     MOHAR SINGH GURJAR                   Production                 Helper
+  1802361     MOHIT VERMA                          Production                 Helper
+  1802284     MONU VERMA                           Production                 Helper
+  1801180     Mukesh                               Production                 Helper
+  1801919     MUKESH JANGID                        Production                 Helper
+  1801841     MUKESH KUMAR YADAV                   Production                 Helper
+  1801198     Mukesh Verma                         Production                 Helper
+  1802253     MUKUT BIHARI SHARMA                  Production                 Helper
+  1800144     NARBADA DEVI                         Production                 Helper
+  1802075     NARENDRA KUMAR                       Production                 Helper
+  1800168     NATHI DEVI                           Production                 Helper
+  1802040     NATHU                                Production                 Helper
+  1802288     NEPAL SINGH SONDIYA                  Production                 Helper - Production
+  1802387     NIKITA MEENA                         Production                 Helper
+  1802145     NITU YOGI                            Production                 Helper
+  1801862     OMPRAKASH                            Production                 Helper
+  1801236     OMPRAKSH GURJAR                      Production                 Helper
+  1801079     Pappu Lal                            Production                 Helper
+  1800557     PARMESHWAR MEENA                     Production                 Helper
+  1801187     Pinki Jain                           Production                 Helper
+  1801237     PRABHU NARAYAN MEENA                 Production                 Helper
+  1800060     PRADHAN GURJAR                       Production                 Helper
+  1801238     PRAKASH CHAND MEENA                  Production                 Helper
+  1800979     PREM DEVI                            Production                 Helper
+  1800134     PREM DEVI REGAR                      Production                 Helper
+  1801748     PREMLATA                             Production                 Helper
+  1802188     PUKHRAJ JWALA                        Production                 Helper
+  1801961     PURANMAL                             Production                 Helper
+  1802328     PUSHPENDRA MEENA                     Production                 Helper
+  1800135     RADHA DEVI BALAI                     Production                 Helper
+  1800160     RADHA SHARMA                         Production                 Helper
+  1801240     RADHESHYAM                           Production                 Helper
+  1800110     RAJANTI DEVI MORYA                   Production                 Helper
+  1801241     RAJENDRA JAJORIYA                    Production                 Helper
+  1801840     RAJENDRA KUMAR MEENA                 Production                 Helper
+  1801242     RAJENDRA LAKHERA                     Production                 Helper
+  1802324     RAJENDRA PRASAD MEENA                Production                 Helper
+  1802384     RAJU DAS VAISHNAV                    Production                 Helper
+  1801243     RAJU LAL                             Production                 Helper
+  1801316     Raju Meena                           Production                 Supervisor
+  1801767     RAJU TANWAR                          Production                 Helper
+  1802331     RAKESH KUMAR BUNKAR                  Production                 Helper
+  1801246     RAM DAYAL SHARMA                     Production                 Helper
+  1801248     RAMAVATAR MEENA                      Production                 Helper
+  1801078     Rambati Devi                         Production                 Helper
+  1801391     Ramesh Kumar Mali                    Production                 Helper
+  1801912     RAMESHCHAND                          Production                 Helper
+  1802049     RAMOTAR RANA                         Production                 Helper
+  1802059     RAMPRASAD MEENA                      Production                 Helper
+  1801607     RAMRAJ MEENA                         Production                 COOK
+  1800050     RATAN LAL DARJI                      Production                 Helper
+  1801883     RATAN LAL MEENA                      Production                 Supervisor
+  1801642     RATAN SINGH                          Production                 Helper
+  1800120     RATNA DEVI                           Production                 Helper
+  1802371     RAVINDRA KUMAR                       Production                 Helper
+  1802289     RAVINDRA KUMAR MEENA                 Production                 Helper - Production
+  1802264     REENA DEVI                           Production                 Helper
+  1800153     REETA DEVI                           Production                 Helper
+  1802147     REKHA RAWAT                          Production                 Helper
+  1801735     REWAT SINGH                          Production                 Operator
+  1801952     RINKU CHOPRA                         Production                 Helper
+  1802244     RINKU MEENA                          Production                 Helper
+  1800082     RODU RAM MEENA                       Production                 Helper
+  1802363     ROHAN KUMAR CHOPRA                   Production                 Helper
+  1802009     ROHITASH KUMAR REDDY                 Production                 Helper-Production
+  1801252     ROOPNARAYAN MOURYA                   Production                 Helper
+  1801291     ROSHAN LAL                           Production                 Helper
+  1802152     SACHIN RAISWAL                       Production                 Helper
+  1802355     SAHIL TANVAR                         Production                 Helper
+  1802073     SAMAY SINGH                          Production                 Helper
+  1801253     SANJAY                               Production                 Helper
+  1801544     SANTOSH DEVI                         Production                 Helper
+  1802141     SANTRA                               Production                 Helper
+  1800137     SANTRA DEVI MAHAWAR                  Production                 Helper
+  1800112     SANTRA DEVI REIGER                   Production                 Helper
+  1801747     SANTRA PRAJAPAT                      Production                 Helper
+  1802240     SATISH TIWARI                        Production                 Operator
+  1801254     SATYA NARAYAN                        Production                 Helper
+  1802233     SAVITA BALAI                         Production                 Helper
+  1802099     SAVITA DEVI                          Production                 Helper
+  1802090     SEEMA DEVI                           Production                 Helper
+  1802377     SEEMA DEVI                           Production                 Helper
+  1801878     SEEMA KANWAR                         Production                 Helper
+  1800496     SEETA                                Production                 Helper
+  1800113     SHAKUNTLA DEVI SHARMA                Production                 Helper
+  1802119     SHANKAR LAL MEENA                    Production                 Helper
+  1801873     SHANKAR SINGH                        Production                 Operator
+  1800115     SHANTI DEVI MORYA                    Production                 Helper
+  1801846     SHASHI DEVI SHARMA                   Production                 Helper
+  1802339     SHEKHAR BAIRWA                       Production                 Helper
+  1802269     SHIMLA SHARMA                        Production                 Helper
+  1802375     SHIVKESH MEENA                       Production                 Helper
+  1801053     Shivraj Gurjar                       Production                 COOK
+  1802057     SHYOJI LAL MEENA                     Production                 Helper
+  1802118     SONIYA DEVI                          Production                 Helper
+  1801780     SONU                                 Production                 Helper
+  1802360     SONU                                 Production                 Helper
+  1801892     SONU BUNKER                          Production                 Helper
+  1802025     SONU DHANAKA                         Production                 Helper
+  1800978     SUKHIYA DEVI                         Production                 Helper
+  1801534     SUKHRAM                              Production                 Helper
+  1800154     SUMITRA DEVI                         Production                 Helper
+  1801656     SUNIL KUMAR MOURYA                   Production                 Helper
+  1801947     SUNIL MEENA                          Production                 Helper
+  1802365     SUNIL MEGHWAL                        Production                 Helper
+  1801924     SUNITA DEVI                          Production                 Helper
+  1800117     SUNITA DEVI MORYA                    Production                 Helper
+  1802069     SUNNY MAURYA                         Production                 Helper
+  1801728     SURENDER SINGH                       Production                 Helper
+  1801768     SURGYAN                              Production                 Helper
+  1801746     SUSHILA DEVI                         Production                 Helper
+  1801025     SUSHILA PRAJAPAT                     Production                 Helper
+  1800046     SYOJI RAM JAT                        Production                 Supervisor
+  1802383     TARACHAND BHEEL                      Production                 Helper
+  1801259     TUFAN MEENA                          Production                 Helper
+  1800143     UGANTI DEVI                          Production                 Helper
+  1802254     UMESH                                Production                 Helper
+  1802287     VIJAY PAL MEENA                      Production                 Helper - Production
+  1801427     Vijay Vikram Singh                   Production                 Operator
+  1802345     VIKAS KUMAR MEENA                    Production                 Helper
+  1801938     VIKAS MEENA                          Production                 Helper
+  1801545     VIMALA DEVI                          Production                 Helper
+  1801853     VINOD KUMAR MEENA                    Production                 Helper
+  1801260     VINOD RAIGAR                         Production                 Helper
+  1800474     VIRENDRA KUMAR                       Production                 Helper
+  1802281     YADRAM MEENA                         Production                 Helper
+  1802369     YASHPAL JATAV                        Production                 Helper
+  1801105     Jagdish Prasad Meena                 Production                 Executive
+  1802010     ASHOK KUMAR YADAV                    Production                 Supervisor - Distribution
+
+======================================
+TAB: 'Quality'  [WHITE_COLLAR]  rows=3
+======================================
+  1802215     BHAWANI SINGH                        Quality                    Regional Manager
+  1801463     RAMNIWAS Nivas CHOUDHARY             Quality                    Officer - Quality
+  1802304     SANDEEP SAINI                        Quality                    Executive
+
+===================================================
+TAB: 'Security Blue Collor'  [BLUE_COLLAR]  rows=14
+===================================================
+  1802344     HANSRAJ YOGI                         Security                   Supervisor
+  1802382     ANKUSH POTTER                        Security                   Security
+  1801131     Bhupendra Singh Rathore              Security                   Security
+  1801132     Gopal Singh                          Security                   Security
+  1802381     KAMAL KUMAR BAIRWA                   Security                   Security
+  1802142     LAXMI KANWAR RAJAWAT                 Security                   Security
+  1801129     Maharaj Singh Gurjar                 Security                   Security
+  1801171     Mahendra Singh Boran                 Security                   Security
+  1801425     Mukesh Sharma                        Security                   Security
+  1802093     NAGENDRA JATAV                       Security                   Security
+  1801122     Pooran Mal Meena                     Security                   Security
+  1801888     SHANKARA NAND                        Security                   Security
+  1801671     SHRI NARAYAN BAIRWA                  Security                   Security
+  1802362     SONU JATAV                           Security                   Security
+
+=======================================
+TAB: 'Security'  [WHITE_COLLAR]  rows=1
+=======================================
+  1801130     Manish Kumar Jaiman                  Security                   Officer
+
+=====================================
+TAB: 'Stores'  [WHITE_COLLAR]  rows=4
+=====================================
+  1800006     SUBHASH CHAND GAUR                   Stores                     Deputy Manager
+  1802259     ANKIT SAINI                          Stores                     Executive
+  1802353     RAMESHWAR SAINI                      Stores                     Executive
+  1801347     Santosh Devi                         Stores                     Helper
+
+==========================================================================================
+TOTAL WHITE_COLLAR (counting tab occurrences): 215
+TOTAL BLUE_COLLAR  (counting tab occurrences): 287
+GRAND TOTAL  (counting tab occurrences): 502
+UNIQUE empCodes across all tabs: 332
+
+!! 166 empCodes appear in BOTH a WC and a BC tab:
+   empCode 1801219:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (JITENDRA RAIGAR)
+     - [WHITE_COLLAR] 'Production-White Collar'  (JITENDRA RAIGAR)
+   empCode 1801220:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (JYANTI PRASAD SHARMA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (JYANTI PRASAD SHARMA)
+   empCode 1801221:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (KAILASH CHAND)
+     - [WHITE_COLLAR] 'Production-White Collar'  (KAILASH CHAND)
+   empCode 1801781:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (KALU RAM RAIGAR)
+     - [WHITE_COLLAR] 'Production-White Collar'  (KALU RAM RAIGAR)
+   empCode 1801658:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (Kamal Singh)
+     - [WHITE_COLLAR] 'Production-White Collar'  (Kamal Singh)
+   empCode 1801225:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (KULDEEP SINGH RAJAWAT)
+     - [WHITE_COLLAR] 'Production-White Collar'  (KULDEEP SINGH RAJAWAT)
+   empCode 1801226:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (KULDEEP VERMA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (KULDEEP VERMA)
+   empCode 1801227:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (LAL CHAND MORIYA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (LAL CHAND MORIYA)
+   empCode 1802374:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (LALIT MUNDRA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (LALIT MUNDRA)
+   empCode 1802378:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (MEHUL KUMAR SONI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MEHUL KUMAR SONI)
+   empCode 1801232:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (MOHAR SINGH GURJAR)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MOHAR SINGH GURJAR)
+   empCode 1801198:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (Mukesh Verma)
+     - [WHITE_COLLAR] 'Production-White Collar'  (Mukesh Verma)
+   empCode 1802040:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (NATHU)
+     - [WHITE_COLLAR] 'Production-White Collar'  (NATHU)
+   empCode 1801862:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (OMPRAKASH)
+     - [WHITE_COLLAR] 'Production-White Collar'  (OMPRAKASH)
+   empCode 1801236:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (OMPRAKSH GURJAR)
+     - [WHITE_COLLAR] 'Production-White Collar'  (OMPRAKSH GURJAR)
+   empCode 1801237:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (PRABHU NARAYAN MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (PRABHU NARAYAN MEENA)
+   empCode 1801238:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (PRAKASH CHAND MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (PRAKASH CHAND MEENA)
+   empCode 1801961:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (PURANMAL)
+     - [WHITE_COLLAR] 'Production-White Collar'  (PURANMAL)
+   empCode 1801240:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (RADHESHYAM)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RADHESHYAM)
+   empCode 1801241:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (RAJENDRA JAJORIYA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAJENDRA JAJORIYA)
+   empCode 1801242:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (RAJENDRA LAKHERA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAJENDRA LAKHERA)
+   empCode 1801243:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (RAJU LAL)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAJU LAL)
+   empCode 1801767:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (RAJU TANWAR)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAJU TANWAR)
+   empCode 1802331:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (RAKESH KUMAR BUNKAR)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAKESH KUMAR BUNKAR)
+   empCode 1801246:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (RAM DAYAL SHARMA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAM DAYAL SHARMA)
+   empCode 1801248:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (RAMAVATAR MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAMAVATAR MEENA)
+   empCode 1802059:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (RAMPRASAD MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAMPRASAD MEENA)
+   empCode 1802244:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (RINKU MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RINKU MEENA)
+   empCode 1801252:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (ROOPNARAYAN MOURYA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (ROOPNARAYAN MOURYA)
+   empCode 1801291:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (ROSHAN LAL)
+     - [WHITE_COLLAR] 'Production-White Collar'  (ROSHAN LAL)
+   empCode 1802355:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (SAHIL TANVAR)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SAHIL TANVAR)
+   empCode 1801253:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (SANJAY)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SANJAY)
+   empCode 1801254:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (SATYA NARAYAN)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SATYA NARAYAN)
+   empCode 1802339:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (SHEKHAR BAIRWA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SHEKHAR BAIRWA)
+   empCode 1802057:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (SHYOJI LAL MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SHYOJI LAL MEENA)
+   empCode 1802025:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (SONU DHANAKA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SONU DHANAKA)
+   empCode 1801656:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (SUNIL KUMAR MOURYA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SUNIL KUMAR MOURYA)
+   empCode 1802069:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (SUNNY MAURYA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SUNNY MAURYA)
+   empCode 1801768:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (SURGYAN)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SURGYAN)
+   empCode 1801259:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (TUFAN MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (TUFAN MEENA)
+   empCode 1801260:
+     - [BLUE_COLLAR] 'Distribution-Helper blue collor'  (VINOD RAIGAR)
+     - [WHITE_COLLAR] 'Production-White Collar'  (VINOD RAIGAR)
+   empCode 1801105:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (Jagdish Prasad Meena)
+     - [WHITE_COLLAR] 'Production-White Collar'  (Jagdish Prasad Meena)
+   empCode 1802153:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (JAGRAM MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (JAGRAM MEENA)
+   empCode 1800056:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (JANSHI RAM MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (JANSHI RAM MEENA)
+   empCode 1801872:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (KAILASH CHAND)
+     - [WHITE_COLLAR] 'Production-White Collar'  (KAILASH CHAND)
+   empCode 1800169:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (KAILASHI DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (KAILASHI DEVI)
+   empCode 1801167:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (Kamal Kishore Sharma)
+     - [WHITE_COLLAR] 'Production-White Collar'  (Kamal Kishore Sharma)
+   empCode 1801368:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (Kamlesh Bunkar)
+     - [WHITE_COLLAR] 'Production-White Collar'  (Kamlesh Bunkar)
+   empCode 1801776:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (KAMLESH DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (KAMLESH DEVI)
+   empCode 1802258:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (KAPIL MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (KAPIL MEENA)
+   empCode 1802333:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (KARAN NARUKA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (KARAN NARUKA)
+   empCode 1801745:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (KAVITA BALAI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (KAVITA BALAI)
+   empCode 1802159:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (KAVITA SISODIYA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (KAVITA SISODIYA)
+   empCode 1802334:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (KHEMRAJ MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (KHEMRAJ MEENA)
+   empCode 1802192:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (KIRAN DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (KIRAN DEVI)
+   empCode 1800094:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (LALA RAM MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (LALA RAM MEENA)
+   empCode 1802337:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (LOKESH KUMAR MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (LOKESH KUMAR MEENA)
+   empCode 1801416:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (Malu Ram)
+     - [WHITE_COLLAR] 'Production-White Collar'  (Malu Ram)
+   empCode 1802006:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MAMTA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MAMTA)
+   empCode 1801363:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (Mamta Devi)
+     - [WHITE_COLLAR] 'Production-White Collar'  (Mamta Devi)
+   empCode 1802232:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MAMTA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MAMTA DEVI)
+   empCode 1802222:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MANISH KUMAR BAIRWA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MANISH KUMAR BAIRWA)
+   empCode 1802299:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MANJU)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MANJU)
+   empCode 1800133:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MANJU DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MANJU DEVI)
+   empCode 1800106:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MANJU DEVI MORYA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MANJU DEVI MORYA)
+   empCode 1802217:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MANOJ KUMAR MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MANOJ KUMAR MEENA)
+   empCode 1801587:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MANPHOLI DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MANPHOLI DEVI)
+   empCode 1802385:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MANSHA RAM)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MANSHA RAM)
+   empCode 1800221:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MAYA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MAYA DEVI)
+   empCode 1800282:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MEENA MISHRA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MEENA MISHRA)
+   empCode 1800171:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MEERA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MEERA DEVI)
+   empCode 1800989:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MEERA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MEERA DEVI)
+   empCode 1802361:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MOHIT VERMA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MOHIT VERMA)
+   empCode 1802284:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MONU VERMA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MONU VERMA)
+   empCode 1801180:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (Mukesh)
+     - [WHITE_COLLAR] 'Production-White Collar'  (Mukesh)
+   empCode 1801919:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MUKESH JANGID)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MUKESH JANGID)
+   empCode 1801841:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MUKESH KUMAR YADAV)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MUKESH KUMAR YADAV)
+   empCode 1802253:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (MUKUT BIHARI SHARMA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (MUKUT BIHARI SHARMA)
+   empCode 1800144:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (NARBADA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (NARBADA DEVI)
+   empCode 1802075:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (NARENDRA KUMAR)
+     - [WHITE_COLLAR] 'Production-White Collar'  (NARENDRA KUMAR)
+   empCode 1800168:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (NATHI DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (NATHI DEVI)
+   empCode 1802288:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (NEPAL SINGH SONDIYA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (NEPAL SINGH SONDIYA)
+   empCode 1802387:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (NIKITA MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (NIKITA MEENA)
+   empCode 1802145:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (NITU YOGI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (NITU YOGI)
+   empCode 1801079:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (Pappu Lal)
+     - [WHITE_COLLAR] 'Production-White Collar'  (Pappu Lal)
+   empCode 1800557:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (PARMESHWAR MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (PARMESHWAR MEENA)
+   empCode 1801187:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (Pinki Jain)
+     - [WHITE_COLLAR] 'Production-White Collar'  (Pinki Jain)
+   empCode 1800060:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (PRADHAN GURJAR)
+     - [WHITE_COLLAR] 'Production-White Collar'  (PRADHAN GURJAR)
+   empCode 1800979:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (PREM DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (PREM DEVI)
+   empCode 1800134:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (PREM DEVI REGAR)
+     - [WHITE_COLLAR] 'Production-White Collar'  (PREM DEVI REGAR)
+   empCode 1801748:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (PREMLATA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (PREMLATA)
+   empCode 1802188:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (PUKHRAJ JWALA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (PUKHRAJ JWALA)
+   empCode 1802328:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (PUSHPENDRA MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (PUSHPENDRA MEENA)
+   empCode 1800135:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RADHA DEVI BALAI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RADHA DEVI BALAI)
+   empCode 1800160:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RADHA SHARMA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RADHA SHARMA)
+   empCode 1800110:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RAJANTI DEVI MORYA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAJANTI DEVI MORYA)
+   empCode 1801840:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RAJENDRA KUMAR MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAJENDRA KUMAR MEENA)
+   empCode 1802324:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RAJENDRA PRASAD MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAJENDRA PRASAD MEENA)
+   empCode 1802384:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RAJU DAS VAISHNAV)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAJU DAS VAISHNAV)
+   empCode 1801078:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (Rambati Devi)
+     - [WHITE_COLLAR] 'Production-White Collar'  (Rambati Devi)
+   empCode 1801391:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (Ramesh Kumar Mali)
+     - [WHITE_COLLAR] 'Production-White Collar'  (Ramesh Kumar Mali)
+   empCode 1801912:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RAMESHCHAND)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAMESHCHAND)
+   empCode 1802049:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RAMOTAR RANA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAMOTAR RANA)
+   empCode 1801607:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RAMRAJ MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAMRAJ MEENA)
+   empCode 1800050:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RATAN LAL DARJI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RATAN LAL DARJI)
+   empCode 1801642:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RATAN SINGH)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RATAN SINGH)
+   empCode 1800120:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RATNA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RATNA DEVI)
+   empCode 1802371:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RAVINDRA KUMAR)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAVINDRA KUMAR)
+   empCode 1802289:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RAVINDRA KUMAR MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RAVINDRA KUMAR MEENA)
+   empCode 1802264:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (REENA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (REENA DEVI)
+   empCode 1800153:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (REETA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (REETA DEVI)
+   empCode 1802147:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (REKHA RAWAT)
+     - [WHITE_COLLAR] 'Production-White Collar'  (REKHA RAWAT)
+   empCode 1801735:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (REWAT SINGH)
+     - [WHITE_COLLAR] 'Production-White Collar'  (REWAT SINGH)
+   empCode 1801952:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RINKU CHOPRA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RINKU CHOPRA)
+   empCode 1800082:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (RODU RAM MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (RODU RAM MEENA)
+   empCode 1802363:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (ROHAN KUMAR CHOPRA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (ROHAN KUMAR CHOPRA)
+   empCode 1802009:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (ROHITASH KUMAR REDDY)
+     - [WHITE_COLLAR] 'Production-White Collar'  (ROHITASH KUMAR REDDY)
+   empCode 1802152:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SACHIN RAISWAL)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SACHIN RAISWAL)
+   empCode 1802073:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SAMAY SINGH)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SAMAY SINGH)
+   empCode 1801544:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SANTOSH DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SANTOSH DEVI)
+   empCode 1802141:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SANTRA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SANTRA)
+   empCode 1800137:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SANTRA DEVI MAHAWAR)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SANTRA DEVI MAHAWAR)
+   empCode 1800112:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SANTRA DEVI REIGER)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SANTRA DEVI REIGER)
+   empCode 1801747:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SANTRA PRAJAPAT)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SANTRA PRAJAPAT)
+   empCode 1802240:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SATISH TIWARI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SATISH TIWARI)
+   empCode 1802233:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SAVITA BALAI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SAVITA BALAI)
+   empCode 1802099:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SAVITA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SAVITA DEVI)
+   empCode 1802090:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SEEMA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SEEMA DEVI)
+   empCode 1802377:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SEEMA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SEEMA DEVI)
+   empCode 1801878:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SEEMA KANWAR)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SEEMA KANWAR)
+   empCode 1800496:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SEETA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SEETA)
+   empCode 1800113:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SHAKUNTLA DEVI SHARMA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SHAKUNTLA DEVI SHARMA)
+   empCode 1802119:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SHANKAR LAL MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SHANKAR LAL MEENA)
+   empCode 1801873:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SHANKAR SINGH)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SHANKAR SINGH)
+   empCode 1800115:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SHANTI DEVI MORYA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SHANTI DEVI MORYA)
+   empCode 1801846:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SHASHI DEVI SHARMA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SHASHI DEVI SHARMA)
+   empCode 1802269:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SHIMLA SHARMA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SHIMLA SHARMA)
+   empCode 1802375:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SHIVKESH MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SHIVKESH MEENA)
+   empCode 1801053:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (Shivraj Gurjar)
+     - [WHITE_COLLAR] 'Production-White Collar'  (Shivraj Gurjar)
+   empCode 1802118:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SONIYA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SONIYA DEVI)
+   empCode 1801780:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SONU)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SONU)
+   empCode 1802360:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SONU)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SONU)
+   empCode 1801892:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SONU BUNKER)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SONU BUNKER)
+   empCode 1800978:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SUKHIYA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SUKHIYA DEVI)
+   empCode 1801534:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SUKHRAM)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SUKHRAM)
+   empCode 1800154:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SUMITRA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SUMITRA DEVI)
+   empCode 1801947:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SUNIL MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SUNIL MEENA)
+   empCode 1802365:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SUNIL MEGHWAL)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SUNIL MEGHWAL)
+   empCode 1801924:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SUNITA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SUNITA DEVI)
+   empCode 1800117:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SUNITA DEVI MORYA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SUNITA DEVI MORYA)
+   empCode 1801728:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SURENDER SINGH)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SURENDER SINGH)
+   empCode 1801746:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SUSHILA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SUSHILA DEVI)
+   empCode 1801025:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SUSHILA PRAJAPAT)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SUSHILA PRAJAPAT)
+   empCode 1800046:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (SYOJI RAM JAT)
+     - [WHITE_COLLAR] 'Production-White Collar'  (SYOJI RAM JAT)
+   empCode 1802383:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (TARACHAND BHEEL)
+     - [WHITE_COLLAR] 'Production-White Collar'  (TARACHAND BHEEL)
+   empCode 1800143:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (UGANTI DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (UGANTI DEVI)
+   empCode 1802254:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (UMESH)
+     - [WHITE_COLLAR] 'Production-White Collar'  (UMESH)
+   empCode 1802287:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (VIJAY PAL MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (VIJAY PAL MEENA)
+   empCode 1801427:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (Vijay Vikram Singh)
+     - [WHITE_COLLAR] 'Production-White Collar'  (Vijay Vikram Singh)
+   empCode 1802345:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (VIKAS KUMAR MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (VIKAS KUMAR MEENA)
+   empCode 1801938:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (VIKAS MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (VIKAS MEENA)
+   empCode 1801545:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (VIMALA DEVI)
+     - [WHITE_COLLAR] 'Production-White Collar'  (VIMALA DEVI)
+   empCode 1801853:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (VINOD KUMAR MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (VINOD KUMAR MEENA)
+   empCode 1800474:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (VIRENDRA KUMAR)
+     - [WHITE_COLLAR] 'Production-White Collar'  (VIRENDRA KUMAR)
+   empCode 1802281:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (YADRAM MEENA)
+     - [WHITE_COLLAR] 'Production-White Collar'  (YADRAM MEENA)
+   empCode 1802369:
+     - [BLUE_COLLAR] 'Production-Helper blue collor'  (YASHPAL JATAV)
+     - [WHITE_COLLAR] 'Production-White Collar'  (YASHPAL JATAV)

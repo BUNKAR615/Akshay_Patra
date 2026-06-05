@@ -218,6 +218,7 @@ model SelfAssessment {
   @@unique([userId, quarterId])
   @@index([quarterId])
   @@index([userId, quarterId])
+  @@index([quarterId, userId])
   @@map("self_assessments")
 }
 
@@ -267,6 +268,7 @@ model BranchManagerEvaluation {
   @@index([employeeId])
   @@index([quarterId])
   @@index([employeeId, quarterId])
+  @@index([quarterId, employeeId])
   @@map("branch_manager_evaluations")
 }
 
@@ -293,6 +295,7 @@ model ClusterManagerEvaluation {
   @@index([employeeId])
   @@index([quarterId])
   @@index([employeeId, quarterId])
+  @@index([quarterId, employeeId])
   @@map("cluster_manager_evaluations")
 }
 
@@ -558,6 +561,7 @@ model HodEvaluation {
 
   @@unique([hodId, employeeId, quarterId])
   @@index([employeeId, quarterId])
+  @@index([quarterId, employeeId])
   @@map("hod_evaluations")
 }
 
@@ -588,6 +592,7 @@ model HrEvaluation {
 
   @@unique([hrUserId, employeeId, quarterId])
   @@index([employeeId, quarterId])
+  @@index([quarterId, employeeId])
   @@map("hr_evaluations")
 }
 

@@ -27,9 +27,52 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
         const qId = quarter.id;
 
         // ── Self Assessment ──
-        const selfAssessment = await prisma.selfAssessment.findUnique({
-            where: { userId_quarterId: { userId, quarterId: qId } },
-        });
+        // Self-assessment + every stage-progress lookup are independent once we
+        // know the quarter, so fire them concurrently instead of serially
+        // round-tripping to Neon 8 times (this endpoint loads on every employee
+        // dashboard view — mostly mobile, where the latency stacks up worst).
+        const [
+            selfAssessment,
+            stage1,
+            supEval,
+            stage2,
+            bmEval,
+            stage3,
+            cmEval,
+            bestEmployee,
+        ] = await Promise.all([
+            prisma.selfAssessment.findUnique({
+                where: { userId_quarterId: { userId, quarterId: qId } },
+            }),
+            prisma.shortlistStage1.findFirst({
+                where: { userId, quarterId: qId },
+                select: { rank: true },
+            }),
+            prisma.supervisorEvaluation.findFirst({
+                where: { employeeId: userId, quarterId: qId },
+                select: { id: true },
+            }),
+            prisma.shortlistStage2.findFirst({
+                where: { userId, quarterId: qId },
+                select: { rank: true },
+            }),
+            prisma.branchManagerEvaluation.findFirst({
+                where: { employeeId: userId, quarterId: qId },
+                select: { id: true },
+            }),
+            prisma.shortlistStage3.findFirst({
+                where: { userId, quarterId: qId },
+                select: { rank: true },
+            }),
+            prisma.clusterManagerEvaluation.findFirst({
+                where: { employeeId: userId, quarterId: qId },
+                select: { id: true },
+            }),
+            prisma.bestEmployee.findFirst({
+                where: { userId, quarterId: qId },
+                select: { id: true },
+            }),
+        ]);
 
         let answersWithQuestions = [];
         const OPTIONS_MAP = {
@@ -55,42 +98,6 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
                 answerLabel: OPTIONS_MAP[String(a.score)] || "Unknown",
             }));
         }
-
-        // ── Stage progress ──
-        const stage1 = await prisma.shortlistStage1.findFirst({
-            where: { userId, quarterId: qId },
-            select: { rank: true },
-        });
-
-        const supEval = await prisma.supervisorEvaluation.findFirst({
-            where: { employeeId: userId, quarterId: qId },
-            select: { id: true },
-        });
-
-        const stage2 = await prisma.shortlistStage2.findFirst({
-            where: { userId, quarterId: qId },
-            select: { rank: true },
-        });
-
-        const bmEval = await prisma.branchManagerEvaluation.findFirst({
-            where: { employeeId: userId, quarterId: qId },
-            select: { id: true },
-        });
-
-        const stage3 = await prisma.shortlistStage3.findFirst({
-            where: { userId, quarterId: qId },
-            select: { rank: true },
-        });
-
-        const cmEval = await prisma.clusterManagerEvaluation.findFirst({
-            where: { employeeId: userId, quarterId: qId },
-            select: { id: true },
-        });
-
-        const bestEmployee = await prisma.bestEmployee.findFirst({
-            where: { userId, quarterId: qId },
-            select: { id: true },
-        });
 
         // Determine current stage
         let currentStage = 0;

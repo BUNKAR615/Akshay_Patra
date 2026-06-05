@@ -11,27 +11,31 @@ export async function GET(request) {
         const userId = request.headers.get("x-user-id");
         if (!userId) return unauthorized();
 
-        const user = await withDbRetry(() => prisma.user.findUnique({
-            where: { id: userId },
-            select: {
-                id: true, empCode: true, name: true, role: true, departmentId: true, designation: true, mobile: true,
-                branchId: true,
-                department: { select: { id: true, name: true, branch: { select: { name: true } } } },
-                // Branch-level scope for ADMIN / BM / CM / HR / COMMITTEE users
-                // who have no departmentId — the profile card resolves Branch
-                // from here when the department-derived branch is absent.
-                scopedBranch: { select: { name: true } },
-                departmentRoles: {
-                    select: { departmentId: true, role: true, department: { select: { id: true, name: true } } },
+        // User profile and the active-quarter lookup are independent, so run
+        // them concurrently — this endpoint gates every dashboard's first
+        // render, so shaving a DB round-trip here speeds up every role's load.
+        const [user, activeQuarter] = await Promise.all([
+            withDbRetry(() => prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true, empCode: true, name: true, role: true, departmentId: true, designation: true, mobile: true,
+                    branchId: true,
+                    department: { select: { id: true, name: true, branch: { select: { name: true } } } },
+                    // Branch-level scope for ADMIN / BM / CM / HR / COMMITTEE users
+                    // who have no departmentId — the profile card resolves Branch
+                    // from here when the department-derived branch is absent.
+                    scopedBranch: { select: { name: true } },
+                    departmentRoles: {
+                        select: { departmentId: true, role: true, department: { select: { id: true, name: true } } },
+                    },
                 },
-            },
-        }));
+            })),
+            withDbRetry(() => prisma.quarter.findFirst({
+                where: { status: "ACTIVE" },
+                select: { id: true, name: true },
+            })),
+        ]);
         if (!user) return notFound("User not found");
-
-        const activeQuarter = await withDbRetry(() => prisma.quarter.findFirst({
-            where: { status: "ACTIVE" },
-            select: { id: true, name: true },
-        }));
 
         // HOD entries in `departmentRoles` are only meaningful while there's
         // a corresponding HodAssignment in the ACTIVE quarter. Stale rows
