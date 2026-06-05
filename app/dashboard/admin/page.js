@@ -1996,8 +1996,8 @@ export default function AdminDashboard() {
             {/* ═══════ EMPLOYEES TAB ═══════ */}
             {tab === "employees" && (
                 <div className="space-y-6">
-                    <div className="bg-white border rounded-xl p-3 sm:p-5 shadow-sm border-[#E0E0E0] space-y-3 sm:space-y-0 sm:flex sm:flex-row sm:gap-4 sm:justify-between sm:items-center">
-                        <div className="relative w-full sm:flex-1 sm:max-w-md">
+                    <div className="bg-white border rounded-xl p-3 sm:p-5 shadow-sm border-[#E0E0E0] space-y-3 sm:space-y-0 sm:flex sm:flex-row sm:flex-wrap sm:gap-4 sm:justify-between sm:items-center">
+                        <div className="relative w-full sm:flex-1 sm:min-w-[280px] sm:max-w-lg">
                             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#999999]"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></span>
                             <input type="text" placeholder="Search name or code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-12 pl-11 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-base text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
                         </div>

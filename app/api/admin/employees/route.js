@@ -40,10 +40,16 @@ export const GET = withRole(["ADMIN"], async (request) => {
             });
         }
 
-        const isEvalRole = role === "BRANCH_MANAGER" || role === "CLUSTER_MANAGER" || role === "HOD";
+        // Role is stored differently depending on its scope:
+        //   EMPLOYEE / ADMIN   → User.role
+        //   HOD                → department-scoped, in DepartmentRoleMapping
+        //   BM/CM/HR/Committee → branch-scoped, in their own assignment tables
+        //                        (bmAssignment / cm/hr/committee branch assignments).
+        // HOD is therefore the only evaluator role that combines with a department.
+        const isDeptScopedRole = role === "HOD";
 
-        if (department && isEvalRole) {
-            // Combined: find users who hold this specific role in this specific department
+        if (department && isDeptScopedRole) {
+            // Combined: users who hold HOD in this specific department
             andConditions.push({
                 departmentRoles: { some: { role, department: { name: department } } },
             });
@@ -72,10 +78,16 @@ export const GET = withRole(["ADMIN"], async (request) => {
                 where.role = "ADMIN";
             } else if (role === "EVALUATOR") {
                 where.departmentRoles = { some: {} };
-            } else if (isEvalRole) {
-                where.departmentRoles = { some: { role } };
-            } else if (role === "HR" || role === "COMMITTEE") {
-                where.role = role;
+            } else if (role === "HOD") {
+                where.departmentRoles = { some: { role: "HOD" } };
+            } else if (role === "BRANCH_MANAGER") {
+                where.bmAssignment = { isNot: null };
+            } else if (role === "CLUSTER_MANAGER") {
+                where.cmBranchAssignments = { some: {} };
+            } else if (role === "HR") {
+                where.hrBranchAssignments = { some: {} };
+            } else if (role === "COMMITTEE") {
+                where.committeeBranchAssignments = { some: {} };
             }
         }
 
@@ -84,10 +96,20 @@ export const GET = withRole(["ADMIN"], async (request) => {
         }
 
         if (branch) {
+            // Match every way a user can belong to a branch: their department's
+            // branch, a department-scoped (HOD) role's branch, their direct branch
+            // scope, or any branch-scoped assignment (BM/CM/HR/Committee). Without
+            // the latter, branch-scoped role-holders (e.g. a Branch Manager with no
+            // department) vanish whenever a branch is selected.
             andConditions.push({
                 OR: [
                     { department: { branch: { name: branch } } },
                     { departmentRoles: { some: { department: { branch: { name: branch } } } } },
+                    { scopedBranch: { name: branch } },
+                    { bmAssignment: { branch: { name: branch } } },
+                    { cmBranchAssignments: { some: { branch: { name: branch } } } },
+                    { hrBranchAssignments: { some: { branch: { name: branch } } } },
+                    { committeeBranchAssignments: { some: { branch: { name: branch } } } },
                 ],
             });
         }
