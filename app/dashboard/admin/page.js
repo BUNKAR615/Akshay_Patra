@@ -548,7 +548,7 @@ export default function AdminDashboard() {
                 "S4 HR Evaluator": e.stage4.hrEval ? `${e.stage4.hrEval.evaluatorName} (${e.stage4.hrEval.evaluatorEmpCode})` : "",
                 "S4 HR Score": fmtScore(e.stage4.hrEval?.hrScore),
                 "S4 Attendance %": fmtScore(e.stage4.hrEval?.attendancePct),
-                "S4 Working Hours": fmtScore(e.stage4.hrEval?.workingHours),
+                "S4 Punctuality %": fmtScore(e.stage4.hrEval?.workingHours),
                 "S4 Combined": fmtScore(e.stage4.hrEval?.combinedScore),
                 "S4 HR At": fmtDate(e.stage4.hrEval?.submittedAt),
 

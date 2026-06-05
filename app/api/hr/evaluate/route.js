@@ -5,7 +5,7 @@ import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { ok, fail, validateBody, handleApiError } from "../../../../lib/api-response";
 import { hrEvaluateSchema } from "../../../../lib/validators";
-import { normalizeScore, calculateBranchFinalScore } from "../../../../lib/scoreCalculator";
+import { normalizeScore, calculateBranchFinalScore, hrBandMarks } from "../../../../lib/scoreCalculator";
 import { regenerateBranchStage4 } from "../../../../lib/branchPromotion";
 import { createNotification } from "../../../../lib/notifications";
 
@@ -20,9 +20,12 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
         const { data, error } = await validateBody(request, hrEvaluateSchema);
         if (error) return error;
 
-        const { employeeId, attendancePct, workingHours, referenceSheetUrl, notes } = data;
-        // HR score derived purely from attendance % (0-100 scale)
-        const hrScore = Math.max(0, Math.min(100, attendancePct));
+        const { employeeId, attendancePct, punctualityPct, attendancePdfUrl, punctualityPdfUrl, referenceSheetUrl, notes } = data;
+        // HR's 20-mark round = attendance (10) + punctuality (10). Each half is
+        // banded from its percentage (≥90→10, 80→8, 70→6, …) and summed.
+        const attendanceMarks = hrBandMarks(attendancePct);
+        const punctualityMarks = hrBandMarks(punctualityPct);
+        const hrScore = attendanceMarks + punctualityMarks; // 0..20
 
         const quarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
         if (!quarter) return fail("No active quarter");
@@ -66,8 +69,10 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
         // Stage 3 stored cmScore as the already-normalized 0-100 score (avgCmNorm); no reversal needed.
         const cmNorm = stage3Entry.cmScore;
 
-        // Normalize HR score (hrScore is 0-100)
-        const hrNorm = hrScore;
+        // Convert the 0..20 HR marks back to a 0..100 normalized score so the
+        // shared 20% weighting in calculateBranchFinalScore reproduces the marks
+        // as the contribution: (hrScore / 20) * 100 → * 20 / 100 = hrScore.
+        const hrNorm = (hrScore / 20) * 100;
 
         const { selfContribution, evaluatorContribution, cmContribution, hrContribution, finalScore } =
             calculateBranchFinalScore(selfNorm, evaluatorNorm, cmNorm, hrNorm);
@@ -80,7 +85,11 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
                 hrScore,
                 notes,
                 attendancePct,
-                workingHours,
+                // `workingHours` column is repurposed to persist the punctuality %
+                // (the model has no dedicated punctualityPct column).
+                workingHours: punctualityPct,
+                attendancePdfUrl: attendancePdfUrl || null,
+                punctualityPdfUrl: punctualityPdfUrl || null,
                 referenceSheetUrl: referenceSheetUrl || null,
                 selfContribution,
                 evaluatorContribution,

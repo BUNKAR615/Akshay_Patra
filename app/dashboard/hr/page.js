@@ -11,15 +11,23 @@ async function api(url, opts) {
     return json.data;
 }
 
-/* ─── HR reference-sheet upload constraints ─── */
-// HR reference attachment must be an Excel sheet (.xlsx / .xls), max 300 KB.
-const REF_MAX_BYTES = 300 * 1024;
-const EXCEL_MIME_TYPES = new Set([
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
-    "application/vnd.ms-excel",                                          // .xls
-]);
-const EXCEL_EXTENSION_RE = /\.(xlsx|xls)$/i;
-const REF_FILE_ACCEPT = ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel";
+/* ─── HR attendance / punctuality PDF upload constraints ─── */
+// Each proof file must be a PDF, max 10 MB (matches /api/hr/upload limits).
+const PDF_MAX_BYTES = 10 * 1024 * 1024;
+const PDF_FILE_ACCEPT = "application/pdf,.pdf";
+
+// Client-side mirror of lib/scoreCalculator → hrBandMarks. Live preview only;
+// the server re-computes the authoritative marks on submit.
+//   ≥90 → 10 · 80 → 8 · 70 → 6 · 60 → 4 · 50 → 2 · else 0
+function bandMarks(pct) {
+    if (pct == null || isNaN(pct) || pct < 0) return 0;
+    if (pct >= 90) return 10;
+    if (pct >= 80) return 8;
+    if (pct >= 70) return 6;
+    if (pct >= 60) return 4;
+    if (pct >= 50) return 2;
+    return 0;
+}
 
 /* ─── tiny helpers ─── */
 function formatBytes(bytes) {
@@ -73,27 +81,26 @@ export default function HRDashboard() {
     const [selectedBranchId, setSelectedBranchId] = useState("");
     const [progressTotals, setProgressTotals] = useState({ evaluated: 0, total: 0 });
 
-    // Per-employee UI state keyed by employeeId
-    // Attendance is no longer entered as a direct % — HR enters days present
-    // and total working days, and the % is derived as (present / total) * 100.
-    const [daysPresentMap, setDaysPresentMap] = useState({});          // { [empId]: number }
-    const [totalWorkingDaysMap, setTotalWorkingDaysMap] = useState({}); // { [empId]: number }
-    const [workingHoursMap, setWorkingHoursMap] = useState({}); // { [empId]: number }
-    // Reference sheet — TWO independent state buckets so the local file
-    // input and the external link input never feed into each other:
-    //   refLinkUrls       — driven by the "Reference Sheet Link" text box
-    //   refLocalFileUrls  — driven by the "Choose File" upload result
-    // On submit we prefer the link URL when present, falling back to the
-    // local file URL. Both are stored server-side in the same
-    // `referenceSheetUrl` column for display in the Committee view.
-    const [refLinkUrls, setRefLinkUrls] = useState({});       // { [empId]: string }
-    const [refLocalFileUrls, setRefLocalFileUrls] = useState({}); // { [empId]: string }
-    const [refLocalFileNames, setRefLocalFileNames] = useState({}); // { [empId]: string }
+    // Per-employee UI state keyed by employeeId.
+    // HR enters raw day counts; attendance % and punctuality % are derived:
+    //   attendance %  = (present  / working) * 100
+    //   punctuality % = (punctual / working) * 100
+    const [daysPresentMap, setDaysPresentMap] = useState({});          // { [empId]: total present days }
+    const [punctualDaysMap, setPunctualDaysMap] = useState({});        // { [empId]: total punctual days }
+    const [totalWorkingDaysMap, setTotalWorkingDaysMap] = useState({}); // { [empId]: total working days }
+
+    // Two INDEPENDENT proof uploads — attendance PDF and punctuality PDF.
+    // They never feed into each other; each has its own URL + filename bucket.
+    const [attendancePdfUrls, setAttendancePdfUrls] = useState({});     // { [empId]: url }
+    const [attendancePdfNames, setAttendancePdfNames] = useState({});   // { [empId]: filename }
+    const [punctualityPdfUrls, setPunctualityPdfUrls] = useState({});   // { [empId]: url }
+    const [punctualityPdfNames, setPunctualityPdfNames] = useState({}); // { [empId]: filename }
+    const [pdfUploading, setPdfUploading] = useState({});              // { [`${empId}:${kind}`]: bool }
+
     const [hrNotes, setHrNotes] = useState({});                // { [empId]: string }
     const [evalSubmitting, setEvalSubmitting] = useState({});  // { [empId]: bool }
     const [evalDone, setEvalDone] = useState({});              // { [empId]: bool }
     const [evalMessages, setEvalMessages] = useState({});      // { [empId]: { type, text } }
-    const [refUploading, setRefUploading] = useState({});      // { [empId]: bool }
 
     const fileRefs = useRef({});
 
@@ -167,120 +174,107 @@ export default function HRDashboard() {
         if (authorized && mainTab === "evaluate") fetchShortlist("");
     }, [authorized, mainTab]);
 
-    // Upload a local Excel sheet (.xlsx / .xls, ≤ 300 KB) to the server
-    // and remember the returned URL in `refLocalFileUrls` ONLY. We must
-    // NOT touch `refLinkUrls` — the two inputs are independent by spec.
-    // The "Reference Sheet Link" text box stays untouched and the HR user
-    // can still paste an external URL in it separately.
-    const handleRefUpload = async (employeeId, file) => {
+    // Upload a PDF proof (attendance or punctuality) to the server. The two
+    // kinds are fully independent — each writes only its own URL/name bucket.
+    //   kind: "attendance" | "punctuality"
+    const handlePdfUpload = async (employeeId, kind, file) => {
         if (!file) return;
-        // MIME types for Excel are not always reported reliably (especially
-        // on older Windows browsers), so we accept either a known Excel
-        // MIME OR an .xlsx/.xls extension before trusting the file.
-        const isExcelMime = EXCEL_MIME_TYPES.has(file.type);
-        const isExcelExt = EXCEL_EXTENSION_RE.test(file.name || "");
-        if (!isExcelMime && !isExcelExt) {
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Reference sheet must be an Excel file (.xlsx or .xls)" } }));
+        const busyKey = `${employeeId}:${kind}`;
+        const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+        if (!isPdf) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: `${kind === "attendance" ? "Attendance" : "Punctuality"} file must be a PDF` } }));
             return;
         }
-        if (file.size > REF_MAX_BYTES) {
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Excel file must be 300 KB or smaller" } }));
+        if (file.size > PDF_MAX_BYTES) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "PDF must be 10 MB or smaller" } }));
             return;
         }
-        setRefUploading(prev => ({ ...prev, [employeeId]: true }));
+        setPdfUploading(prev => ({ ...prev, [busyKey]: true }));
         setEvalMessages(prev => ({ ...prev, [employeeId]: null }));
         try {
             const fd = new FormData();
             fd.append("file", file);
-            fd.append("kind", "reference");
+            fd.append("kind", kind);
             const res = await fetch("/api/hr/upload", { method: "POST", body: fd });
             const json = await res.json();
             if (!res.ok || !json.success) {
                 throw new Error(json.message || "Upload failed");
             }
-            // Local-file bucket only — DO NOT auto-populate the link field.
-            setRefLocalFileUrls(prev => ({ ...prev, [employeeId]: json.data.url }));
-            setRefLocalFileNames(prev => ({ ...prev, [employeeId]: file.name }));
+            if (kind === "attendance") {
+                setAttendancePdfUrls(prev => ({ ...prev, [employeeId]: json.data.url }));
+                setAttendancePdfNames(prev => ({ ...prev, [employeeId]: file.name }));
+            } else {
+                setPunctualityPdfUrls(prev => ({ ...prev, [employeeId]: json.data.url }));
+                setPunctualityPdfNames(prev => ({ ...prev, [employeeId]: file.name }));
+            }
             setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "success", text: `File "${file.name}" uploaded` } }));
         } catch (err) {
             setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: err.message || "Upload failed" } }));
         }
-        setRefUploading(prev => ({ ...prev, [employeeId]: false }));
+        setPdfUploading(prev => ({ ...prev, [busyKey]: false }));
     };
 
-    // Clear a previously-uploaded local file. The link field is untouched.
-    const handleClearLocalFile = (employeeId) => {
-        setRefLocalFileUrls(prev => {
-            const next = { ...prev };
-            delete next[employeeId];
-            return next;
-        });
-        setRefLocalFileNames(prev => {
-            const next = { ...prev };
-            delete next[employeeId];
-            return next;
-        });
-        if (fileRefs.current[employeeId]) {
-            try { fileRefs.current[employeeId].value = ""; } catch {}
-        }
+    // Clear a previously-uploaded PDF for one kind, leaving the other untouched.
+    const handleClearPdf = (employeeId, kind) => {
+        const [urlsSetter, namesSetter] = kind === "attendance"
+            ? [setAttendancePdfUrls, setAttendancePdfNames]
+            : [setPunctualityPdfUrls, setPunctualityPdfNames];
+        urlsSetter(prev => { const next = { ...prev }; delete next[employeeId]; return next; });
+        namesSetter(prev => { const next = { ...prev }; delete next[employeeId]; return next; });
+        const ref = fileRefs.current[`${employeeId}:${kind}`];
+        if (ref) { try { ref.value = ""; } catch {} }
     };
 
-    // Derive attendance % from days present + total working days. Returns a
-    // Number (0-100+) when both inputs are present and numeric, or null so
-    // callers can decide how to display/validate empty/invalid states.
-    const computeAttendancePct = (employeeId) => {
-        const presentRaw = daysPresentMap[employeeId];
-        const totalRaw = totalWorkingDaysMap[employeeId];
-        if (presentRaw === undefined || presentRaw === "" || totalRaw === undefined || totalRaw === "") return null;
-        const present = Number(presentRaw);
+    // Derive a percentage as (numerator / working days) * 100. Returns a Number
+    // when inputs are valid, or null so callers can show/validate empty states.
+    const computePct = (numeratorRaw, totalRaw) => {
+        if (numeratorRaw === undefined || numeratorRaw === "" || totalRaw === undefined || totalRaw === "") return null;
+        const num = Number(numeratorRaw);
         const total = Number(totalRaw);
-        if (isNaN(present) || isNaN(total) || total <= 0 || present < 0) return null;
-        return (present / total) * 100;
+        if (isNaN(num) || isNaN(total) || total <= 0 || num < 0) return null;
+        return (num / total) * 100;
     };
+    const computeAttendancePct = (employeeId) => computePct(daysPresentMap[employeeId], totalWorkingDaysMap[employeeId]);
+    const computePunctualityPct = (employeeId) => computePct(punctualDaysMap[employeeId], totalWorkingDaysMap[employeeId]);
 
     const handleEvalSubmit = async (employeeId) => {
         const presentRaw = daysPresentMap[employeeId];
+        const punctualRaw = punctualDaysMap[employeeId];
         const totalDaysRaw = totalWorkingDaysMap[employeeId];
-        const hrs = workingHoursMap[employeeId];
-        if (presentRaw === undefined || presentRaw === "" || totalDaysRaw === undefined || totalDaysRaw === "" || hrs === undefined || hrs === "") {
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Please enter days present, total working days and total working hours" } }));
+        if ([presentRaw, punctualRaw, totalDaysRaw].some(v => v === undefined || v === "")) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Please enter present days, punctual days and total working days" } }));
             return;
         }
         const numPresent = Number(presentRaw);
+        const numPunctual = Number(punctualRaw);
         const numTotalDays = Number(totalDaysRaw);
-        const numHrs = Number(hrs);
         if (isNaN(numTotalDays) || numTotalDays <= 0) {
             setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Total working days must be greater than 0" } }));
             return;
         }
         if (isNaN(numPresent) || numPresent < 0) {
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Days present must be 0 or more" } }));
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Present days must be 0 or more" } }));
+            return;
+        }
+        if (isNaN(numPunctual) || numPunctual < 0) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Punctual days must be 0 or more" } }));
             return;
         }
         if (numPresent > numTotalDays) {
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Days present cannot exceed total working days" } }));
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Present days cannot exceed total working days" } }));
             return;
         }
-        // Attendance % is derived, never entered directly.
-        const numAtt = (numPresent / numTotalDays) * 100;
-        if (isNaN(numHrs) || numHrs < 0) {
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Working hours must be a positive number" } }));
+        if (numPunctual > numTotalDays) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Punctual days cannot exceed total working days" } }));
             return;
         }
+        // Both percentages are derived, never entered directly.
+        const attendancePct = (numPresent / numTotalDays) * 100;
+        const punctualityPct = (numPunctual / numTotalDays) * 100;
 
-        // Two independent reference inputs. Validate each on its OWN rules:
-        //   * The link field, when filled, must be a valid http(s):// URL.
-        //   * The local file, when uploaded, is already validated server-
-        //     side. We don't apply the URL regex to it.
-        // On submit, we send link if present, otherwise the local file URL.
-        // Spec: "Local file upload does not auto-populate the link field."
-        const linkRaw = (refLinkUrls[employeeId] || "").trim();
-        if (linkRaw && !/^https?:\/\//i.test(linkRaw)) {
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Reference Sheet Link must start with http:// or https://" } }));
-            return;
-        }
-        const localFileUrl = refLocalFileUrls[employeeId] || "";
-        const referenceSheetUrl = linkRaw || localFileUrl || "";
+        // Independent PDF proofs — send whichever have been uploaded (optional).
+        const attendancePdfUrl = attendancePdfUrls[employeeId] || "";
+        const punctualityPdfUrl = punctualityPdfUrls[employeeId] || "";
 
         setEvalSubmitting(prev => ({ ...prev, [employeeId]: true }));
         setEvalMessages(prev => ({ ...prev, [employeeId]: null }));
@@ -291,9 +285,10 @@ export default function HRDashboard() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     employeeId,
-                    attendancePct: numAtt,
-                    workingHours: numHrs,
-                    referenceSheetUrl,
+                    attendancePct,
+                    punctualityPct,
+                    attendancePdfUrl,
+                    punctualityPdfUrl,
                     notes: hrNotes[employeeId] || "",
                 }),
             });
@@ -550,12 +545,20 @@ export default function HRDashboard() {
             {shortlist.map((emp) => {
                 const isAlreadyDone = emp.hrEvaluated || evalDone[emp.id];
                 const msg = evalMessages[emp.id];
-                const computedPct = computeAttendancePct(emp.id);
-                // Already-evaluated rows never stored the day-level breakdown,
-                // so fall back to the saved % just for display.
-                const displayPct = computedPct !== null
-                    ? computedPct
+                // Already-evaluated rows never stored the day-level breakdown, so
+                // fall back to the saved percentages for display.
+                const computedAttPct = computeAttendancePct(emp.id);
+                const computedPunPct = computePunctualityPct(emp.id);
+                const attPct = computedAttPct !== null
+                    ? computedAttPct
                     : (isAlreadyDone && emp.attendancePct != null ? Number(emp.attendancePct) : null);
+                const punPct = computedPunPct !== null
+                    ? computedPunPct
+                    : (isAlreadyDone && emp.punctualityPct != null ? Number(emp.punctualityPct) : null);
+                const attMarks = attPct !== null ? bandMarks(attPct) : null;
+                const punMarks = punPct !== null ? bandMarks(punPct) : null;
+                const hrTotal = (attMarks !== null || punMarks !== null)
+                    ? (attMarks || 0) + (punMarks || 0) : null;
 
                 return (
                     <div key={emp.id} className={`bg-white border-2 rounded-xl shadow-sm transition-colors ${isAlreadyDone ? "border-[#00843D]/40 bg-[#F1F8E9]/30" : "border-[#E0E0E0]"}`}>
@@ -590,15 +593,13 @@ export default function HRDashboard() {
 
                         {/* Body */}
                         <div className="px-5 py-4 space-y-4">
-                            {/* Attendance (days present + total working days → auto %) + Working Hours.
-                                HR no longer types the % directly; it is computed below. */}
+                            {/* Day counts — present / punctual / working.
+                                Percentages are derived below; HR never types a % directly. */}
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Days Present</label>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Total Present Days</label>
                                     <input
-                                        type="number"
-                                        min={0}
-                                        step="1"
+                                        type="number" min={0} step="1"
                                         value={daysPresentMap[emp.id] ?? ""}
                                         onChange={(e) => setDaysPresentMap(prev => ({ ...prev, [emp.id]: e.target.value }))}
                                         disabled={isAlreadyDone}
@@ -607,11 +608,20 @@ export default function HRDashboard() {
                                     />
                                 </div>
                                 <div>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Total Punctual Days</label>
+                                    <input
+                                        type="number" min={0} step="1"
+                                        value={punctualDaysMap[emp.id] ?? ""}
+                                        onChange={(e) => setPunctualDaysMap(prev => ({ ...prev, [emp.id]: e.target.value }))}
+                                        disabled={isAlreadyDone}
+                                        placeholder="e.g. 54"
+                                        className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
+                                    />
+                                </div>
+                                <div>
                                     <label className="block text-xs font-bold text-[#666666] mb-1.5">Total Working Days</label>
                                     <input
-                                        type="number"
-                                        min={1}
-                                        step="1"
+                                        type="number" min={1} step="1"
                                         value={totalWorkingDaysMap[emp.id] ?? ""}
                                         onChange={(e) => setTotalWorkingDaysMap(prev => ({ ...prev, [emp.id]: e.target.value }))}
                                         disabled={isAlreadyDone}
@@ -619,93 +629,79 @@ export default function HRDashboard() {
                                         className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Punctuality Days(Present on time)</label>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        step="0.01"
-                                        value={workingHoursMap[emp.id] ?? (emp.workingHours ?? "")}
-                                        onChange={(e) => setWorkingHoursMap(prev => ({ ...prev, [emp.id]: e.target.value }))}
-                                        disabled={isAlreadyDone}
-                                        placeholder="e.g. 70"
-                                        className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
-                                    />
+                            </div>
+
+                            {/* Derived percentages + banded marks (live preview; server is authoritative). */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="flex items-center justify-between gap-2 bg-[#FFF8E1] border border-[#FFE082] rounded-lg px-3 py-2.5">
+                                    <div>
+                                        <p className="text-[11px] font-bold text-[#666666] uppercase tracking-wide">Attendance %</p>
+                                        <p className="text-[10px] text-[#999999]">present ÷ working × 100</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="font-black text-[#F57C00] text-base">{attPct !== null ? `${attPct.toFixed(2)}%` : "—"}</span>
+                                        <p className="text-[11px] font-bold text-[#00843D]">{attMarks !== null ? `${attMarks} / 10 marks` : "— / 10"}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-between gap-2 bg-[#FFF8E1] border border-[#FFE082] rounded-lg px-3 py-2.5">
+                                    <div>
+                                        <p className="text-[11px] font-bold text-[#666666] uppercase tracking-wide">Punctuality %</p>
+                                        <p className="text-[10px] text-[#999999]">punctual ÷ working × 100</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="font-black text-[#F57C00] text-base">{punPct !== null ? `${punPct.toFixed(2)}%` : "—"}</span>
+                                        <p className="text-[11px] font-bold text-[#00843D]">{punMarks !== null ? `${punMarks} / 10 marks` : "— / 10"}</p>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Auto-calculated attendance %, derived from the two day fields above. */}
-                            <div className="flex items-center gap-2 text-sm bg-[#FFF8E1] border border-[#FFE082] rounded-lg px-3 py-2">
-                                <span className="font-bold text-[#666666]">Calculated Attendance %:</span>
-                                <span className="font-black text-[#F57C00]">
-                                    {displayPct !== null ? `${displayPct.toFixed(2)}%` : "—"}
-                                </span>
-                                <span className="text-[11px] text-[#999999]">(days present ÷ total working days × 100)</span>
+                            {/* HR round total — out of 20 (attendance 10 + punctuality 10). */}
+                            <div className="flex items-center justify-between bg-[#003087]/5 border border-[#003087]/20 rounded-lg px-3 py-2">
+                                <span className="text-xs font-bold text-[#003087] uppercase tracking-wide">HR Round Total (Attendance 10 + Punctuality 10)</span>
+                                <span className="font-black text-[#003087] text-base">{hrTotal !== null ? `${hrTotal} / 20` : "— / 20"}</span>
                             </div>
 
-                            {/* Reference Sheet — TWO INDEPENDENT inputs.
-                                These two boxes do not feed into each other.
-                                  (A) Choose File         → local Excel upload
-                                  (B) Reference Sheet Link → external URL only
-                                On submit the link takes precedence if both
-                                are filled (link is what HR explicitly typed). */}
+                            {/* Two INDEPENDENT PDF proofs — attendance + punctuality. */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {/* (A) Local file upload — independent of the link below. */}
-                                <div className="border border-[#E0E0E0] rounded-lg p-3 bg-[#FAFAFA]">
-                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">
-                                        Choose File <span className="font-normal text-[#999999]">(local Excel upload, optional)</span>
-                                    </label>
-                                    <input
-                                        ref={(el) => { fileRefs.current[emp.id] = el; }}
-                                        type="file"
-                                        accept={REF_FILE_ACCEPT}
-                                        disabled={isAlreadyDone || refUploading[emp.id]}
-                                        onChange={(e) => handleRefUpload(emp.id, e.target.files?.[0])}
-                                        className="block w-full text-xs text-[#666666] file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#F57C00]/10 file:text-[#F57C00] hover:file:bg-[#F57C00]/20 disabled:opacity-50"
-                                    />
-                                    <p className="text-[10px] text-[#999999] mt-1">Excel only (.xlsx / .xls) · max 300 KB · does NOT need a URL</p>
-                                    {refUploading[emp.id] && (
-                                        <p className="text-xs text-[#666666] mt-1">Uploading…</p>
-                                    )}
-                                    {!!refLocalFileUrls[emp.id] && !refUploading[emp.id] && (
-                                        <div className="mt-2 flex items-center justify-between gap-2 text-xs bg-[#E8F5E9] border border-[#A5D6A7] rounded px-2 py-1.5">
-                                            <span className="text-[#1B5E20] font-semibold truncate" title={refLocalFileNames[emp.id] || "Uploaded"}>
-                                                ✓ {refLocalFileNames[emp.id] || "File uploaded"}
-                                            </span>
-                                            {!isAlreadyDone && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleClearLocalFile(emp.id)}
-                                                    className="text-[#D32F2F] font-bold hover:underline shrink-0"
-                                                >
-                                                    Remove
-                                                </button>
+                                {[
+                                    { kind: "attendance", title: "Attendance File", url: attendancePdfUrls[emp.id], name: attendancePdfNames[emp.id], savedUrl: emp.attendancePdfUrl },
+                                    { kind: "punctuality", title: "Punctuality Attendance File", url: punctualityPdfUrls[emp.id], name: punctualityPdfNames[emp.id], savedUrl: emp.punctualityPdfUrl },
+                                ].map(({ kind, title, url, name, savedUrl }) => {
+                                    const busy = pdfUploading[`${emp.id}:${kind}`];
+                                    return (
+                                        <div key={kind} className="border border-[#E0E0E0] rounded-lg p-3 bg-[#FAFAFA]">
+                                            <label className="block text-xs font-bold text-[#666666] mb-1.5">
+                                                {title} <span className="font-normal text-[#999999]">(PDF, optional)</span>
+                                            </label>
+                                            {isAlreadyDone ? (
+                                                savedUrl ? (
+                                                    <a href={savedUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-[#003087] underline">View uploaded PDF</a>
+                                                ) : (
+                                                    <p className="text-xs text-[#999999]">No file uploaded</p>
+                                                )
+                                            ) : (
+                                                <>
+                                                    <input
+                                                        ref={(el) => { fileRefs.current[`${emp.id}:${kind}`] = el; }}
+                                                        type="file"
+                                                        accept={PDF_FILE_ACCEPT}
+                                                        disabled={busy}
+                                                        onChange={(e) => handlePdfUpload(emp.id, kind, e.target.files?.[0])}
+                                                        className="block w-full text-xs text-[#666666] file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#F57C00]/10 file:text-[#F57C00] hover:file:bg-[#F57C00]/20 disabled:opacity-50"
+                                                    />
+                                                    <p className="text-[10px] text-[#999999] mt-1">PDF only · max 10 MB</p>
+                                                    {busy && <p className="text-xs text-[#666666] mt-1">Uploading…</p>}
+                                                    {!!url && !busy && (
+                                                        <div className="mt-2 flex items-center justify-between gap-2 text-xs bg-[#E8F5E9] border border-[#A5D6A7] rounded px-2 py-1.5">
+                                                            <span className="text-[#1B5E20] font-semibold truncate" title={name || "Uploaded"}>✓ {name || "File uploaded"}</span>
+                                                            <button type="button" onClick={() => handleClearPdf(emp.id, kind)} className="text-[#D32F2F] font-bold hover:underline shrink-0">Remove</button>
+                                                        </div>
+                                                    )}
+                                                </>
                                             )}
                                         </div>
-                                    )}
-                                </div>
-                                {/* (B) External URL — independent of the file upload. */}
-                                <div className="border border-[#E0E0E0] rounded-lg p-3 bg-[#FAFAFA]">
-                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">
-                                        Reference Sheet Link <span className="font-normal text-[#999999]">(external URL, optional)</span>
-                                    </label>
-                                    <input
-                                        type="url"
-                                        value={refLinkUrls[emp.id] ?? (
-                                            // Pre-fill from prior evaluation ONLY if the saved
-                                            // value is an absolute URL. A saved local-upload
-                                            // path goes into the file slot below (read-only),
-                                            // never into the link box.
-                                            /^https?:\/\//i.test(emp.referenceSheetUrl || "") ? emp.referenceSheetUrl : ""
-                                        )}
-                                        onChange={(e) => setRefLinkUrls(prev => ({ ...prev, [emp.id]: e.target.value }))}
-                                        disabled={isAlreadyDone}
-                                        placeholder="https://drive.google.com/..."
-                                        pattern="https?://.*"
-                                        className="w-full h-10 px-3 bg-white border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
-                                    />
-                                    <p className="text-[10px] text-[#999999] mt-1">Must start with http:// or https:// · paste only, no files</p>
-                                </div>
+                                    );
+                                })}
                             </div>
 
                             {/* Notes — separated onto its own row now that the

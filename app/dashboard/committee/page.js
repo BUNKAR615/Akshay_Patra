@@ -294,7 +294,7 @@ function BranchSection({ branch }) {
     const COLS = [
         "Rank", "Name", "Emp Code",
         withWeight("Self", 1), withWeight("BM", 2), withWeight("CM", 3), withWeight("HR", 4),
-        "Attendance", "Total Working Hours", "Reference",
+        "Attendance", "Punctuality", "Reference",
     ];
 
     return (
@@ -354,21 +354,36 @@ function BranchSection({ branch }) {
                                             <td className="px-3 py-2.5 text-[13px] text-center tabular-nums text-[#374151]">
                                                 {w.attendancePct != null ? `${Number(w.attendancePct).toFixed(2)}%` : "—"}
                                             </td>
-                                            <td className="px-3 py-2.5 text-[13px] text-center tabular-nums text-[#374151]">{fmtScore(w.workingHours)}</td>
+                                            <td className="px-3 py-2.5 text-[13px] text-center tabular-nums text-[#374151]">
+                                                {w.punctualityPct != null ? `${Number(w.punctualityPct).toFixed(2)}%` : "—"}
+                                            </td>
                                             <td className="px-3 py-2.5 text-[13px]">
-                                                {w.referenceSheetUrl ? (
-                                                    <a
-                                                        href={w.referenceSheetUrl}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="font-bold underline"
-                                                        style={{ color: AP.blue }}
-                                                    >
-                                                        View
-                                                    </a>
-                                                ) : (
-                                                    <span className="text-[#9CA3AF]">—</span>
-                                                )}
+                                                {(() => {
+                                                    const links = [
+                                                        { url: w.attendancePdfUrl, label: "Attendance" },
+                                                        { url: w.punctualityPdfUrl, label: "Punctuality" },
+                                                    ].filter((l) => l.url);
+                                                    if (links.length === 0 && w.referenceSheetUrl) {
+                                                        links.push({ url: w.referenceSheetUrl, label: "View" });
+                                                    }
+                                                    if (links.length === 0) return <span className="text-[#9CA3AF]">—</span>;
+                                                    return (
+                                                        <div className="flex flex-col gap-0.5">
+                                                            {links.map((l) => (
+                                                                <a
+                                                                    key={l.label}
+                                                                    href={l.url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="font-bold underline"
+                                                                    style={{ color: AP.blue }}
+                                                                >
+                                                                    {l.label}
+                                                                </a>
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </td>
                                         </tr>
                                     );

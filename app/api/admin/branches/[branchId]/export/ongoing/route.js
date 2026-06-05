@@ -244,7 +244,10 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
                         evaluatorName: hr.hr?.name || "",
                         hrScore: hr.hrScore,
                         attendancePct: hr.attendancePct,
+                        // `workingHours` column now persists the punctuality %; expose
+                        // it under a clear alias while keeping the legacy key.
                         workingHours: hr.workingHours,
+                        punctualityPct: hr.workingHours,
                         combinedScore: hr.stage4CombinedScore,
                         submittedAt: hr.submittedAt,
                     } : null,

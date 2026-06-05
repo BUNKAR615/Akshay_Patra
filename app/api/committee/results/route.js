@@ -115,7 +115,10 @@ export const GET = withRole(["COMMITTEE", "ADMIN"], async (request, { user }) =>
                 { stage: 4, name: "HR Evaluation", score: be.hrScore, weightPct: 20 },
             ],
             attendancePct: be.attendancePct,
-            workingHours: be.workingHours,
+            // `workingHours` column now persists the punctuality % (HR Stage-4 change).
+            punctualityPct: be.workingHours,
+            attendancePdfUrl: be.attendancePdfUrl,
+            punctualityPdfUrl: be.punctualityPdfUrl,
             referenceSheetUrl: be.referenceSheetUrl,
             finalScore: be.finalScore,
             rank: 0,

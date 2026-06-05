@@ -119,7 +119,7 @@ export const GET = withRole(["HR", "ADMIN"], async (request, { user }) => {
         // HR's already-submitted evaluations across the active quarter.
         const evaluations = await prisma.hrEvaluation.findMany({
             where: { hrUserId: user.userId, quarterId: quarter.id },
-            select: { employeeId: true, attendancePct: true, workingHours: true, referenceSheetUrl: true, hrScore: true, notes: true },
+            select: { employeeId: true, attendancePct: true, workingHours: true, attendancePdfUrl: true, punctualityPdfUrl: true, referenceSheetUrl: true, hrScore: true, notes: true },
         });
         const evalMap = new Map(evaluations.map((e) => [e.employeeId, e]));
 
@@ -137,7 +137,10 @@ export const GET = withRole(["HR", "ADMIN"], async (request, { user }) => {
                 branchName: b?.name || "",
                 hrEvaluated: !!ev,
                 attendancePct: ev?.attendancePct ?? null,
-                workingHours: ev?.workingHours ?? null,
+                // `workingHours` column now persists the punctuality % (see evaluate route).
+                punctualityPct: ev?.workingHours ?? null,
+                attendancePdfUrl: ev?.attendancePdfUrl ?? null,
+                punctualityPdfUrl: ev?.punctualityPdfUrl ?? null,
                 referenceSheetUrl: ev?.referenceSheetUrl ?? null,
                 hrNotes: ev?.notes ?? null,
             };

@@ -69,7 +69,9 @@ async function main() {
         const selfNorm = selfAssess.normalizedScore;
         const evaluatorNorm = (stage3.evaluatorScore / 40) * 100;
         const cmNorm = stage3.cmScore;
-        const hrNorm = Math.max(0, Math.min(100, ev.hrScore || 0));
+        // hrScore is the 0..20 banded HR mark (attendance 10 + punctuality 10);
+        // normalize back to 0..100 so the 20% weight reproduces it as the contribution.
+        const hrNorm = Math.max(0, Math.min(100, ((ev.hrScore || 0) / 20) * 100));
 
         const next = calculateBranchFinalScore(selfNorm, evaluatorNorm, cmNorm, hrNorm);
 
