@@ -607,7 +607,7 @@ export default function HRDashboard() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Punct</label>
+                                    <label className="block text-xs font-bold text-[#666666] mb-1.5">Total Working Days</label>
                                     <input
                                         type="number"
                                         min={1}
