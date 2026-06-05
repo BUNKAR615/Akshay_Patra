@@ -21,7 +21,7 @@ import { getClientIp } from "../../../../lib/http";
  *
  * Per-kind file rules:
  *   - kind="reference"             → Excel only (.xlsx / .xls), ≤ 300 KB
- *   - kind="attendance"|"punctuality" → PDF only (application/pdf), ≤ 10 MB
+ *   - kind="attendance"|"punctuality" → PDF only (application/pdf), ≤ 1 MB
  *     (these inputs are not exposed in the current HR UI but the route
  *      keeps them so a future re-introduction does not need a backend change)
  *
@@ -35,7 +35,7 @@ import { getClientIp } from "../../../../lib/http";
  *     500 that would otherwise come from `put()` throwing on a missing
  *     token, while leaving the production path untouched.
  */
-const MAX_PDF_BYTES = 10 * 1024 * 1024;        // 10 MB — attendance / punctuality
+const MAX_PDF_BYTES = 1 * 1024 * 1024;         // 1 MB — attendance / punctuality
 const MAX_REF_BYTES = 300 * 1024;              // 300 KB — Excel reference attachment
 const ALLOWED_KINDS = new Set(["attendance", "punctuality", "reference"]);
 const EXCEL_MIME_TYPES = new Set([

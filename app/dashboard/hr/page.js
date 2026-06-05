@@ -12,8 +12,8 @@ async function api(url, opts) {
 }
 
 /* ─── HR attendance / punctuality PDF upload constraints ─── */
-// Each proof file must be a PDF, max 10 MB (matches /api/hr/upload limits).
-const PDF_MAX_BYTES = 10 * 1024 * 1024;
+// Each proof file must be a PDF, max 1 MB (matches /api/hr/upload limits).
+const PDF_MAX_BYTES = 1 * 1024 * 1024;
 const PDF_FILE_ACCEPT = "application/pdf,.pdf";
 
 /* ─── tiny helpers ─── */
@@ -173,7 +173,7 @@ export default function HRDashboard() {
             return;
         }
         if (file.size > PDF_MAX_BYTES) {
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "PDF must be 10 MB or smaller" } }));
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "PDF must be 1 MB or smaller" } }));
             return;
         }
         setPdfUploading(prev => ({ ...prev, [busyKey]: true }));
@@ -661,7 +661,7 @@ export default function HRDashboard() {
                                                         onChange={(e) => handlePdfUpload(emp.id, kind, e.target.files?.[0])}
                                                         className="block w-full text-xs text-[#666666] file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#F57C00]/10 file:text-[#F57C00] hover:file:bg-[#F57C00]/20 disabled:opacity-50"
                                                     />
-                                                    <p className="text-[10px] text-[#999999] mt-1">PDF only · max 10 MB</p>
+                                                    <p className="text-[10px] text-[#999999] mt-1">PDF only · max 1 MB</p>
                                                     {busy && <p className="text-xs text-[#666666] mt-1">Uploading…</p>}
                                                     {!!url && !busy && (
                                                         <div className="mt-2 flex items-center justify-between gap-2 text-xs bg-[#E8F5E9] border border-[#A5D6A7] rounded px-2 py-1.5">
