@@ -294,7 +294,7 @@ function BranchSection({ branch }) {
     const COLS = [
         "Rank", "Name", "Emp Code",
         withWeight("Self", 1), withWeight("BM", 2), withWeight("CM", 3), withWeight("HR", 4),
-        "Attendance", "Punctuality", "Reference",
+        "Attendance", "Punctuality", "Attendance PDF", "Punctuality PDF",
     ];
 
     return (
@@ -358,32 +358,34 @@ function BranchSection({ branch }) {
                                                 {w.punctualityPct != null ? `${Number(w.punctualityPct).toFixed(2)}%` : "—"}
                                             </td>
                                             <td className="px-3 py-2.5 text-[13px]">
-                                                {(() => {
-                                                    const links = [
-                                                        { url: w.attendancePdfUrl, label: "Attendance" },
-                                                        { url: w.punctualityPdfUrl, label: "Punctuality" },
-                                                    ].filter((l) => l.url);
-                                                    if (links.length === 0 && w.referenceSheetUrl) {
-                                                        links.push({ url: w.referenceSheetUrl, label: "View" });
-                                                    }
-                                                    if (links.length === 0) return <span className="text-[#9CA3AF]">—</span>;
-                                                    return (
-                                                        <div className="flex flex-col gap-0.5">
-                                                            {links.map((l) => (
-                                                                <a
-                                                                    key={l.label}
-                                                                    href={l.url}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="font-bold underline"
-                                                                    style={{ color: AP.blue }}
-                                                                >
-                                                                    {l.label}
-                                                                </a>
-                                                            ))}
-                                                        </div>
-                                                    );
-                                                })()}
+                                                {(w.attendancePdfUrl || w.referenceSheetUrl) ? (
+                                                    <a
+                                                        href={w.attendancePdfUrl || w.referenceSheetUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="font-bold underline"
+                                                        style={{ color: AP.blue }}
+                                                    >
+                                                        View
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-[#9CA3AF]">—</span>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-2.5 text-[13px]">
+                                                {w.punctualityPdfUrl ? (
+                                                    <a
+                                                        href={w.punctualityPdfUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="font-bold underline"
+                                                        style={{ color: AP.blue }}
+                                                    >
+                                                        View
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-[#9CA3AF]">—</span>
+                                                )}
                                             </td>
                                         </tr>
                                     );
