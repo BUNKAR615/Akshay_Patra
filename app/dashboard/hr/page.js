@@ -259,9 +259,13 @@ export default function HRDashboard() {
         const attendancePct = (numPresent / numTotalDays) * 100;
         const punctualityPct = (numPunctual / numTotalDays) * 100;
 
-        // Independent PDF proofs — send whichever have been uploaded (optional).
+        // Independent PDF proofs — BOTH are mandatory.
         const attendancePdfUrl = attendancePdfUrls[employeeId] || "";
         const punctualityPdfUrl = punctualityPdfUrls[employeeId] || "";
+        if (!attendancePdfUrl || !punctualityPdfUrl) {
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: "Please upload both the Attendance PDF and the Punctuality PDF" } }));
+            return;
+        }
 
         setEvalSubmitting(prev => ({ ...prev, [employeeId]: true }));
         setEvalMessages(prev => ({ ...prev, [employeeId]: null }));
@@ -643,7 +647,7 @@ export default function HRDashboard() {
                                     return (
                                         <div key={kind} className="border border-[#E0E0E0] rounded-lg p-3 bg-[#FAFAFA]">
                                             <label className="block text-xs font-bold text-[#666666] mb-1.5">
-                                                {title} <span className="font-normal text-[#999999]">(PDF, optional)</span>
+                                                {title} <span className="font-normal text-[#D32F2F]">(PDF, required) *</span>
                                             </label>
                                             {isAlreadyDone ? (
                                                 savedUrl ? (
