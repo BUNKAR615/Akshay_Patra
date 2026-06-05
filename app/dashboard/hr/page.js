@@ -16,19 +16,6 @@ async function api(url, opts) {
 const PDF_MAX_BYTES = 10 * 1024 * 1024;
 const PDF_FILE_ACCEPT = "application/pdf,.pdf";
 
-// Client-side mirror of lib/scoreCalculator → hrBandMarks. Live preview only;
-// the server re-computes the authoritative marks on submit.
-//   ≥90 → 10 · 80 → 8 · 70 → 6 · 60 → 4 · 50 → 2 · else 0
-function bandMarks(pct) {
-    if (pct == null || isNaN(pct) || pct < 0) return 0;
-    if (pct >= 90) return 10;
-    if (pct >= 80) return 8;
-    if (pct >= 70) return 6;
-    if (pct >= 60) return 4;
-    if (pct >= 50) return 2;
-    return 0;
-}
-
 /* ─── tiny helpers ─── */
 function formatBytes(bytes) {
     if (bytes < 1024) return bytes + " B";
@@ -555,10 +542,6 @@ export default function HRDashboard() {
                 const punPct = computedPunPct !== null
                     ? computedPunPct
                     : (isAlreadyDone && emp.punctualityPct != null ? Number(emp.punctualityPct) : null);
-                const attMarks = attPct !== null ? bandMarks(attPct) : null;
-                const punMarks = punPct !== null ? bandMarks(punPct) : null;
-                const hrTotal = (attMarks !== null || punMarks !== null)
-                    ? (attMarks || 0) + (punMarks || 0) : null;
 
                 return (
                     <div key={emp.id} className={`bg-white border-2 rounded-xl shadow-sm transition-colors ${isAlreadyDone ? "border-[#00843D]/40 bg-[#F1F8E9]/30" : "border-[#E0E0E0]"}`}>
@@ -631,34 +614,23 @@ export default function HRDashboard() {
                                 </div>
                             </div>
 
-                            {/* Derived percentages + banded marks (live preview; server is authoritative). */}
+                            {/* Derived percentages (auto-calculated from the day counts).
+                                Marks / weightage are intentionally NOT shown to HR. */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="flex items-center justify-between gap-2 bg-[#FFF8E1] border border-[#FFE082] rounded-lg px-3 py-2.5">
                                     <div>
                                         <p className="text-[11px] font-bold text-[#666666] uppercase tracking-wide">Attendance %</p>
                                         <p className="text-[10px] text-[#999999]">present ÷ working × 100</p>
                                     </div>
-                                    <div className="text-right">
-                                        <span className="font-black text-[#F57C00] text-base">{attPct !== null ? `${attPct.toFixed(2)}%` : "—"}</span>
-                                        <p className="text-[11px] font-bold text-[#00843D]">{attMarks !== null ? `${attMarks} / 10 marks` : "— / 10"}</p>
-                                    </div>
+                                    <span className="font-black text-[#F57C00] text-base">{attPct !== null ? `${attPct.toFixed(2)}%` : "—"}</span>
                                 </div>
                                 <div className="flex items-center justify-between gap-2 bg-[#FFF8E1] border border-[#FFE082] rounded-lg px-3 py-2.5">
                                     <div>
                                         <p className="text-[11px] font-bold text-[#666666] uppercase tracking-wide">Punctuality %</p>
                                         <p className="text-[10px] text-[#999999]">punctual ÷ working × 100</p>
                                     </div>
-                                    <div className="text-right">
-                                        <span className="font-black text-[#F57C00] text-base">{punPct !== null ? `${punPct.toFixed(2)}%` : "—"}</span>
-                                        <p className="text-[11px] font-bold text-[#00843D]">{punMarks !== null ? `${punMarks} / 10 marks` : "— / 10"}</p>
-                                    </div>
+                                    <span className="font-black text-[#F57C00] text-base">{punPct !== null ? `${punPct.toFixed(2)}%` : "—"}</span>
                                 </div>
-                            </div>
-
-                            {/* HR round total — out of 20 (attendance 10 + punctuality 10). */}
-                            <div className="flex items-center justify-between bg-[#003087]/5 border border-[#003087]/20 rounded-lg px-3 py-2">
-                                <span className="text-xs font-bold text-[#003087] uppercase tracking-wide">HR Round Total (Attendance 10 + Punctuality 10)</span>
-                                <span className="font-black text-[#003087] text-base">{hrTotal !== null ? `${hrTotal} / 20` : "— / 20"}</span>
                             </div>
 
                             {/* Two INDEPENDENT PDF proofs — attendance + punctuality. */}
