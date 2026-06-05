@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import DashboardShell from "../../../components/DashboardShell";
 import EvaluationForm from "../../../components/EvaluationForm";
 import UserProfileCard from "../../../components/UserProfileCard";
@@ -316,6 +317,12 @@ function ManageBcPanel({ hodUserId, hodName, onChanged }) {
 }
 
 export default function BranchManagerDashboard() {
+    // Which sidebar view is active. The role sidebar (lib/dashboardNav) routes
+    // to the same page with a ?view= param; "Evaluation" carries no param so the
+    // bare /dashboard/branch-manager landing defaults here.
+    const searchParams = useSearchParams();
+    const activeView = searchParams.get("view") || "evaluate";
+
     const [user, setUser] = useState(null);
     const [currentQuarterName, setCurrentQuarterName] = useState("");
     const [branch, setBranch] = useState(null);
@@ -565,6 +572,22 @@ export default function BranchManagerDashboard() {
         return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name));
     }, [shortlist]);
 
+    // History view — the Stage 2 employees this BM has already evaluated this
+    // quarter, grouped by department. Derived entirely from the shortlist data
+    // already in state (no extra fetch).
+    const groupedHistory = useMemo(() => {
+        const groups = new Map();
+        for (const row of shortlist) {
+            if (!row.alreadyEvaluated) continue;
+            const key = row.department?.id || "__no_dept__";
+            if (!groups.has(key)) {
+                groups.set(key, { id: key, name: row.department?.name || "Unassigned", rows: [] });
+            }
+            groups.get(key).rows.push(row);
+        }
+        return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name));
+    }, [shortlist]);
+
     if (loading) {
         return (
             <DashboardShell user={user} currentQuarter={currentQuarterName} title="Branch Manager Dashboard">
@@ -581,8 +604,25 @@ export default function BranchManagerDashboard() {
     const isBigBranch = (branch?.branchType || user?.branchType) === "BIG";
     const progress = { evaluated: shortlistMeta.evaluatedCount, total: shortlistMeta.totalShortlisted };
 
+    // Per-view page title (the sidebar routes here with ?view=).
+    const pageTitle = {
+        evaluate: "Stage 2 Evaluation",
+        shortlist: "Branch Overview",
+        departments: isBigBranch ? "Delegate to HODs" : "Departments",
+        history: "Evaluation History",
+    }[activeView] || "Branch Manager Evaluation";
+
+    // Always-visible "Command Center" ribbon — key counts from data already in
+    // state, shown above every view.
+    const ribbonTiles = bmStats ? [
+        { label: "Stage 1 Cleared", value: bmStats.stage1?.shortlisted, color: "#003087" },
+        { label: "Awaiting Your Action", value: shortlistMeta.remainingCount, color: "#F7941D", accent: true },
+        { label: isBigBranch ? "You Evaluated (WC)" : "You Evaluated", value: bmStats.bmEvaluatedCount, color: "#00843D" },
+        { label: "HODs Evaluated (BC)", value: bmStats.stage2?.totalBcEvaluated, color: "#6A1B9A" },
+    ] : [];
+
     return (
-        <DashboardShell user={user} currentQuarter={currentQuarterName} title="Branch Manager Evaluation">
+        <DashboardShell user={user} currentQuarter={currentQuarterName} title={pageTitle}>
             {/* Profile Card */}
             {user && (
                 <UserProfileCard
@@ -595,8 +635,27 @@ export default function BranchManagerDashboard() {
                 />
             )}
 
-            {/* ═══════ BRANCH OVERVIEW ═══════ */}
-            {bmStats && (
+            {/* ═══════ COMMAND CENTER RIBBON ═══════ */}
+            {ribbonTiles.length > 0 && (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-6">
+                    {ribbonTiles.map((t) => (
+                        <div
+                            key={t.label}
+                            className="relative overflow-hidden bg-white border border-[#E0E0E0] rounded-xl px-4 py-3 shadow-sm"
+                            style={t.accent ? { borderColor: `${t.color}40`, background: `${t.color}0A` } : undefined}
+                        >
+                            {t.accent && <div className="absolute left-0 top-0 bottom-0 w-1" style={{ background: t.color }} />}
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-[#666666] leading-tight">{t.label}</p>
+                            <p className="text-[24px] sm:text-[27px] font-black mt-1 leading-none tabular-nums" style={{ color: t.color }}>
+                                {t.value != null ? t.value : "—"}
+                            </p>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* ═══════ BRANCH OVERVIEW (Shortlist view) ═══════ */}
+            {activeView === "shortlist" && bmStats && (
                 <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 sm:p-5 mb-6 shadow-sm">
                     <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                         <div>
@@ -670,7 +729,7 @@ export default function BranchManagerDashboard() {
             )}
 
             {/* Big-branch evaluation process callout */}
-            {isBigBranch && (
+            {activeView === "departments" && isBigBranch && (
                 <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-xl p-5 mb-8 shadow-sm">
                     <div className="flex items-start gap-4">
                         <div className="w-10 h-10 rounded-full bg-[#F7941D]/10 flex items-center justify-center shrink-0 border border-[#FFE082]">
@@ -691,7 +750,7 @@ export default function BranchManagerDashboard() {
             )}
 
             {/* HOD Assignment Panel — BIG branches only */}
-            {isBigBranch && (
+            {activeView === "departments" && isBigBranch && (
                 <div className="bg-white border border-[#E0E0E0] rounded-xl p-6 mb-8 shadow-sm">
                     <div className="flex items-center gap-3 mb-5">
                         <div className="w-10 h-10 rounded-full bg-[#003087]/10 flex items-center justify-center shrink-0">
@@ -882,7 +941,91 @@ export default function BranchManagerDashboard() {
                 </div>
             )}
 
-            {/* Branch-wide Stage 2 list */}
+            {/* Departments view — STANDARD branches have no HODs, so show the
+                branch's department list with employee counts. */}
+            {activeView === "departments" && !isBigBranch && (
+                <div className="bg-white border border-[#E0E0E0] rounded-xl p-6 mb-8 shadow-sm">
+                    <div className="flex items-center gap-3 mb-5">
+                        <div className="w-10 h-10 rounded-full bg-[#003087]/10 flex items-center justify-center shrink-0">
+                            <svg className="w-5 h-5 text-[#003087]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0H5m14 0h2M5 21H3m4-14h2m-2 4h2m-2 4h2m4-8h2m-2 4h2m-2 4h2" />
+                            </svg>
+                        </div>
+                        <div>
+                            <p className="text-[13px] text-[#666666] font-bold uppercase tracking-wider">Departments</p>
+                            <p className="text-[18px] font-bold text-[#333333] leading-tight">{departments.length} department{departments.length === 1 ? "" : "s"} in your branch</p>
+                        </div>
+                    </div>
+                    {departments.length === 0 ? (
+                        <p className="text-[14px] text-[#999999] italic">No departments found in your branch.</p>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {departments.map((d) => (
+                                <div key={d.id} className="border border-[#E0E0E0] rounded-lg bg-[#FAFCFF] px-4 py-3 flex items-center justify-between gap-3">
+                                    <p className="text-[14px] font-bold text-[#333333] truncate">{d.name}</p>
+                                    <span className="text-[12px] font-bold text-[#003087] bg-white border border-[#003087]/20 rounded-full px-2.5 py-0.5 shrink-0">{d.employeeCount ?? 0}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* History view — employees this BM has already evaluated this quarter. */}
+            {activeView === "history" && (
+                <div className="bg-white border border-[#E0E0E0] rounded-xl p-6 mb-8 shadow-sm">
+                    <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+                        <div>
+                            <p className="text-[18px] font-bold text-[#1A1A2E]">Evaluation History</p>
+                            <p className="text-[13px] text-[#666666] font-medium">Employees you have evaluated this quarter{isBigBranch ? " (white-collar)" : ""}</p>
+                        </div>
+                        <span className="text-[13px] font-bold text-[#00843D] bg-[#E8F5E9] px-3 py-1 rounded-full border border-[#A5D6A7] shrink-0">{shortlistMeta.evaluatedCount} done</span>
+                    </div>
+                    {groupedHistory.length === 0 ? (
+                        <div className="bg-white border-2 border-[#E0E0E0] border-dashed rounded-2xl p-12 text-center">
+                            <span className="text-5xl block mb-4 opacity-50">🗂️</span>
+                            <h3 className="text-[20px] font-bold text-[#333333] mb-2">No Evaluations Yet</h3>
+                            <p className="text-[#666666] text-[16px] max-w-md mx-auto">
+                                Once you evaluate employees from the Evaluation tab, they will appear here.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-6">
+                            {groupedHistory.map((group) => (
+                                <div key={group.id}>
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <p className="text-[14px] font-bold uppercase tracking-wider text-[#003087]">{group.name}</p>
+                                        <span className="text-[12px] text-[#666666] font-medium">· {group.rows.length}</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-3">
+                                        {group.rows.map((entry) => (
+                                            <div key={entry.userId} className="bg-[#F1F8E9] border border-[#C5E1A5] rounded-xl p-4 flex items-center justify-between gap-4">
+                                                <div className="flex items-center gap-4 min-w-0">
+                                                    <div className="w-11 h-11 rounded-full bg-[#E8F5E9] text-[#2E7D32] border-2 border-[#A5D6A7] flex items-center justify-center font-bold text-[15px] shrink-0">
+                                                        {entry.name.charAt(0)}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="text-[16px] font-bold text-[#1B5E20] leading-tight truncate">{entry.name}</p>
+                                                        <p className="text-[13px] text-[#558B2F] font-medium truncate">{entry.designation} | {entry.empCode}</p>
+                                                    </div>
+                                                </div>
+                                                <span className="text-[13px] px-4 py-2 rounded-lg bg-white text-[#2E7D32] border border-[#A5D6A7] font-bold shrink-0 flex items-center gap-2">
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                                    Done
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Branch-wide Stage 2 list (Evaluation view) */}
+            {activeView === "evaluate" && (
+              <>
             <div className="bg-white border border-[#E0E0E0] rounded-xl p-6 mb-8 shadow-sm">
                     <div className="flex justify-between items-end mb-3">
                         <div>
@@ -998,6 +1141,8 @@ export default function BranchManagerDashboard() {
                         )}
                     </div>
                 )}
+              </>
+            )}
         </DashboardShell>
     );
 }
