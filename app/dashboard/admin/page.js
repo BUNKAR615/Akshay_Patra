@@ -1996,12 +1996,9 @@ export default function AdminDashboard() {
             {/* ═══════ EMPLOYEES TAB ═══════ */}
             {tab === "employees" && (
                 <div className="space-y-6">
-                    <div className="bg-white border rounded-xl p-3 sm:p-5 shadow-sm border-[#E0E0E0] space-y-3 sm:space-y-0 sm:flex sm:flex-row sm:flex-wrap sm:gap-4 sm:justify-between sm:items-center">
-                        <div className="relative w-full sm:flex-1 sm:min-w-[280px] sm:max-w-2xl">
-                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#999999]"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></span>
-                            <input type="text" placeholder="Search name or code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-12 pl-11 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-base text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2 sm:w-auto">
+                    <div className="bg-white border rounded-xl p-3 sm:p-5 shadow-sm border-[#E0E0E0] space-y-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                            <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2">
                             <select value={empFilter.branch} onChange={(e) => setEmpFilter({ ...empFilter, branch: e.target.value, department: "" })} className="h-10 px-2 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-32">
                                 <option value="">All Branches</option>
                                 {empBranches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
@@ -2020,6 +2017,8 @@ export default function AdminDashboard() {
                                 <option value="COMMITTEE">Committee</option>
                                 <option value="ADMIN">Admin</option>
                             </select>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 sm:flex sm:gap-2">
                             <button onClick={() => { setShowAddEmp(!showAddEmp); setAddMsg({ type: "", text: "" }); }} className="col-span-1 h-10 px-2.5 sm:px-3 bg-[#00843D] hover:bg-[#006B32] text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1 cursor-pointer transition-colors whitespace-nowrap">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
                                 {showAddEmp ? "Cancel" : "Add / Remove"}
@@ -2032,6 +2031,11 @@ export default function AdminDashboard() {
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                                 {excelLoading ? "Exporting..." : "Excel"}
                             </button>
+                            </div>
+                        </div>
+                        <div className="relative w-full">
+                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#999999]"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></span>
+                            <input type="text" placeholder="Search name or code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-12 pl-11 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-base text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
                         </div>
                     </div>
 
