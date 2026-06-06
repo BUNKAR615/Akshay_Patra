@@ -227,17 +227,17 @@ export default function QuarterManagementPage() {
                                                 <span className="font-bold text-[#00843D]">{b.stage1?.shortlisted || 0}</span>
                                             </td>
                                             <td className="px-3 py-2 text-right">
-                                                <span className="font-bold text-[#003087]">{(b.stage2?.evaluatedByBm || 0) + (b.stage2?.evaluatedByHod || 0)}</span>
+                                                <span className="font-bold text-[#003087]">{b.stage2?.evaluated ?? ((b.stage2?.evaluatedByBm || 0) + (b.stage2?.evaluatedByHod || 0))}</span>
                                                 <span className="text-[#999]"> / </span>
                                                 <span className="font-bold text-[#00843D]">{b.stage2?.shortlisted || 0}</span>
                                             </td>
                                             <td className="px-3 py-2 text-right">
-                                                <span className="font-bold text-[#003087]">{b.stage3?.evaluatedByCm || 0}</span>
+                                                <span className="font-bold text-[#003087]">{b.stage3?.evaluated ?? (b.stage3?.evaluatedByCm || 0)}</span>
                                                 <span className="text-[#999]"> / </span>
                                                 <span className="font-bold text-[#00843D]">{b.stage3?.shortlisted || 0}</span>
                                             </td>
                                             <td className="px-3 py-2 text-right">
-                                                <span className="font-bold text-[#003087]">{b.stage4?.evaluatedByHr || 0}</span>
+                                                <span className="font-bold text-[#003087]">{b.stage4?.evaluated ?? (b.stage4?.evaluatedByHr || 0)}</span>
                                                 <span className="text-[#999]"> / </span>
                                                 <span className="font-bold text-[#00843D]">{b.stage4?.shortlisted || 0}</span>
                                             </td>

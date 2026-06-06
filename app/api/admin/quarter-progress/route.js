@@ -209,14 +209,14 @@ export const GET = withRole(["ADMIN"], async (request) => {
             branchBest,
         ] = await Promise.all([
             prisma.branch.findMany({ select: { id: true, name: true, branchType: true } }),
-            prisma.branchShortlistStage1.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true } }),
-            prisma.branchShortlistStage2.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true } }),
-            prisma.branchShortlistStage3.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true } }),
-            prisma.branchShortlistStage4.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true } }),
-            prisma.hodEvaluation.findMany({ where: { quarterId: qId }, select: { employee: { select: { department: { select: { branchId: true } } } } } }),
-            prisma.branchManagerEvaluation.findMany({ where: { quarterId: qId }, select: { employee: { select: { department: { select: { branchId: true } } } } } }),
-            prisma.clusterManagerEvaluation.findMany({ where: { quarterId: qId }, select: { employee: { select: { department: { select: { branchId: true } } } } } }),
-            prisma.hrEvaluation.findMany({ where: { quarterId: qId }, select: { employee: { select: { department: { select: { branchId: true } } } } } }).catch(() => []),
+            prisma.branchShortlistStage1.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true, userId: true } }),
+            prisma.branchShortlistStage2.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true, userId: true } }),
+            prisma.branchShortlistStage3.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true, userId: true } }),
+            prisma.branchShortlistStage4.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true, userId: true } }),
+            prisma.hodEvaluation.findMany({ where: { quarterId: qId }, select: { employeeId: true, employee: { select: { department: { select: { branchId: true } } } } } }),
+            prisma.branchManagerEvaluation.findMany({ where: { quarterId: qId }, select: { employeeId: true, employee: { select: { department: { select: { branchId: true } } } } } }),
+            prisma.clusterManagerEvaluation.findMany({ where: { quarterId: qId }, select: { employeeId: true, employee: { select: { department: { select: { branchId: true } } } } } }),
+            prisma.hrEvaluation.findMany({ where: { quarterId: qId }, select: { employeeId: true, employee: { select: { department: { select: { branchId: true } } } } } }).catch(() => []),
             prisma.branchBestEmployee.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true, user: { select: { id: true, name: true } } } }).catch(() => []),
         ]);
 
@@ -235,10 +235,58 @@ export const GET = withRole(["ADMIN"], async (request) => {
         const s2Map = countBy(bStage2, "branchId");
         const s3Map = countBy(bStage3, "branchId");
         const s4Map = countBy(bStage4, "branchId");
+        // Raw, branch-wide evaluation-row counts (kept for backward compatibility).
         const hodMap = countBy(hodEvals, "branchId");
         const bmMap = countBy(bmEvalsAll, "branchId");
         const cmMap = countBy(cmEvalsAll, "branchId");
         const hrMap = countBy(hrEvalsAll, "branchId");
+
+        // ── Stage-scoped "evaluated" counts ──
+        // A stage's "evaluated" must count only DISTINCT employees who are
+        // CURRENTLY in that stage's cohort (the prior stage's shortlist) AND have
+        // been scored by the correct evaluator. Counting raw evaluation rows
+        // branch-wide over-counted in two ways: (a) a blue-collar employee
+        // evaluated by both BM and HOD was counted twice, and (b) evaluations of
+        // employees later pruned out of the shortlist (partial-promotion churn)
+        // still counted — pushing "evaluated" above the "in stage" number and
+        // forcing "pending" to a misleading 0.
+        const memberSet = (rows) => {
+            const m = new Map();
+            for (const r of rows) {
+                if (!m.has(r.branchId)) m.set(r.branchId, new Set());
+                m.get(r.branchId).add(r.userId);
+            }
+            return m;
+        };
+        const evalSet = (rows) => {
+            const m = new Map();
+            for (const r of rows) {
+                const bId = r?.employee?.department?.branchId;
+                if (!bId) continue;
+                if (!m.has(bId)) m.set(bId, new Set());
+                m.get(bId).add(r.employeeId);
+            }
+            return m;
+        };
+        const s1Members = memberSet(bStage1);
+        const s2Members = memberSet(bStage2);
+        const s3Members = memberSet(bStage3);
+        const bmEvalIds = evalSet(bmEvalsAll);
+        const hodEvalIds = evalSet(hodEvals);
+        const cmEvalIds = evalSet(cmEvalsAll);
+        const hrEvalIds = evalSet(hrEvalsAll);
+        // Count members of `cohort` (for branchId) that appear in any of `evalMaps`.
+        const evaluatedInCohort = (branchId, cohort, ...evalMaps) => {
+            const members = cohort.get(branchId);
+            if (!members || members.size === 0) return 0;
+            const evaluated = new Set();
+            for (const em of evalMaps) {
+                const ids = em.get(branchId);
+                if (!ids) continue;
+                for (const id of ids) if (members.has(id)) evaluated.add(id);
+            }
+            return evaluated.size;
+        };
 
         // Total employees per branch
         const usersByBranch = await prisma.user.groupBy({
@@ -278,15 +326,22 @@ export const GET = withRole(["ADMIN"], async (request) => {
             },
             stage2: {
                 shortlisted: s2Map.get(b.id) || 0,
+                // Distinct Stage-1 cohort members scored by their BM or HOD.
+                evaluated: evaluatedInCohort(b.id, s1Members, bmEvalIds, hodEvalIds),
+                // Raw row counts retained for backward compatibility.
                 evaluatedByBm: bmMap.get(b.id) || 0,
                 evaluatedByHod: hodMap.get(b.id) || 0,
             },
             stage3: {
                 shortlisted: s3Map.get(b.id) || 0,
+                // Distinct Stage-2 cohort members scored by a CM.
+                evaluated: evaluatedInCohort(b.id, s2Members, cmEvalIds),
                 evaluatedByCm: cmMap.get(b.id) || 0,
             },
             stage4: {
                 shortlisted: s4Map.get(b.id) || 0,
+                // Distinct Stage-3 cohort members scored by HR.
+                evaluated: evaluatedInCohort(b.id, s3Members, hrEvalIds),
                 evaluatedByHr: hrMap.get(b.id) || 0,
             },
             winners: branchBest

@@ -990,7 +990,8 @@ export default function AdminDashboard() {
             }
         }
         (quarterProgress.branches || []).forEach((b) => {
-            const pending2 = (b.stage2.shortlisted || 0) - ((b.stage2.evaluatedByBm || 0) + (b.stage2.evaluatedByHod || 0));
+            // Stage-2 cohort = Stage-1 cleared; pending = cohort not yet scored by BM/HOD.
+            const pending2 = (b.stage1.shortlisted || 0) - (b.stage2.evaluated || 0);
             if (pending2 > 0) out.push({ id: `s2-${b.branchId}`, type: "info", message: `${b.branchName}: ${pending2} Stage-2 evaluation${pending2 === 1 ? "" : "s"} pending.` });
         });
         return out;
@@ -1232,9 +1233,9 @@ export default function AdminDashboard() {
                                                     // Stage 1 → 2 → 3 → 4 automatically.
                                                     const stages = [
                                                         { total: b.totalEmployees, evaluated: b.stage1.submitted, cleared: b.stage1.shortlisted },
-                                                        { total: b.stage1.shortlisted, evaluated: (b.stage2.evaluatedByBm || 0) + (b.stage2.evaluatedByHod || 0), cleared: b.stage2.shortlisted },
-                                                        { total: b.stage2.shortlisted, evaluated: b.stage3.evaluatedByCm, cleared: b.stage3.shortlisted },
-                                                        { total: b.stage3.shortlisted, evaluated: b.stage4.evaluatedByHr, cleared: b.stage4.shortlisted },
+                                                        { total: b.stage1.shortlisted, evaluated: b.stage2.evaluated || 0, cleared: b.stage2.shortlisted },
+                                                        { total: b.stage2.shortlisted, evaluated: b.stage3.evaluated || 0, cleared: b.stage3.shortlisted },
+                                                        { total: b.stage3.shortlisted, evaluated: b.stage4.evaluated || 0, cleared: b.stage4.shortlisted },
                                                     ];
                                                     return (
                                                         <tr key={b.branchId} className="border-t border-[#E0E0E0] hover:bg-[#FAFCFF]">
@@ -1445,9 +1446,9 @@ export default function AdminDashboard() {
                                     // shortlisted onward; pending = entered but not yet evaluated.
                                     const stages = [
                                         { label: "Stage 1 — Self", color: "#003087", total: b.totalEmployees, evaluated: b.stage1.submitted, cleared: b.stage1.shortlisted },
-                                        { label: "Stage 2 — BM/HOD", color: "#00843D", total: b.stage1.shortlisted, evaluated: (b.stage2.evaluatedByBm || 0) + (b.stage2.evaluatedByHod || 0), cleared: b.stage2.shortlisted },
-                                        { label: "Stage 3 — CM", color: "#F7941D", total: b.stage2.shortlisted, evaluated: b.stage3.evaluatedByCm, cleared: b.stage3.shortlisted },
-                                        { label: "Stage 4 — HR", color: "#D32F2F", total: b.stage3.shortlisted, evaluated: b.stage4.evaluatedByHr, cleared: b.stage4.shortlisted },
+                                        { label: "Stage 2 — BM/HOD", color: "#00843D", total: b.stage1.shortlisted, evaluated: b.stage2.evaluated || 0, cleared: b.stage2.shortlisted },
+                                        { label: "Stage 3 — CM", color: "#F7941D", total: b.stage2.shortlisted, evaluated: b.stage3.evaluated || 0, cleared: b.stage3.shortlisted },
+                                        { label: "Stage 4 — HR", color: "#D32F2F", total: b.stage3.shortlisted, evaluated: b.stage4.evaluated || 0, cleared: b.stage4.shortlisted },
                                     ];
                                     const winnerTarget = b.branchType === "BIG" ? 4 : 3;
                                     return (
