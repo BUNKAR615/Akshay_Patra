@@ -88,6 +88,7 @@ export default function HRDashboard() {
     const [evalSubmitting, setEvalSubmitting] = useState({});  // { [empId]: bool }
     const [evalDone, setEvalDone] = useState({});              // { [empId]: bool }
     const [evalMessages, setEvalMessages] = useState({});      // { [empId]: { type, text } }
+    const [editing, setEditing] = useState({});                // { [empId]: bool } — re-open a submitted card
 
     const fileRefs = useRef({});
 
@@ -287,11 +288,38 @@ export default function HRDashboard() {
                 }),
             });
             setEvalDone(prev => ({ ...prev, [employeeId]: true }));
-            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "success", text: "Evaluation submitted successfully" } }));
+            // Re-lock the card after a successful (re)submit.
+            setEditing(prev => ({ ...prev, [employeeId]: false }));
+            setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "success", text: "Evaluation saved successfully" } }));
         } catch (err) {
             setEvalMessages(prev => ({ ...prev, [employeeId]: { type: "error", text: err.message || "Failed to submit evaluation" } }));
         }
         setEvalSubmitting(prev => ({ ...prev, [employeeId]: false }));
+    };
+
+    // Re-open a submitted evaluation for editing. Seed every input from the
+    // saved values so HR can adjust the day counts / PDFs and overwrite.
+    const handleEditClick = (emp) => {
+        setDaysPresentMap(prev => ({ ...prev, [emp.id]: emp.presentDays ?? "" }));
+        setPunctualDaysMap(prev => ({ ...prev, [emp.id]: emp.punctualDays ?? "" }));
+        setTotalWorkingDaysMap(prev => ({ ...prev, [emp.id]: emp.workingDays ?? "" }));
+        setHrNotes(prev => ({ ...prev, [emp.id]: emp.hrNotes ?? "" }));
+        setAttendancePdfUrls(prev => ({ ...prev, [emp.id]: emp.attendancePdfUrl || "" }));
+        setAttendancePdfNames(prev => ({ ...prev, [emp.id]: emp.attendancePdfUrl ? "Current file" : "" }));
+        setPunctualityPdfUrls(prev => ({ ...prev, [emp.id]: emp.punctualityPdfUrl || "" }));
+        setPunctualityPdfNames(prev => ({ ...prev, [emp.id]: emp.punctualityPdfUrl ? "Current file" : "" }));
+        setEvalMessages(prev => ({ ...prev, [emp.id]: null }));
+        setEditing(prev => ({ ...prev, [emp.id]: true }));
+    };
+
+    // Cancel an in-progress edit — clear the per-employee inputs so the card
+    // reverts to its saved (read-only) values.
+    const handleCancelEdit = (employeeId) => {
+        const clear = (setter) => setter(prev => { const next = { ...prev }; delete next[employeeId]; return next; });
+        [setDaysPresentMap, setPunctualDaysMap, setTotalWorkingDaysMap, setHrNotes,
+         setAttendancePdfUrls, setAttendancePdfNames, setPunctualityPdfUrls, setPunctualityPdfNames].forEach(clear);
+        setEvalMessages(prev => ({ ...prev, [employeeId]: null }));
+        setEditing(prev => ({ ...prev, [employeeId]: false }));
     };
 
     // Counters for the visible (filtered) view. The "Total" tile in the
@@ -538,6 +566,9 @@ export default function HRDashboard() {
             {/* Employee evaluation cards */}
             {shortlist.map((emp) => {
                 const isAlreadyDone = emp.hrEvaluated || evalDone[emp.id];
+                const isEditing = !!editing[emp.id];
+                // Inputs are read-only once submitted, UNLESS the card is being edited.
+                const isLocked = isAlreadyDone && !isEditing;
                 const msg = evalMessages[emp.id];
                 // Already-evaluated rows never stored the day-level breakdown, so
                 // fall back to the saved percentages for display.
@@ -592,7 +623,7 @@ export default function HRDashboard() {
                                         type="number" min={0} step="1"
                                         value={daysPresentMap[emp.id] ?? (emp.presentDays ?? "")}
                                         onChange={(e) => setDaysPresentMap(prev => ({ ...prev, [emp.id]: e.target.value }))}
-                                        disabled={isAlreadyDone}
+                                        disabled={isLocked}
                                         placeholder="e.g. 56"
                                         className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
                                     />
@@ -603,7 +634,7 @@ export default function HRDashboard() {
                                         type="number" min={0} step="1"
                                         value={punctualDaysMap[emp.id] ?? (emp.punctualDays ?? "")}
                                         onChange={(e) => setPunctualDaysMap(prev => ({ ...prev, [emp.id]: e.target.value }))}
-                                        disabled={isAlreadyDone}
+                                        disabled={isLocked}
                                         placeholder="e.g. 54"
                                         className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
                                     />
@@ -614,7 +645,7 @@ export default function HRDashboard() {
                                         type="number" min={1} step="1"
                                         value={totalWorkingDaysMap[emp.id] ?? (emp.workingDays ?? "")}
                                         onChange={(e) => setTotalWorkingDaysMap(prev => ({ ...prev, [emp.id]: e.target.value }))}
-                                        disabled={isAlreadyDone}
+                                        disabled={isLocked}
                                         placeholder="e.g. 60"
                                         className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30 focus:border-[#F57C00] disabled:opacity-50"
                                     />
@@ -652,7 +683,7 @@ export default function HRDashboard() {
                                             <label className="block text-xs font-bold text-[#666666] mb-1.5">
                                                 {title} <span className="font-normal text-[#D32F2F]">(PDF, required) *</span>
                                             </label>
-                                            {isAlreadyDone ? (
+                                            {isLocked ? (
                                                 savedUrl ? (
                                                     <a href={savedUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-[#003087] underline">View uploaded PDF</a>
                                                 ) : (
@@ -704,14 +735,32 @@ export default function HRDashboard() {
                                 </div>
                             )}
 
-                            {!isAlreadyDone && (
+                            {isLocked ? (
                                 <div className="flex justify-end">
+                                    <button
+                                        onClick={() => handleEditClick(emp)}
+                                        className="px-6 py-2.5 bg-white text-[#F57C00] border border-[#F57C00] rounded-lg text-sm font-bold hover:bg-[#FFF3D8] transition-colors cursor-pointer shadow-sm"
+                                    >
+                                        Edit
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex justify-end gap-2">
+                                    {isAlreadyDone && (
+                                        <button
+                                            onClick={() => handleCancelEdit(emp.id)}
+                                            disabled={evalSubmitting[emp.id]}
+                                            className="px-5 py-2.5 bg-white text-[#666666] border border-[#CCCCCC] rounded-lg text-sm font-bold hover:bg-[#F5F5F5] transition-colors cursor-pointer disabled:opacity-50"
+                                        >
+                                            Cancel
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => handleEvalSubmit(emp.id)}
                                         disabled={evalSubmitting[emp.id]}
                                         className="px-6 py-2.5 bg-[#F57C00] text-white rounded-lg text-sm font-bold hover:bg-[#E65100] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                                     >
-                                        {evalSubmitting[emp.id] ? "Submitting..." : "Submit Evaluation"}
+                                        {evalSubmitting[emp.id] ? "Saving..." : (isAlreadyDone ? "Update Evaluation" : "Submit Evaluation")}
                                     </button>
                                 </div>
                             )}

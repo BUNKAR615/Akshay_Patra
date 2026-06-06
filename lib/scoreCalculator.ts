@@ -99,17 +99,12 @@ function calculateBranchStage3Score(
 
 // ── HR Stage-4 band scoring ──
 // HR's 20-mark round is split 10 (attendance) + 10 (punctuality). Each half is
-// scored in 10-percentage-point bands. Given thresholds:
-//   ≥90 → 10 · 80–89.99 → 8 · 70–79.99 → 6
-// Below 70 follows the same 2-marks-per-band step (60→4, 50→2) and floors at 0.
+// scored in 10-percentage-point bands, dropping 1 mark per band:
+//   ≥90 → 10 · 80s → 9 · 70s → 8 · 60s → 7 · 50s → 6 · 40s → 5 ·
+//   30s → 4 · 20s → 3 · 10s → 2 · <10 → 1
 function hrBandMarks(pct: number): number {
     if (!Number.isFinite(pct) || pct < 0) return 0
-    if (pct >= 90) return 10
-    if (pct >= 80) return 8
-    if (pct >= 70) return 6
-    if (pct >= 60) return 4
-    if (pct >= 50) return 2
-    return 0
+    return Math.min(10, Math.floor(pct / 10) + 1)
 }
 
 function calculateBranchFinalScore(

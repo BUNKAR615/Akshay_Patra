@@ -50,12 +50,6 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
             if (!hrAssignment) return fail("You are not assigned to this branch", 403);
         }
 
-        // Check duplicate evaluation
-        const existing = await prisma.hrEvaluation.findUnique({
-            where: { hrUserId_employeeId_quarterId: { hrUserId: user.userId, employeeId, quarterId: quarter.id } }
-        });
-        if (existing) return fail("You have already evaluated this employee");
-
         // Get employee's scores from previous stages
         const selfAssessment = await prisma.selfAssessment.findUnique({
             where: { userId_quarterId: { userId: employeeId, quarterId: quarter.id } }
@@ -77,30 +71,32 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
         const { selfContribution, evaluatorContribution, cmContribution, hrContribution, finalScore } =
             calculateBranchFinalScore(selfNorm, evaluatorNorm, cmNorm, hrNorm);
 
-        await prisma.hrEvaluation.create({
-            data: {
-                hrUserId: user.userId,
-                employeeId,
-                quarterId: quarter.id,
-                hrScore,
-                notes,
-                attendancePct,
-                // `workingHours` column is repurposed to persist the punctuality %
-                // (the model has no dedicated punctualityPct column).
-                workingHours: punctualityPct,
-                // Raw day counts — kept so HR can see them after submitting.
-                presentDays,
-                punctualDays,
-                workingDays,
-                attendancePdfUrl: attendancePdfUrl || null,
-                punctualityPdfUrl: punctualityPdfUrl || null,
-                referenceSheetUrl: referenceSheetUrl || null,
-                selfContribution,
-                evaluatorContribution,
-                cmContribution,
-                hrContribution,
-                stage4CombinedScore: finalScore,
-            }
+        // Shared field set for both create and update (HR may edit/overwrite a
+        // previously-submitted evaluation).
+        const evalData = {
+            hrScore,
+            notes,
+            attendancePct,
+            // `workingHours` column is repurposed to persist the punctuality %
+            // (the model has no dedicated punctualityPct column).
+            workingHours: punctualityPct,
+            // Raw day counts — kept so HR can see them after submitting.
+            presentDays,
+            punctualDays,
+            workingDays,
+            attendancePdfUrl: attendancePdfUrl || null,
+            punctualityPdfUrl: punctualityPdfUrl || null,
+            referenceSheetUrl: referenceSheetUrl || null,
+            selfContribution,
+            evaluatorContribution,
+            cmContribution,
+            hrContribution,
+            stage4CombinedScore: finalScore,
+        };
+        await prisma.hrEvaluation.upsert({
+            where: { hrUserId_employeeId_quarterId: { hrUserId: user.userId, employeeId, quarterId: quarter.id } },
+            create: { hrUserId: user.userId, employeeId, quarterId: quarter.id, ...evalData },
+            update: evalData,
         });
 
         await prisma.auditLog.create({
