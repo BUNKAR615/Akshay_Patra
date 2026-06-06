@@ -573,6 +573,9 @@ model HrEvaluation {
   quarterId             String
   attendancePct         Float?
   workingHours          Float?
+  presentDays           Int?
+  punctualDays          Int?
+  workingDays           Int?
   referenceSheetUrl     String?
   attendancePdfUrl      String?
   punctualityPdfUrl     String?

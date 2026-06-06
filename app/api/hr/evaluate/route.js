@@ -20,7 +20,7 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
         const { data, error } = await validateBody(request, hrEvaluateSchema);
         if (error) return error;
 
-        const { employeeId, attendancePct, punctualityPct, attendancePdfUrl, punctualityPdfUrl, referenceSheetUrl, notes } = data;
+        const { employeeId, attendancePct, punctualityPct, presentDays, punctualDays, workingDays, attendancePdfUrl, punctualityPdfUrl, referenceSheetUrl, notes } = data;
         // HR's 20-mark round = attendance (10) + punctuality (10). Each half is
         // banded from its percentage (≥90→10, 80→8, 70→6, …) and summed.
         const attendanceMarks = hrBandMarks(attendancePct);
@@ -88,6 +88,10 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
                 // `workingHours` column is repurposed to persist the punctuality %
                 // (the model has no dedicated punctualityPct column).
                 workingHours: punctualityPct,
+                // Raw day counts — kept so HR can see them after submitting.
+                presentDays,
+                punctualDays,
+                workingDays,
                 attendancePdfUrl: attendancePdfUrl || null,
                 punctualityPdfUrl: punctualityPdfUrl || null,
                 referenceSheetUrl: referenceSheetUrl || null,

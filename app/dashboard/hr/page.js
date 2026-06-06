@@ -278,6 +278,9 @@ export default function HRDashboard() {
                     employeeId,
                     attendancePct,
                     punctualityPct,
+                    presentDays: numPresent,
+                    punctualDays: numPunctual,
+                    workingDays: numTotalDays,
                     attendancePdfUrl,
                     punctualityPdfUrl,
                     notes: hrNotes[employeeId] || "",
@@ -587,7 +590,7 @@ export default function HRDashboard() {
                                     <label className="block text-xs font-bold text-[#666666] mb-1.5">Total Present Days</label>
                                     <input
                                         type="number" min={0} step="1"
-                                        value={daysPresentMap[emp.id] ?? ""}
+                                        value={daysPresentMap[emp.id] ?? (emp.presentDays ?? "")}
                                         onChange={(e) => setDaysPresentMap(prev => ({ ...prev, [emp.id]: e.target.value }))}
                                         disabled={isAlreadyDone}
                                         placeholder="e.g. 56"
@@ -598,7 +601,7 @@ export default function HRDashboard() {
                                     <label className="block text-xs font-bold text-[#666666] mb-1.5">Total Punctual Days</label>
                                     <input
                                         type="number" min={0} step="1"
-                                        value={punctualDaysMap[emp.id] ?? ""}
+                                        value={punctualDaysMap[emp.id] ?? (emp.punctualDays ?? "")}
                                         onChange={(e) => setPunctualDaysMap(prev => ({ ...prev, [emp.id]: e.target.value }))}
                                         disabled={isAlreadyDone}
                                         placeholder="e.g. 54"
@@ -609,7 +612,7 @@ export default function HRDashboard() {
                                     <label className="block text-xs font-bold text-[#666666] mb-1.5">Total Working Days</label>
                                     <input
                                         type="number" min={1} step="1"
-                                        value={totalWorkingDaysMap[emp.id] ?? ""}
+                                        value={totalWorkingDaysMap[emp.id] ?? (emp.workingDays ?? "")}
                                         onChange={(e) => setTotalWorkingDaysMap(prev => ({ ...prev, [emp.id]: e.target.value }))}
                                         disabled={isAlreadyDone}
                                         placeholder="e.g. 60"
