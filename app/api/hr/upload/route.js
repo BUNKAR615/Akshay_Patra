@@ -91,10 +91,13 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
         const filename = `${crypto.randomUUID()}-${safeName}`;
         const blobKey = `hr/${kind}/${filename}`;
 
-        // Branch on Vercel Blob availability. The Blob token is auto-injected
-        // by Vercel for projects with a linked Blob store; everywhere else
-        // (local dev, self-hosted) it isn't, so we write to the local
-        // filesystem under public/ and return a relative URL.
+        // Resolve a storage backend without ever crashing the request:
+        //   1. Vercel Blob when a token is configured (the only writable option
+        //      on Vercel's read-only serverless filesystem).
+        //   2. Local filesystem ONLY off-Vercel (local dev / self-host), where
+        //      public/ is writable.
+        //   3. On Vercel with no Blob store linked, return a clear, actionable
+        //      error instead of attempting an unwritable FS write that 500s.
         let url;
         if (process.env.BLOB_READ_WRITE_TOKEN) {
             const blob = await put(blobKey, file, {
@@ -103,12 +106,20 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
                 contentType: storedContentType,
             });
             url = blob.url;
+        } else if (!process.env.VERCEL) {
+            try {
+                const dir = nodePath.join(process.cwd(), "public", "uploads", "hr", kind);
+                await mkdir(dir, { recursive: true });
+                const buffer = Buffer.from(await file.arrayBuffer());
+                await writeFile(nodePath.join(dir, filename), buffer);
+                url = `/uploads/hr/${kind}/${filename}`;
+            } catch (fsErr) {
+                console.error("[HR_UPLOAD] Local FS write failed:", fsErr?.code, fsErr?.message);
+                return fail("Could not save the file on the server. Please try again or contact the administrator.", 500);
+            }
         } else {
-            const dir = nodePath.join(process.cwd(), "public", "uploads", "hr", kind);
-            await mkdir(dir, { recursive: true });
-            const buffer = Buffer.from(await file.arrayBuffer());
-            await writeFile(nodePath.join(dir, filename), buffer);
-            url = `/uploads/hr/${kind}/${filename}`;
+            // Vercel deployment without a Blob store — never touch the read-only FS.
+            return fail("File storage is not configured on the server. Please enable Vercel Blob (BLOB_READ_WRITE_TOKEN) and redeploy.", 503);
         }
 
         await prisma.auditLog.create({
