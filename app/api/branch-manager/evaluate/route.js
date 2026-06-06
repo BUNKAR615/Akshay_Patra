@@ -64,9 +64,24 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
             return fail("Employee is not in the Stage 1 shortlist for your branch.");
         }
 
-        // BIG branches: BM only evaluates WC; BC must go through the assigned HOD.
-        if (branchType === "BIG" && employee.collarType === "BLUE_COLLAR") {
-            return fail("Blue collar employees in big branches must be evaluated by their HOD, not by Branch Manager. Please assign an HOD for their department.");
+        // BIG branches: blue-collar (and unclassified) employees normally go
+        // through their assigned HOD. The BM may evaluate such an employee ONLY
+        // when they are ORPHANED — i.e. there is no active EmployeeHodAssignment
+        // for this quarter (e.g. the BM removed their HOD, or one was never
+        // assigned). HOD-covered employees are rejected so they aren't
+        // double-evaluated. This mirrors the orphaned-BC inclusion rule in
+        // app/api/branch-manager/shortlist/route.js — previously this guard
+        // rejected EVERY blue-collar submission, leaving orphaned BCs with no
+        // possible evaluator and permanently stuck at Stage 1.
+        if (branchType === "BIG" && employee.collarType !== "WHITE_COLLAR") {
+            const hodLink = await prisma.employeeHodAssignment.findUnique({
+                where: { employeeId_quarterId: { employeeId: data.employeeId, quarterId: activeQuarter.id } },
+                select: { hodUserId: true },
+            });
+            if (hodLink) {
+                return fail("This blue collar employee has an assigned HOD and must be evaluated by that HOD, not the Branch Manager. Remove the HOD assignment first if the BM should evaluate them.");
+            }
+            // No HOD link → orphaned → the BM is the correct evaluator. Continue.
         }
 
         // Duplicate guard
@@ -129,15 +144,27 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         }
 
         // Progress for the BM UI (generation no longer waits for completion).
+        // In a BIG branch the BM's targets are all WHITE_COLLAR Stage-1
+        // employees PLUS any orphaned blue-collar/unclassified ones (no active
+        // HOD). HOD-covered BCs are excluded — they are the HOD's targets.
         const stage1Targets = await prisma.branchShortlistStage1.findMany({
-            where: {
-                branchId: bmBranchId,
-                quarterId: activeQuarter.id,
-                ...(branchType === "BIG" ? { collarType: "WHITE_COLLAR" } : {}),
-            },
-            select: { userId: true },
+            where: { branchId: bmBranchId, quarterId: activeQuarter.id },
+            select: { userId: true, collarType: true, user: { select: { collarType: true } } },
         });
-        const targetIds = stage1Targets.map((s) => s.userId);
+        let bmTargetRows = stage1Targets;
+        if (branchType === "BIG") {
+            const hodRows = await prisma.employeeHodAssignment.findMany({
+                where: { quarterId: activeQuarter.id, employee: { department: { branchId: bmBranchId } } },
+                select: { employeeId: true },
+            });
+            const hodCovered = new Set(hodRows.map((r) => r.employeeId));
+            bmTargetRows = stage1Targets.filter((s) => {
+                const collar = s.user?.collarType || s.collarType;
+                if (collar === "WHITE_COLLAR") return true;
+                return !hodCovered.has(s.userId); // orphaned BC only
+            });
+        }
+        const targetIds = bmTargetRows.map((s) => s.userId);
         const bmEvalCount = targetIds.length
             ? await prisma.branchManagerEvaluation.count({
                 where: { managerId: user.userId, quarterId: activeQuarter.id, employeeId: { in: targetIds } },
