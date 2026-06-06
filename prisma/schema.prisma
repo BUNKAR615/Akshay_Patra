@@ -596,6 +596,21 @@ model HrEvaluation {
   @@map("hr_evaluations")
 }
 
+/// HrUpload — binary storage for HR proof PDFs (attendance / punctuality).
+/// Stored directly in Postgres (Neon) so uploads work without external blob
+/// storage. The bytes are streamed back via GET /api/hr/file/[id].
+model HrUpload {
+  id           String   @id @default(cuid())
+  kind         String
+  contentType  String
+  size         Int
+  data         Bytes
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  @@map("hr_uploads")
+}
+
 /// BranchShortlistStage1 — Top 50% of branch employees after self-assessment
 model BranchShortlistStage1 {
   id         String      @id @default(cuid())

@@ -2,11 +2,6 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 export const maxDuration = 30
 
-import { put } from "@vercel/blob";
-import crypto from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import nodePath from "node:path";
-
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { ok, fail, serverError } from "../../../../lib/api-response";
@@ -15,25 +10,18 @@ import { getClientIp } from "../../../../lib/http";
 /**
  * POST /api/hr/upload
  *
- * Accepts a file from the HR dashboard and uploads it to Vercel Blob.
- * The returned URL is pasted into the HR evaluation payload by the client;
- * we do NOT modify the existing /api/hr/evaluate shape.
+ * Accepts a file from the HR dashboard, stores its bytes in Postgres (Neon)
+ * as an HrUpload row, and returns a relative URL ("/api/hr/file/<id>") that the
+ * client saves on the HR evaluation. The bytes are streamed back by the
+ * matching GET /api/hr/file/[id] route.
+ *
+ * Storing in the database (rather than the filesystem or an external blob
+ * store) means uploads work on Vercel's read-only serverless filesystem with
+ * no extra configuration.
  *
  * Per-kind file rules:
- *   - kind="reference"             → Excel only (.xlsx / .xls), ≤ 300 KB
- *   - kind="attendance"|"punctuality" → PDF only (application/pdf), ≤ 1 MB
- *     (these inputs are not exposed in the current HR UI but the route
- *      keeps them so a future re-introduction does not need a backend change)
- *
- * Storage strategy:
- *   - When BLOB_READ_WRITE_TOKEN is present (Vercel deployment with a Blob
- *     store linked), uploads go to Vercel Blob and the public Blob URL is
- *     returned.
- *   - Otherwise (local `npm run dev`, self-hosted Docker / VM), the file is
- *     written under `public/uploads/hr/<kind>/` and a relative URL is
- *     returned. Next.js serves that via its static handler. This avoids the
- *     500 that would otherwise come from `put()` throwing on a missing
- *     token, while leaving the production path untouched.
+ *   - kind="reference"                 → Excel only (.xlsx / .xls), ≤ 300 KB
+ *   - kind="attendance"|"punctuality"  → PDF only (application/pdf), ≤ 1 MB
  */
 const MAX_PDF_BYTES = 1 * 1024 * 1024;         // 1 MB — attendance / punctuality
 const MAX_REF_BYTES = 300 * 1024;              // 300 KB — Excel reference attachment
@@ -57,10 +45,9 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
             return fail(`kind must be one of: ${[...ALLOWED_KINDS].join(", ")}`, 400);
         }
 
-        // Per-kind validation — Excel + 300 KB for the reference attachment
-        // shown on the HR page; PDFs preserved for the dormant kinds.
+        // Per-kind validation — Excel + 300 KB for the reference attachment;
+        // PDF + 1 MB for the attendance / punctuality proofs.
         let storedContentType;
-        let defaultBaseName;
         if (kind === "reference") {
             if (file.size > MAX_REF_BYTES) {
                 return fail("Excel file must be 300 KB or smaller", 413);
@@ -70,12 +57,9 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
             if (!isExcelMime && !isExcelExt) {
                 return fail("Reference sheet must be an Excel file (.xlsx or .xls)", 415);
             }
-            // Preserve the actual MIME when the browser provided one; fall
-            // back to a sensible Excel default by extension otherwise.
             storedContentType = file.type
                 || (/\.xls$/i.test(file.name || "") ? "application/vnd.ms-excel"
                                                    : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-            defaultBaseName = "upload.xlsx";
         } else {
             if (file.size > MAX_PDF_BYTES) {
                 return fail(`File exceeds ${MAX_PDF_BYTES / (1024 * 1024)}MB limit`, 413);
@@ -84,50 +68,28 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
                 return fail("Only application/pdf is accepted", 415);
             }
             storedContentType = "application/pdf";
-            defaultBaseName = "upload.pdf";
         }
 
-        const safeName = String(file.name || defaultBaseName).replace(/[^a-zA-Z0-9._-]/g, "_");
-        const filename = `${crypto.randomUUID()}-${safeName}`;
-        const blobKey = `hr/${kind}/${filename}`;
-
-        // Resolve a storage backend without ever crashing the request:
-        //   1. Vercel Blob when a token is configured (the only writable option
-        //      on Vercel's read-only serverless filesystem).
-        //   2. Local filesystem ONLY off-Vercel (local dev / self-host), where
-        //      public/ is writable.
-        //   3. On Vercel with no Blob store linked, return a clear, actionable
-        //      error instead of attempting an unwritable FS write that 500s.
-        let url;
-        if (process.env.BLOB_READ_WRITE_TOKEN) {
-            const blob = await put(blobKey, file, {
-                access: "public",
-                addRandomSuffix: false,
+        // Persist the bytes in Postgres and hand back a stable, role-gated URL.
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const record = await prisma.hrUpload.create({
+            data: {
+                kind,
                 contentType: storedContentType,
-            });
-            url = blob.url;
-        } else if (!process.env.VERCEL) {
-            try {
-                const dir = nodePath.join(process.cwd(), "public", "uploads", "hr", kind);
-                await mkdir(dir, { recursive: true });
-                const buffer = Buffer.from(await file.arrayBuffer());
-                await writeFile(nodePath.join(dir, filename), buffer);
-                url = `/uploads/hr/${kind}/${filename}`;
-            } catch (fsErr) {
-                console.error("[HR_UPLOAD] Local FS write failed:", fsErr?.code, fsErr?.message);
-                return fail("Could not save the file on the server. Please try again or contact the administrator.", 500);
-            }
-        } else {
-            // Vercel deployment without a Blob store — never touch the read-only FS.
-            return fail("File storage is not configured on the server. Please enable Vercel Blob (BLOB_READ_WRITE_TOKEN) and redeploy.", 503);
-        }
+                size: buffer.length,
+                data: buffer,
+                uploadedById: user.userId,
+            },
+            select: { id: true },
+        });
+        const url = `/api/hr/file/${record.id}`;
 
         await prisma.auditLog.create({
             data: {
                 userId: user.userId,
                 action: "HR_UPLOAD",
                 ipAddress: getClientIp(request),
-                details: { kind, size: file.size, url },
+                details: { kind, size: buffer.length, url },
             },
         }).catch(() => {});
 
