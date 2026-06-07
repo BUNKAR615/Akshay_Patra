@@ -8,6 +8,7 @@ import ConfirmDialog from "../../../components/ConfirmDialog";
 import { PageSpinner, SkeletonCard, SkeletonStats } from "../../../components/Skeleton";
 import UserProfileCard from "../../../components/UserProfileCard";
 import QuarterCountdown from "../../../components/QuarterCountdown";
+import ReportsPanel from "../../../components/admin/ReportsPanel";
 
 async function api(url, opts, { retries = 4 } = {}) {
     let lastErr;
@@ -1107,6 +1108,9 @@ export default function AdminDashboard() {
                     )}
                 </div>
             </div>
+
+            {/* ═══════ REPORTS TAB ═══════ */}
+            {tab === "reports" && <ReportsPanel />}
 
             {/* ═══════ DASHBOARD TAB ═══════ */}
             {tab === "dashboard" && (

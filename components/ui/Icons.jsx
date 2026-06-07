@@ -149,4 +149,11 @@ export const Ic = {
             <path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
     ),
+    reports: (
+        <svg width="17" height="17" fill="none" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+            <polyline points="14 2 14 8 20 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M8 13v4M12 11v6M16 14v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+    ),
 };
