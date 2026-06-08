@@ -8,6 +8,7 @@ import ReportCharts from "./reports/ReportCharts.jsx";
 import EvaluatorReport from "./reports/EvaluatorReport.jsx";
 import StageReport from "./reports/StageReport.jsx";
 import DetailedTables from "./reports/DetailedTables.jsx";
+import AnswerSheet from "./reports/AnswerSheet.jsx";
 import ScoreSheetModal from "./reports/ScoreSheetModal.jsx";
 
 const BLANK_FILTERS = {
@@ -17,6 +18,7 @@ const BLANK_FILTERS = {
 
 const SECTIONS = [
     { id: "charts", label: "Charts" },
+    { id: "answersheet", label: "Answer Sheet" },
     { id: "evaluator", label: "By Evaluator" },
     { id: "stage", label: "By Stage" },
     { id: "tables", label: "Detailed Tables" },
@@ -225,6 +227,7 @@ export default function ReportsPanel() {
             ) : (
                 <>
                     {section === "charts" && <ReportCharts employees={filtered} />}
+                    {section === "answersheet" && <AnswerSheet employees={filtered} quarter={data?.quarter} />}
                     {section === "evaluator" && <EvaluatorReport employees={filtered} onSelect={setSheetEmp} />}
                     {section === "stage" && <StageReport employees={filtered} onSelect={setSheetEmp} />}
                     {section === "tables" && <DetailedTables employees={filtered} filters={filters} quarter={data?.quarter} onSelect={setSheetEmp} />}

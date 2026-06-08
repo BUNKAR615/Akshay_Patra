@@ -107,3 +107,14 @@ export function activeFilterSummary(f) {
 // Theme palette for charts.
 export const CHART_COLORS = ["#003087", "#00843D", "#F7941D", "#6C3FB0", "#C0392B", "#1E88A8", "#9B7B0A", "#3C6E47", "#B0436A", "#5A6B8C"];
 export const STAGE_COLORS = { 1: "#003087", 2: "#00843D", 3: "#F7941D", 4: "#6C3FB0" };
+
+// The 5-point Likert scale used by every questionnaire stage (self / BM / HOD / CM).
+// Mirrors components/TimedEvaluationForm.js so the answer sheet shows the same options.
+export const LIKERT_OPTIONS = [
+    { value: -2, label: "Strongly Disagree", labelHindi: "पूर्णतः असहमत", color: "#D32F2F" },
+    { value: -1, label: "Disagree", labelHindi: "असहमत", color: "#F57C00" },
+    { value: 0, label: "Neutral", labelHindi: "तटस्थ", color: "#616161" },
+    { value: 1, label: "Agree", labelHindi: "सहमत", color: "#388E3C" },
+    { value: 2, label: "Strongly Agree", labelHindi: "पूर्णतः सहमत", color: "#1B5E20" },
+];
+export const likertOption = (score) => LIKERT_OPTIONS.find(o => o.value === score) || null;
