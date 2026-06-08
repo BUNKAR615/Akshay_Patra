@@ -5,34 +5,51 @@ import {
     PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid,
     Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
-import { CHART_COLORS, STAGE_COLORS, evaluatedAtStage } from "./helpers.js";
+import {
+    CHART_COLORS, STAGE_COLORS, evaluatedAtStage,
+    reachedStage, completedStage, passedStage,
+} from "./helpers.js";
 
-const STAGE_LABELS = { 1: "Stage 1 · Self", 2: "Stage 2 · BM/HOD", 3: "Stage 3 · CM", 4: "Stage 4 · HR" };
+const PIE_STAGES = [
+    { key: 1, label: "Stage 1 · Self" },
+    { key: 2, label: "Stage 2 · BM/HOD" },
+    { key: 3, label: "Stage 3 · CM" },
+    { key: 4, label: "Stage 4 · HR" },
+    { key: "final", label: "Final · Winners" },
+];
 
-// ── Charts overview: pie per stage + combined bar by branch & total ──
+// ── Charts overview: status pie per stage + branch bar + department analytics ──
 export default function ReportCharts({ employees }) {
     const [pieStage, setPieStage] = useState(1);
-    const [pieMode, setPieMode] = useState("branch"); // "branch" | "shortlist"
+    const [pieMode, setPieMode] = useState("status"); // "status" | "branch"
+
+    const curStage = PIE_STAGES.find(s => s.key === pieStage) || PIE_STAGES[0];
 
     // Pie data for the selected stage.
     const pieData = useMemo(() => {
-        const evaluated = employees.filter(e => evaluatedAtStage(e, pieStage));
-        if (pieMode === "shortlist") {
-            const yes = evaluated.filter(e => stageShortlisted(e, pieStage)).length;
-            return [
-                { name: "Shortlisted", value: yes },
-                { name: "Not Shortlisted", value: evaluated.length - yes },
-            ].filter(d => d.value > 0);
+        const reached = employees.filter(e => reachedStage(e, pieStage));
+        if (pieMode === "branch") {
+            const map = new Map();
+            for (const e of reached.filter(e => completedStage(e, pieStage))) {
+                const b = e.branchName || "—";
+                map.set(b, (map.get(b) || 0) + 1);
+            }
+            return Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
         }
-        const map = new Map();
-        for (const e of evaluated) {
-            const b = e.branchName || "—";
-            map.set(b, (map.get(b) || 0) + 1);
-        }
-        return Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+        // Status partition of everyone who reached the stage.
+        const passed = reached.filter(e => passedStage(e, pieStage)).length;
+        const completedNotPassed = reached.filter(e => completedStage(e, pieStage) && !passedStage(e, pieStage)).length;
+        const pending = reached.filter(e => !completedStage(e, pieStage)).length;
+        return [
+            { name: "Passed / Cleared", value: passed, color: "#00843D" },
+            { name: "Evaluated · not passed", value: completedNotPassed, color: "#F7941D" },
+            { name: "Pending", value: pending, color: "#C9CDD4" },
+        ].filter(d => d.value > 0);
     }, [employees, pieStage, pieMode]);
 
-    // Bar data: one row per branch + a Total row, four stage series each.
+    const pieTotal = pieData.reduce((s, d) => s + d.value, 0);
+
+    // Bar: per-branch + Total, four stage-completed series.
     const barData = useMemo(() => {
         const map = new Map();
         const ensure = (b) => {
@@ -50,33 +67,45 @@ export default function ReportCharts({ employees }) {
         return [...branches, total];
     }, [employees]);
 
-    const pieTotal = pieData.reduce((s, d) => s + d.value, 0);
+    // Department analytics: participation (self-assessed) + progression (passed S1).
+    const deptData = useMemo(() => {
+        const map = new Map();
+        for (const e of employees) {
+            const d = e.department || "—";
+            if (!map.has(d)) map.set(d, { dept: d, total: 0, participated: 0, passed: 0 });
+            const row = map.get(d);
+            row.total++;
+            if (e.stage1?.submitted) row.participated++;
+            if (e.stage1?.shortlisted) row.passed++;
+        }
+        return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 12);
+    }, [employees]);
 
     return (
         <div className="space-y-5">
-            {/* Pie: evaluation by stage */}
+            {/* Pie: status by stage */}
             <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 sm:p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                    <h3 className="text-[14px] font-black text-[#003087]">Evaluation Breakdown · {STAGE_LABELS[pieStage]}</h3>
+                    <h3 className="text-[14px] font-black text-[#003087]">Stage Breakdown · {curStage.label}</h3>
                     <div className="flex flex-wrap items-center gap-2">
                         <div className="flex rounded-lg border border-[#CCC] overflow-hidden">
-                            {[1, 2, 3, 4].map(n => (
-                                <button key={n} type="button" onClick={() => setPieStage(n)}
-                                    className={`px-3 h-9 text-xs font-bold ${pieStage === n ? "bg-[#003087] text-white" : "bg-white text-[#666] hover:bg-[#F5F5F5]"}`}>
-                                    S{n}
+                            {PIE_STAGES.map(s => (
+                                <button key={String(s.key)} type="button" onClick={() => setPieStage(s.key)}
+                                    className={`px-3 h-9 text-xs font-bold ${pieStage === s.key ? "bg-[#003087] text-white" : "bg-white text-[#666] hover:bg-[#F5F5F5]"}`}>
+                                    {s.key === "final" ? "Final" : `S${s.key}`}
                                 </button>
                             ))}
                         </div>
                         <div className="flex rounded-lg border border-[#CCC] overflow-hidden">
+                            <button type="button" onClick={() => setPieMode("status")}
+                                className={`px-3 h-9 text-xs font-bold ${pieMode === "status" ? "bg-[#00843D] text-white" : "bg-white text-[#666] hover:bg-[#F5F5F5]"}`}>Status</button>
                             <button type="button" onClick={() => setPieMode("branch")}
                                 className={`px-3 h-9 text-xs font-bold ${pieMode === "branch" ? "bg-[#00843D] text-white" : "bg-white text-[#666] hover:bg-[#F5F5F5]"}`}>By Branch</button>
-                            <button type="button" onClick={() => setPieMode("shortlist")}
-                                className={`px-3 h-9 text-xs font-bold ${pieMode === "shortlist" ? "bg-[#00843D] text-white" : "bg-white text-[#666] hover:bg-[#F5F5F5]"}`}>Shortlisted</button>
                         </div>
                     </div>
                 </div>
                 {!pieData.length ? (
-                    <div className="py-16 text-center text-[#888] text-sm">No employees evaluated at {STAGE_LABELS[pieStage]} for the current filters.</div>
+                    <div className="py-16 text-center text-[#888] text-sm">No employees have reached {curStage.label} for the current filters.</div>
                 ) : (
                     <div className="h-[320px]">
                         <ResponsiveContainer width="100%" height="100%">
@@ -84,9 +113,7 @@ export default function ReportCharts({ employees }) {
                                 <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={110}
                                     label={(d) => `${d.name}: ${d.value}`} labelLine={false}>
                                     {pieData.map((d, i) => (
-                                        <Cell key={d.name} fill={pieMode === "shortlist"
-                                            ? (d.name === "Shortlisted" ? "#00843D" : "#C9CDD4")
-                                            : CHART_COLORS[i % CHART_COLORS.length]} />
+                                        <Cell key={d.name} fill={d.color || CHART_COLORS[i % CHART_COLORS.length]} />
                                     ))}
                                 </Pie>
                                 <Tooltip formatter={(v, n) => [`${v} (${pieTotal ? Math.round((v / pieTotal) * 100) : 0}%)`, n]} />
@@ -97,9 +124,9 @@ export default function ReportCharts({ employees }) {
                 )}
             </div>
 
-            {/* Bar: all stages by branch & total */}
+            {/* Bar: all stages by branch & total (branch + combined progress) */}
             <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 sm:p-5">
-                <h3 className="text-[14px] font-black text-[#003087] mb-3">All Stages by Branch & Total</h3>
+                <h3 className="text-[14px] font-black text-[#003087] mb-3">Branch & Overall Progress · employees evaluated per stage</h3>
                 {!barData.length ? (
                     <div className="py-16 text-center text-[#888] text-sm">No data for the current filters.</div>
                 ) : (
@@ -120,14 +147,30 @@ export default function ReportCharts({ employees }) {
                     </div>
                 )}
             </div>
+
+            {/* Department analytics */}
+            <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 sm:p-5">
+                <h3 className="text-[14px] font-black text-[#003087] mb-1">Department Analytics · participation & progress</h3>
+                <p className="text-[11px] text-[#888] mb-3">Top {deptData.length} departments by size. Participated = self-assessed · Passed = cleared Stage 1.</p>
+                {!deptData.length ? (
+                    <div className="py-16 text-center text-[#888] text-sm">No data for the current filters.</div>
+                ) : (
+                    <div className="h-[380px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={deptData} margin={{ top: 8, right: 16, left: 0, bottom: 60 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#EEE" />
+                                <XAxis dataKey="dept" angle={-30} textAnchor="end" interval={0} height={90} tick={{ fontSize: 11 }} />
+                                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                                <Tooltip />
+                                <Legend />
+                                <Bar dataKey="total" name="Employees" fill="#003087" />
+                                <Bar dataKey="participated" name="Participated" fill="#00843D" />
+                                <Bar dataKey="passed" name="Passed S1" fill="#F7941D" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                )}
+            </div>
         </div>
     );
-}
-
-function stageShortlisted(e, n) {
-    if (n === 1) return e.stage1?.shortlisted;
-    if (n === 2) return e.stage2?.shortlisted;
-    if (n === 3) return e.stage3?.shortlisted;
-    if (n === 4) return e.stage4?.shortlisted;
-    return false;
 }

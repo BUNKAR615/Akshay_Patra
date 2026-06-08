@@ -1,14 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { fmtScore, fmtDate, stageScore } from "./helpers.js";
+import { fmtScore, fmtDate, stageScore, reachedStage } from "./helpers.js";
 
 // Maps each evaluator role to the stage + the eval object + score accessor.
+// `pendingFor` marks an employee in this evaluator's branch who reached the
+// stage but this role hasn't evaluated yet (backlog for that evaluator).
 const ROLE_DEFS = [
-    { role: "Branch Manager", short: "BM", stage: 2, evalOf: (e) => e.stage2?.bmEval },
-    { role: "HOD", short: "HOD", stage: 2, evalOf: (e) => e.stage2?.hodEval },
-    { role: "Cluster Manager", short: "CM", stage: 3, evalOf: (e) => e.stage3?.cmEval },
-    { role: "HR", short: "HR", stage: 4, evalOf: (e) => e.stage4?.hrEval },
+    { role: "Branch Manager", short: "BM", stage: 2, evalOf: (e) => e.stage2?.bmEval, pendingFor: (e) => reachedStage(e, 2) && e.collarType === "WHITE_COLLAR" && !e.stage2?.bmEval },
+    { role: "HOD", short: "HOD", stage: 2, evalOf: (e) => e.stage2?.hodEval, pendingFor: (e) => reachedStage(e, 2) && e.collarType === "BLUE_COLLAR" && !e.stage2?.hodEval },
+    { role: "Cluster Manager", short: "CM", stage: 3, evalOf: (e) => e.stage3?.cmEval, pendingFor: (e) => reachedStage(e, 3) && !e.stage3?.cmEval },
+    { role: "HR", short: "HR", stage: 4, evalOf: (e) => e.stage4?.hrEval, pendingFor: (e) => reachedStage(e, 4) && !e.stage4?.hrEval },
 ];
 
 // ── By Evaluator: which BM/HOD/CM/HR evaluated which employees ──
@@ -49,8 +51,9 @@ export default function EvaluatorReport({ employees, onSelect }) {
                                                 <span className="font-bold text-[#222] truncate">{g.name}</span>
                                                 {g.empCode && <span className="text-[12px] text-[#999]">{g.empCode}</span>}
                                             </div>
-                                            <span className="shrink-0 px-2.5 py-1 rounded-full bg-[#E8EEF9] text-[#003087] text-[11px] font-bold">
-                                                {g.employees.length} evaluated
+                                            <span className="shrink-0 flex items-center gap-1.5">
+                                                <span className="px-2.5 py-1 rounded-full bg-[#E8EEF9] text-[#003087] text-[11px] font-bold">{g.employees.length} evaluated</span>
+                                                {g.pending > 0 && <span className="px-2.5 py-1 rounded-full bg-[#FEF3E2] text-[#C76A00] text-[11px] font-bold">{g.pending} pending</span>}
                                             </span>
                                         </button>
                                         {isOpen && (
@@ -91,7 +94,8 @@ export default function EvaluatorReport({ employees, onSelect }) {
     );
 }
 
-// Group employees under each (evaluator, role) — keeping the employee objects.
+// Group employees under each (evaluator, role) — keeping the employee objects,
+// plus a per-evaluator branch set used to compute their pending backlog.
 function buildEvaluatorGroups(employees) {
     const map = new Map(); // key: `${short}|${empCode||name}`
     const add = (def, e) => {
@@ -100,11 +104,20 @@ function buildEvaluatorGroups(employees) {
         const code = ev.evaluatorEmpCode || "";
         const name = ev.evaluatorName || "—";
         const key = `${def.short}|${code || name}`;
-        if (!map.has(key)) map.set(key, { key, short: def.short, role: def.role, name, empCode: code, employees: [] });
-        map.get(key).employees.push(e);
+        if (!map.has(key)) map.set(key, { key, short: def.short, role: def.role, name, empCode: code, employees: [], branches: new Set(), pending: 0 });
+        const g = map.get(key);
+        g.employees.push(e);
+        if (e.branchName) g.branches.add(e.branchName);
     };
     for (const e of employees) {
         for (const def of ROLE_DEFS) add(def, e);
+    }
+    // Pending = employees in this evaluator's branch(es) who reached the stage
+    // but this role hasn't evaluated yet (live backlog).
+    const defByShort = Object.fromEntries(ROLE_DEFS.map(d => [d.short, d]));
+    for (const g of map.values()) {
+        const def = defByShort[g.short];
+        g.pending = employees.filter(e => g.branches.has(e.branchName) && def.pendingFor(e)).length;
     }
     return Array.from(map.values()).sort((a, b) => b.employees.length - a.employees.length);
 }

@@ -35,6 +35,43 @@ function SheetBody({ emp, quarter }) {
                 </div>
             </div>
 
+            {/* Evaluation summary — scores at a glance */}
+            <div>
+                <div className="text-[11px] font-bold uppercase tracking-wide text-[#888] mb-1.5">Evaluation Summary</div>
+                <div className="grid grid-cols-5 gap-2">
+                    {[
+                        { k: "S1 Self", v: emp.stage1?.normalizedScore },
+                        { k: "S2 BM/HOD", v: emp.stage2?.shortlistCombinedScore ?? emp.stage2?.bmEval?.combinedScore ?? emp.stage2?.hodEval?.combinedScore },
+                        { k: "S3 CM", v: emp.stage3?.shortlistCombinedScore ?? emp.stage3?.cmEval?.finalScore },
+                        { k: "S4 HR", v: emp.stage4?.shortlistCombinedScore ?? emp.stage4?.hrEval?.combinedScore },
+                        { k: "Final", v: final, strong: true },
+                    ].map(c => (
+                        <div key={c.k} className={`rounded-lg px-2 py-2 text-center ${c.strong ? "bg-[#003087] text-white" : "bg-[#F6F8FC]"}`}>
+                            <div className={`text-[9px] font-bold uppercase tracking-wide ${c.strong ? "text-white/80" : "text-[#888]"}`}>{c.k}</div>
+                            <div className={`text-[14px] font-black ${c.strong ? "text-white" : "text-[#003087]"}`}>{c.v === null || c.v === undefined ? "—" : fmtScore(c.v)}</div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Evaluators */}
+            <div>
+                <div className="text-[11px] font-bold uppercase tracking-wide text-[#888] mb-1.5">Evaluators</div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                        { role: "BM", name: emp.stage2?.bmEval?.evaluatorName },
+                        { role: "HOD", name: emp.stage2?.hodEval?.evaluatorName },
+                        { role: "CM", name: emp.stage3?.cmEval?.evaluatorName },
+                        { role: "HR", name: emp.stage4?.hrEval?.evaluatorName },
+                    ].map(c => (
+                        <div key={c.role} className="rounded-lg bg-[#F6F8FC] px-3 py-2">
+                            <div className="text-[10px] font-bold uppercase tracking-wide text-[#888]">{c.role}</div>
+                            <div className="text-[12px] font-bold text-[#333] truncate">{c.name || "—"}</div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
             {/* Stage 1 · Self */}
             <StageCard title="Stage 1 · Self Assessment" reached={!!emp.stage1?.submitted}>
                 <Grid>

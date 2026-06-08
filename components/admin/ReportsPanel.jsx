@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import {
-    api, collarLabel, rowScore, rowLatestDate, rowEvaluatorCodes,
+    api, evaluatedByRole,
 } from "./reports/helpers.js";
 import ReportCharts from "./reports/ReportCharts.jsx";
 import EvaluatorReport from "./reports/EvaluatorReport.jsx";
@@ -12,8 +12,7 @@ import AnswerSheet from "./reports/AnswerSheet.jsx";
 import ScoreSheetModal from "./reports/ScoreSheetModal.jsx";
 
 const BLANK_FILTERS = {
-    branch: "", department: "", search: "", stage: "", role: "", evaluator: "",
-    status: "", collar: "", dateFrom: "", dateTo: "", scoreMin: "", scoreMax: "",
+    branch: "", department: "", search: "", stage: "", evaluatorRole: "", collar: "",
 };
 
 const SECTIONS = [
@@ -70,12 +69,6 @@ export default function ReportsPanel() {
 
     const employees = data?.employees || [];
 
-    const designations = useMemo(() => {
-        const set = new Set();
-        employees.forEach(e => { if (e.designation) set.add(e.designation); });
-        return Array.from(set).sort();
-    }, [employees]);
-
     const deptOptions = useMemo(() => {
         const list = data?.departments || [];
         if (!filters.branch) return list;
@@ -85,43 +78,20 @@ export default function ReportsPanel() {
     // ── Apply filters to the employee universe ──
     const filtered = useMemo(() => {
         const q = filters.search.trim().toLowerCase();
-        const sMin = filters.scoreMin !== "" ? Number(filters.scoreMin) : null;
-        const sMax = filters.scoreMax !== "" ? Number(filters.scoreMax) : null;
-        const from = filters.dateFrom ? new Date(filters.dateFrom).getTime() : null;
-        const to = filters.dateTo ? new Date(filters.dateTo).getTime() + 86400000 : null;
         return employees.filter(e => {
             if (filters.branch && e.branchName !== filters.branch) return false;
             if (filters.department && e.department !== filters.department) return false;
             if (filters.collar && e.collarType !== filters.collar) return false;
-            if (filters.role && e.designation !== filters.role) return false;
             if (q) {
-                const hay = `${e.name} ${e.empCode} ${e.designation}`.toLowerCase();
+                const hay = `${e.name} ${e.empCode}`.toLowerCase();
                 if (!hay.includes(q)) return false;
             }
             if (filters.stage) {
-                if (filters.stage === "winner") { if (!e.isWinner) return false; }
+                if (filters.stage === "final") { if (!e.isWinner) return false; }
                 else if ((e.currentStage || 0) < Number(filters.stage)) return false;
             }
-            if (filters.status) {
-                if (filters.status === "not_started" && (e.currentStage || 0) !== 0) return false;
-                if (filters.status === "in_progress" && !((e.currentStage || 0) >= 1 && !e.isWinner)) return false;
-                if (filters.status === "winner" && !e.isWinner) return false;
-            }
-            if (filters.evaluator) {
-                if (!rowEvaluatorCodes(e).includes(filters.evaluator)) return false;
-            }
-            if (sMin !== null || sMax !== null) {
-                const sc = rowScore(e);
-                if (sc === null) return false;
-                if (sMin !== null && sc < sMin) return false;
-                if (sMax !== null && sc > sMax) return false;
-            }
-            if (from !== null || to !== null) {
-                const d = rowLatestDate(e);
-                if (!d) return false;
-                const t = d.getTime();
-                if (from !== null && t < from) return false;
-                if (to !== null && t >= to) return false;
+            if (filters.evaluatorRole) {
+                if (!evaluatedByRole(e, filters.evaluatorRole)) return false;
             }
             return true;
         });
@@ -186,26 +156,18 @@ export default function ReportsPanel() {
                     <h3 className="text-[13px] font-bold text-[#333] uppercase tracking-wide">Filters</h3>
                     <button type="button" onClick={() => setFilters(BLANK_FILTERS)} className="text-xs font-bold text-[#003087] hover:underline">Clear all</button>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                    <FilterInput label="Search (name / code)" value={filters.search} onChange={v => setFilter("search", v)} placeholder="Type to search…" />
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    <FilterInput label="Employee (name / code)" value={filters.search} onChange={v => setFilter("search", v)} placeholder="Type to search…" />
                     <FilterSelect label="Branch" value={filters.branch} onChange={v => { setFilter("branch", v); setFilter("department", ""); }}
                         options={[["", "All Branches"], ...(data?.branches || []).map(b => [b.name, b.name])]} />
                     <FilterSelect label="Department" value={filters.department} onChange={v => setFilter("department", v)}
                         options={[["", "All Departments"], ...deptOptions.map(d => [d.name, d.name])]} />
-                    <FilterSelect label="Collar Type" value={filters.collar} onChange={v => setFilter("collar", v)}
+                    <FilterSelect label="Employee Category" value={filters.collar} onChange={v => setFilter("collar", v)}
                         options={[["", "All"], ["WHITE_COLLAR", "White Collar"], ["BLUE_COLLAR", "Blue Collar"]]} />
-                    <FilterSelect label="Role / Designation" value={filters.role} onChange={v => setFilter("role", v)}
-                        options={[["", "All Roles"], ...designations.map(d => [d, d])]} />
-                    <FilterSelect label="Stage Reached" value={filters.stage} onChange={v => setFilter("stage", v)}
-                        options={[["", "Any Stage"], ["1", "Stage 1+"], ["2", "Stage 2+"], ["3", "Stage 3+"], ["4", "Stage 4"], ["winner", "Winners only"]]} />
-                    <FilterSelect label="Evaluator" value={filters.evaluator} onChange={v => setFilter("evaluator", v)}
-                        options={[["", "All Evaluators"], ...(data?.evaluators || []).map(ev => [ev.empCode, `${ev.name} · ${ev.stage}`])]} />
-                    <FilterSelect label="Status" value={filters.status} onChange={v => setFilter("status", v)}
-                        options={[["", "All"], ["not_started", "Not Started"], ["in_progress", "In Progress"], ["winner", "Winner"]]} />
-                    <FilterInput label="Date From" type="date" value={filters.dateFrom} onChange={v => setFilter("dateFrom", v)} />
-                    <FilterInput label="Date To" type="date" value={filters.dateTo} onChange={v => setFilter("dateTo", v)} />
-                    <FilterInput label="Min Score" type="number" value={filters.scoreMin} onChange={v => setFilter("scoreMin", v)} placeholder="0" />
-                    <FilterInput label="Max Score" type="number" value={filters.scoreMax} onChange={v => setFilter("scoreMax", v)} placeholder="100" />
+                    <FilterSelect label="Stage" value={filters.stage} onChange={v => setFilter("stage", v)}
+                        options={[["", "Any Stage"], ["1", "Stage 1+"], ["2", "Stage 2+"], ["3", "Stage 3+"], ["4", "Stage 4"], ["final", "Final / Winners"]]} />
+                    <FilterSelect label="Evaluator Role" value={filters.evaluatorRole} onChange={v => setFilter("evaluatorRole", v)}
+                        options={[["", "All Roles"], ["BM", "BM"], ["CM", "CM"], ["HOD", "HOD"], ["HR", "HR Personnel"]]} />
                 </div>
             </div>
 

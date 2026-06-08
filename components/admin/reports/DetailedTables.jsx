@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
     fmtScore, fmtDate, collarLabel, stageLabel, rowScore, rowLatestDate, activeFilterSummary,
+    reachedStage, completedStage, passedStage, evalStatus,
 } from "./helpers.js";
 
 const REPORT_TYPES = [
@@ -232,20 +233,20 @@ function buildEmployeeList(emps) {
         columns: [
             { key: "empCode", label: "Emp Code" },
             { key: "name", label: "Name", strong: true },
-            { key: "department", label: "Department" },
             { key: "branchName", label: "Branch" },
-            { key: "designation", label: "Designation" },
-            { key: "collar", label: "Collar" },
+            { key: "department", label: "Department" },
+            { key: "collar", label: "Category" },
             { key: "stage", label: "Current Stage" },
+            { key: "status", label: "Evaluation Status" },
         ],
         rows: emps.map(e => ({
             empCode: e.empCode || "—",
             name: e.name,
-            department: e.department,
             branchName: e.branchName,
-            designation: e.designation || "—",
+            department: e.department,
             collar: collarLabel(e.collarType),
             stage: e.isWinner ? "Winner" : stageLabel(e.currentStage || 0),
+            status: evalStatus(e),
             _emp: e,
         })),
     };
@@ -287,31 +288,38 @@ function buildFullSheet(emps) {
 }
 
 function buildStageProgress(emps) {
-    const total = emps.length;
-    const submitted = emps.filter(e => e.stage1?.submitted).length;
-    const s1 = emps.filter(e => e.stage1?.shortlisted).length;
-    const s2 = emps.filter(e => e.stage2?.shortlisted).length;
-    const s3 = emps.filter(e => e.stage3?.shortlisted).length;
-    const s4 = emps.filter(e => e.stage4?.shortlisted).length;
-    const s2e = emps.filter(e => e.stage2?.bmEval || e.stage2?.hodEval).length;
-    const s3e = emps.filter(e => e.stage3?.cmEval).length;
-    const s4e = emps.filter(e => e.stage4?.hrEval).length;
-    const winners = emps.filter(e => e.isWinner).length;
-    const pct = (n) => total ? `${Math.round((n / total) * 100)}%` : "0%";
-    const rows = [
-        { stage: "Stage 1 · Self Assessment", evaluated: submitted, shortlisted: s1, pct: pct(submitted) },
-        { stage: "Stage 2 · BM / HOD", evaluated: s2e, shortlisted: s2, pct: pct(s2e) },
-        { stage: "Stage 3 · Cluster Manager", evaluated: s3e, shortlisted: s3, pct: pct(s3e) },
-        { stage: "Stage 4 · HR", evaluated: s4e, shortlisted: s4, pct: pct(s4e) },
-        { stage: "Winners", evaluated: winners, shortlisted: winners, pct: pct(winners) },
+    // Cascade: passing a stage is what places an employee in the next stage's
+    // "reached" total (Stage 1 passed → Stage 2 reached, and so on).
+    const defs = [
+        { key: 1, label: "Stage 1 · Self Assessment" },
+        { key: 2, label: "Stage 2 · BM / HOD" },
+        { key: 3, label: "Stage 3 · Cluster Manager" },
+        { key: 4, label: "Stage 4 · HR" },
+        { key: "final", label: "Final Stage · Winners" },
     ];
+    const rows = defs.map(d => {
+        const reached = emps.filter(e => reachedStage(e, d.key)).length;
+        const completed = emps.filter(e => reachedStage(e, d.key) && completedStage(e, d.key)).length;
+        const pending = reached - completed;
+        const passed = emps.filter(e => passedStage(e, d.key)).length;
+        return {
+            stage: d.label,
+            reached,
+            completed,
+            pending,
+            passed,
+            pct: reached ? `${Math.round((completed / reached) * 100)}%` : "0%",
+        };
+    });
     return {
         title: "Stage-wise Evaluation Progress",
         columns: [
             { key: "stage", label: "Stage", strong: true },
-            { key: "evaluated", label: "Evaluated / Done", align: "right" },
-            { key: "shortlisted", label: "Shortlisted", align: "right" },
-            { key: "pct", label: "% of Pool", align: "right" },
+            { key: "reached", label: "Reached", align: "right" },
+            { key: "completed", label: "Completed", align: "right" },
+            { key: "pending", label: "Pending", align: "right" },
+            { key: "passed", label: "Passed / Cleared", align: "right" },
+            { key: "pct", label: "% Completed", align: "right" },
         ],
         rows,
     };

@@ -86,21 +86,61 @@ export function evaluatedAtStage(e, stage) {
     return false;
 }
 
+// ── Stage cascade helpers (reached → completed → passed) ──
+// "reached" = entered that stage's evaluation pool. Cascades: passing one
+// stage is what makes an employee appear in the next stage's totals.
+//   S1 reached = everyone · S2 reached = passed S1 · S3 reached = passed S2 ·
+//   S4 reached = passed S3 · Final reached = passed S4.
+export function reachedStage(e, stage) {
+    if (stage === 1) return true;
+    if (stage === 2) return !!e.stage1?.shortlisted;
+    if (stage === 3) return !!e.stage2?.shortlisted;
+    if (stage === 4) return !!e.stage3?.shortlisted;
+    if (stage === "final") return !!e.stage4?.shortlisted;
+    return false;
+}
+// "completed" = an evaluation record exists at that stage (or winner picked for Final).
+export function completedStage(e, stage) {
+    if (stage === "final") return !!e.isWinner;
+    return evaluatedAtStage(e, stage);
+}
+// "passed/cleared" = shortlisted out of that stage into the next (winner for Final).
+export function passedStage(e, stage) {
+    if (stage === 1) return !!e.stage1?.shortlisted;
+    if (stage === 2) return !!e.stage2?.shortlisted;
+    if (stage === 3) return !!e.stage3?.shortlisted;
+    if (stage === 4) return !!e.stage4?.shortlisted;
+    if (stage === "final") return !!e.isWinner;
+    return false;
+}
+
+// Whether an employee was evaluated by a given evaluator ROLE (BM/HOD/CM/HR).
+export function evaluatedByRole(e, role) {
+    if (role === "BM") return !!e.stage2?.bmEval;
+    if (role === "HOD") return !!e.stage2?.hodEval;
+    if (role === "CM") return !!e.stage3?.cmEval;
+    if (role === "HR") return !!e.stage4?.hrEval;
+    return false;
+}
+
+// Human evaluation status for an employee (for the employee-list report).
+export function evalStatus(e) {
+    if (e.isWinner) return "Winner";
+    const cs = e.currentStage || 0;
+    if (cs === 0) return "Not Started";
+    if (cs >= 4 && e.stage4?.hrEval) return "Stage 4 Done";
+    return `In Progress (Stage ${cs})`;
+}
+
 // ── Active-filter human summary (for export metadata + PDF header) ──
 export function activeFilterSummary(f) {
     const parts = [];
-    if (f.search) parts.push(`search="${f.search}"`);
+    if (f.search) parts.push(`employee="${f.search}"`);
     if (f.branch) parts.push(`branch=${f.branch}`);
     if (f.department) parts.push(`dept=${f.department}`);
-    if (f.collar) parts.push(`collar=${collarLabel(f.collar)}`);
-    if (f.role) parts.push(`role=${f.role}`);
+    if (f.collar) parts.push(`category=${collarLabel(f.collar)}`);
     if (f.stage) parts.push(`stage=${f.stage}`);
-    if (f.evaluator) parts.push(`evaluator=${f.evaluator}`);
-    if (f.status) parts.push(`status=${f.status}`);
-    if (f.dateFrom) parts.push(`from=${f.dateFrom}`);
-    if (f.dateTo) parts.push(`to=${f.dateTo}`);
-    if (f.scoreMin) parts.push(`min=${f.scoreMin}`);
-    if (f.scoreMax) parts.push(`max=${f.scoreMax}`);
+    if (f.evaluatorRole) parts.push(`evaluator=${f.evaluatorRole}`);
     return parts.join(", ");
 }
 
