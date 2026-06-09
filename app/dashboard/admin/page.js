@@ -616,34 +616,55 @@ export default function AdminDashboard() {
             const v = w.stages?.find(s => s.stage === n)?.score;
             return (v === null || v === undefined) ? "" : String(Math.round(v * 100) / 100);
         };
-        const head = [["Branch", "#", "Name", "Emp Code", "Department", "Cat.", "S1", "S2", "S3", "S4", "Final"]];
-        const body = [];
-        pipelineWinners.branches.forEach(b => {
-            (b.winners || []).forEach(w => {
-                body.push([
-                    b.branchName, w.rank, w.name, w.empCode || "", w.department || "",
-                    w.collarType === "WHITE_COLLAR" ? "WC" : "BC",
-                    sc(w, 1), sc(w, 2), sc(w, 3), sc(w, 4),
-                    w.finalScore === null || w.finalScore === undefined ? "" : String(Math.round(w.finalScore * 100) / 100),
-                ]);
+        const head = [["#", "Name", "Emp Code", "Department", "Cat.", "S1", "S2", "S3", "S4", "Final"]];
+
+        // One SEPARATE table per branch (each with its own heading), all stacked
+        // into a single PDF file.
+        let startY = 70;
+        let totalWinners = 0;
+        const ph = doc.internal.pageSize.getHeight();
+        pipelineWinners.branches.forEach((b) => {
+            const rows = b.winners || [];
+            totalWinners += rows.length;
+
+            // Page break if the branch heading wouldn't fit near the bottom.
+            if (startY > ph - 90) { doc.addPage(); startY = 50; }
+
+            // Branch heading band.
+            doc.setFillColor(255, 243, 224); doc.rect(36, startY - 12, pageW - 72, 20, "F");
+            doc.setTextColor(193, 92, 0); doc.setFontSize(11); doc.setFont(undefined, "bold");
+            doc.text(`${b.branchName}  (${b.branchType})`, 42, startY + 2);
+            doc.setFontSize(9); doc.setFont(undefined, "normal"); doc.setTextColor(120, 120, 120);
+            doc.text(`${rows.length} / ${b.expectedCount} winners`, pageW - 42, startY + 2, { align: "right" });
+            startY += 16;
+
+            const body = rows.map((w) => [
+                w.rank, w.name, w.empCode || "", w.department || "",
+                w.collarType === "WHITE_COLLAR" ? "WC" : "BC",
+                sc(w, 1), sc(w, 2), sc(w, 3), sc(w, 4),
+                w.finalScore === null || w.finalScore === undefined ? "" : String(Math.round(w.finalScore * 100) / 100),
+            ]);
+
+            autoTable(doc, {
+                head, body, startY,
+                styles: { fontSize: 8, cellPadding: 3, textColor: [33, 37, 41], lineColor: [200, 200, 200], lineWidth: 0.4 },
+                headStyles: { fillColor: [245, 124, 0], textColor: [255, 255, 255], fontStyle: "bold" },
+                alternateRowStyles: { fillColor: [255, 248, 235] },
+                theme: "grid",
+                margin: { left: 36, right: 36 },
             });
+            startY = doc.lastAutoTable.finalY + 22;
         });
 
-        autoTable(doc, {
-            head, body, startY: 66,
-            styles: { fontSize: 7.5, cellPadding: 3, textColor: [33, 37, 41], lineColor: [200, 200, 200], lineWidth: 0.4 },
-            headStyles: { fillColor: [245, 124, 0], textColor: [255, 255, 255], fontStyle: "bold" },
-            alternateRowStyles: { fillColor: [255, 243, 224] },
-            theme: "grid",
-            margin: { left: 36, right: 36 },
-            didDrawPage: () => {
-                const ph = doc.internal.pageSize.getHeight();
-                const page = doc.internal.getNumberOfPages();
-                doc.setFontSize(8); doc.setTextColor(120, 120, 120);
-                doc.text(`Page ${page}`, pageW - 60, ph - 18);
-                doc.text(`${body.length} winners`, 36, ph - 18);
-            },
-        });
+        // Footer page numbers across all pages.
+        const pages = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= pages; i++) {
+            doc.setPage(i);
+            doc.setFontSize(8); doc.setTextColor(120, 120, 120);
+            doc.text(`Page ${i} / ${pages}`, pageW - 60, ph - 18);
+            doc.text(`${totalWinners} winners · ${pipelineWinners.branches.length} branches`, 36, ph - 18);
+        }
+
         const fname = `Branch_Winners_All_${(qn || "quarter").replace(/[^A-Za-z0-9_-]+/g, "_")}_${new Date().toISOString().slice(0, 10)}.pdf`;
         doc.save(fname);
     };
@@ -1579,10 +1600,22 @@ export default function AdminDashboard() {
                                                         </button>
                                                     );
                                                 })}
-                                            </div>
-                                            <div className="mt-3 pt-3 border-t border-[#EEEEEE] flex items-center justify-between text-[11px]">
-                                                <span className="font-bold text-[#6A1B9A]">Winners selected</span>
-                                                <span className="text-[#666666]"><span className="font-bold text-[#6A1B9A]">{b.winners.length}</span> / {winnerTarget}</span>
+
+                                                {/* Winners — 5th entry in the list; opens this branch's
+                                                    winners with its own separate download. */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setStageDetail({ branch: b, stage: 5 })}
+                                                    className="w-full text-left border border-[#FFE0B2] rounded-lg p-2.5 cursor-pointer hover:border-[#FFCC80] hover:shadow-sm hover:bg-[#FFFDF7] transition-all focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30"
+                                                    style={{ borderLeft: "3px solid #F57C00" }}
+                                                    title="View & download this branch's winners"
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[12px] font-bold text-[#333333]">🏆 Winners</span>
+                                                        <span className="text-[12px] text-[#666666]"><span className="font-black text-[18px] align-middle text-[#F57C00]">{b.winners.length}</span> / {winnerTarget} selected</span>
+                                                    </div>
+                                                    <p className="text-[10px] text-[#999999] mt-1">Click to view &amp; download this branch&apos;s winners list</p>
+                                                </button>
                                             </div>
                                         </div>
                                     );

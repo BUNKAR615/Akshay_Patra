@@ -35,6 +35,12 @@ const STAGE_META = {
         evaluator: "HR Team",
         desc: "HR evaluates the finalists on attendance and punctuality to decide the branch winners.",
     },
+    5: {
+        title: "Branch Winners",
+        color: "#F57C00", soft: "#FFF3E0",
+        evaluator: "Selected winners",
+        desc: "The final winners of this branch for the quarter, with their stage-wise and final scores. Download the list with scores or with winner information.",
+    },
 };
 
 // Pull the evaluator(s) recorded against a stage row for an employee.
@@ -64,16 +70,20 @@ function distinctEvaluators(rows, stage) {
 }
 
 export default function StageDetailModal({ branch, stage, quarterId, onClose }) {
+    const isWinners = stage === 5;
     const meta = STAGE_META[stage] || STAGE_META[1];
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [cmBranches, setCmBranches] = useState({}); // empCode -> [branchName]
     const [team, setTeam] = useState(null); // this branch's evaluators: { bms, cms, hods, hrs }
-    const [winners, setWinners] = useState(null); // this branch's declared winners (Stage 4 only)
+    const [winners, setWinners] = useState(null); // this branch's declared winners (Stage 4 + Winners view)
+    const [winnersQuarterName, setWinnersQuarterName] = useState(null);
 
-    // Load the branch's ongoing pipeline (per-employee stage rows).
+    // Load the branch's ongoing pipeline (per-employee stage rows). Skipped for
+    // the Winners-only view, which has no evaluation cohort to compute.
     useEffect(() => {
+        if (isWinners) { setLoading(false); return; }
         let alive = true;
         setLoading(true); setError("");
         const qs = quarterId ? `?quarterId=${encodeURIComponent(quarterId)}` : "";
@@ -82,7 +92,7 @@ export default function StageDetailModal({ branch, stage, quarterId, onClose }) 
             .catch(e => { if (alive) setError(e.message || "Failed to load stage details"); })
             .finally(() => { if (alive) setLoading(false); });
         return () => { alive = false; };
-    }, [branch.branchId, quarterId]);
+    }, [branch.branchId, quarterId, isWinners]);
 
     // Load THIS branch's evaluation team from the authoritative per-branch
     // assignment endpoints. BM / CM / HR live in dedicated assignment tables
@@ -90,6 +100,7 @@ export default function StageDetailModal({ branch, stage, quarterId, onClose }) 
     // branch employees endpoint (role=HOD), which is quarter-scoped to the
     // active/current HODs. Everything here is already branch-specific.
     useEffect(() => {
+        if (isWinners) return;
         let alive = true;
         const qp = quarterId ? `&quarterId=${encodeURIComponent(quarterId)}` : "";
         Promise.all([
@@ -112,20 +123,25 @@ export default function StageDetailModal({ branch, stage, quarterId, onClose }) 
             });
         });
         return () => { alive = false; };
-    }, [branch.branchId, quarterId]);
+    }, [branch.branchId, quarterId, isWinners]);
 
-    // Stage 4 — load THIS branch's declared winners (same data the committee
-    // sees). ADMIN may target any branch via ?branchId=.
+    // Load THIS branch's declared winners (same data the committee sees) — for
+    // both the Stage 4 view and the dedicated Winners view. ADMIN may target any
+    // branch via ?branchId=.
     useEffect(() => {
-        if (stage !== 4) return;
+        if (stage !== 4 && !isWinners) return;
         let alive = true;
         const qs = new URLSearchParams({ branchId: branch.branchId });
         if (quarterId) qs.set("quarterId", quarterId);
         api(`/api/committee/results?${qs.toString()}`)
-            .then(d => { if (alive) setWinners(d?.branches?.[0]?.winners || []); })
+            .then(d => {
+                if (!alive) return;
+                setWinners(d?.branches?.[0]?.winners || []);
+                setWinnersQuarterName(d?.quarter?.name || null);
+            })
             .catch(() => { if (alive) setWinners([]); });
         return () => { alive = false; };
-    }, [stage, branch.branchId, quarterId]);
+    }, [stage, branch.branchId, quarterId, isWinners]);
 
     // For Stage 3, work out which branches each Cluster Manager covers so we
     // can surface the "under branches" list when one CM spans multiple branches.
@@ -203,7 +219,9 @@ export default function StageDetailModal({ branch, stage, quarterId, onClose }) 
                 </div>
 
                 <div className="p-4 sm:p-6 space-y-5 max-h-[78vh] overflow-y-auto">
-                    {loading ? (
+                    {isWinners ? (
+                        <BranchWinners winners={winners} branchName={branch.branchName} quarterName={winnersQuarterName} />
+                    ) : loading ? (
                         <div className="py-16 text-center text-[#888] text-sm">Loading stage details…</div>
                     ) : error ? (
                         <div className="py-16 text-center text-[#C0392B] text-sm font-medium">{error}</div>
