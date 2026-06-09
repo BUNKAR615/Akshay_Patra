@@ -83,49 +83,60 @@ export default function StageDetailModal({ branch, stage, quarterId, onClose }) 
         return () => { alive = false; };
     }, [branch.branchId, quarterId]);
 
-    // Load the branch's evaluation team (BM / CM / HOD from the org structure,
-    // HR from the branch HR assignments). Also derive, for Stage 3, which
-    // branches each Cluster Manager covers — so we can surface the "under
-    // branches" list when one CM spans multiple branches.
+    // Load THIS branch's evaluation team from the authoritative per-branch
+    // assignment endpoints. BM / CM / HR live in dedicated assignment tables
+    // (not departmentRoles), so we read them directly; HODs come from the
+    // branch employees endpoint (role=HOD), which is quarter-scoped to the
+    // active/current HODs. Everything here is already branch-specific.
     useEffect(() => {
         let alive = true;
+        const qp = quarterId ? `&quarterId=${encodeURIComponent(quarterId)}` : "";
         Promise.all([
-            api("/api/admin/departments/all-assignments").catch(() => ({ departments: [] })),
+            api(`/api/admin/branches/${branch.branchId}/bm-assign`).catch(() => ({ assignment: null })),
+            api(`/api/admin/branches/${branch.branchId}/cm-assign`).catch(() => ({ assignments: [] })),
             api(`/api/admin/branches/${branch.branchId}/hr-assign`).catch(() => ({ assignments: [] })),
-        ]).then(([assign, hr]) => {
+            api(`/api/admin/branches/${branch.branchId}/employees?role=HOD${qp}`).catch(() => ({ employees: [] })),
+        ]).then(([bm, cm, hr, hodData]) => {
             if (!alive) return;
-            const depts = assign.departments || [];
-
-            // CM → covered branches (global), used by the Stage 3 panel.
-            const map = {};
-            for (const dept of depts) {
-                for (const cm of dept.clusterManagers || []) {
-                    const key = cm.empCode || cm.name;
-                    if (!key) continue;
-                    if (!map[key]) map[key] = new Set();
-                    map[key].add(dept.branch);
-                }
-            }
-            const out = {};
-            for (const k of Object.keys(map)) out[k] = Array.from(map[k]).sort();
-            setCmBranches(out);
-
-            // This branch's evaluators only — match on branch name (unique).
-            const mine = depts.filter(d => d.branch === branch.branchName);
             const dedupe = (arr) => {
                 const m = new Map();
                 for (const u of arr) if (u && u.id && !m.has(u.id)) m.set(u.id, u);
                 return Array.from(m.values());
             };
             setTeam({
-                bms: dedupe(mine.flatMap(d => d.branchManagers || [])),
-                cms: dedupe(mine.flatMap(d => d.clusterManagers || [])),
-                hods: dedupe(mine.flatMap(d => d.hods || [])),
+                bms: bm.assignment?.bm ? [bm.assignment.bm] : [],
+                cms: dedupe((cm.assignments || []).map(a => a.cm).filter(Boolean)),
                 hrs: dedupe((hr.assignments || []).map(a => a.hr).filter(Boolean)),
+                hods: dedupe(hodData.employees || []),
             });
         });
         return () => { alive = false; };
-    }, [branch.branchId, branch.branchName]);
+    }, [branch.branchId, quarterId]);
+
+    // For Stage 3, work out which branches each Cluster Manager covers so we
+    // can surface the "under branches" list when one CM spans multiple branches.
+    useEffect(() => {
+        if (stage !== 3) return;
+        let alive = true;
+        api("/api/admin/departments/all-assignments")
+            .then(d => {
+                if (!alive) return;
+                const map = {};
+                for (const dept of d.departments || []) {
+                    for (const cm of dept.clusterManagers || []) {
+                        const key = cm.empCode || cm.name;
+                        if (!key) continue;
+                        if (!map[key]) map[key] = new Set();
+                        map[key].add(dept.branch);
+                    }
+                }
+                const out = {};
+                for (const k of Object.keys(map)) out[k] = Array.from(map[k]).sort();
+                setCmBranches(out);
+            })
+            .catch(() => {});
+        return () => { alive = false; };
+    }, [stage]);
 
     // Lock background scroll + close on Escape while the modal is open.
     useEffect(() => {

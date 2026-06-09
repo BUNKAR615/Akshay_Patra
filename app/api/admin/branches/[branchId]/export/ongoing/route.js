@@ -57,11 +57,16 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
         if (!quarter) return fail("No quarters exist yet");
         const quarterId = quarter.id;
 
-        // Branch-scoped employee universe: EMPLOYEE-role users whose dept is in this branch.
+        // Branch-scoped employee universe: EMPLOYEE-role users who belong to this
+        // branch — either directly (User.branchId) or via their department. This
+        // mirrors the canonical scope used by the branch summary + employees
+        // endpoints; using `department: { branchId }` alone dropped employees
+        // attached to the branch by User.branchId, so they went missing from the
+        // pipeline detail view even though they were shortlisted into a stage.
         const employees = await prisma.user.findMany({
             where: {
                 role: "EMPLOYEE",
-                department: { branchId },
+                OR: [{ branchId }, { department: { branchId } }],
             },
             select: {
                 id: true, empCode: true, name: true, designation: true, collarType: true,
