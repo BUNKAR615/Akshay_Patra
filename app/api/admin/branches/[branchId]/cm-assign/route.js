@@ -21,6 +21,11 @@ const assignSchema = z.object({
     // ...or create one on the fly
     name: z.string().min(1).optional(),
     mobile: z.string().optional(),
+    // Department for a manually-added CM who isn't yet an employee. When given
+    // (and it resolves to a department in this branch) the new user is created
+    // WITH that employee identity, so they show up in the branch employee list
+    // and get the dual-login (employee + CM) treatment below.
+    departmentName: z.string().optional(),
     password: z.string().min(6).optional(),
 });
 
@@ -83,6 +88,15 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             cmUser = await prisma.user.findUnique({ where: { empCode: data.empCode } });
             if (!cmUser) {
                 if (!data.name) return fail("Name required to create a new Cluster Manager user");
+                // Optional department for a manual add — resolved within this
+                // branch. When present the new CM is created as a branch employee
+                // too (departmentId/branchId/collarType set), which makes the
+                // preserve-identity branch below apply automatically.
+                let newDept = null;
+                if (data.departmentName) {
+                    newDept = await prisma.department.findFirst({ where: { name: data.departmentName, branchId } });
+                    if (!newDept) return fail(`Department "${data.departmentName}" not found in ${branch.name}`);
+                }
                 // CM default password = `${Firstname}_${last 2 digits of empCode}`
                 const plain = data.password || defaultPasswordFor({ role: "CLUSTER_MANAGER", empCode: data.empCode, name: data.name });
                 const hash = await bcrypt.hash(plain, SALT_ROUNDS);
@@ -93,6 +107,7 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
                         mobile: data.mobile || null,
                         password: hash,
                         role: "CLUSTER_MANAGER",
+                        ...(newDept ? { departmentId: newDept.id, branchId, collarType: newDept.collarType } : {}),
                     },
                 });
             }
@@ -120,16 +135,43 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             return conflict(roleCheck.message);
         }
 
-        // Reset password to the staff formula on every assign call so the
-        // admin-promised "Firstname_##" format always works, even for users
-        // who pre-existed as employees or were promoted before this policy.
-        // An explicit data.password in the request body still wins.
-        const passwordHash = await hashStaffDefaultPassword({
-            role: "CLUSTER_MANAGER",
-            empCode: cmUser.empCode,
-            name: cmUser.name,
-            override: data.password,
-        });
+        // Build the user-profile write. An existing EMPLOYEE keeps their branch
+        // identity (department / branch / collar) so they stay in their original
+        // branch's employee list with their CM role visible; a pure-staff CM
+        // (no department) keeps the original detach-on-promote behavior. Mirrors
+        // the HR-assign route's two cases.
+        //
+        //  (1) EXISTING EMPLOYEE → DUAL-LOGIN (login/route.js → isDualLoginStaff):
+        //        - password    = empCode       → EMPLOYEE dashboard (main branch)
+        //        - passwordHod = Firstname_##  → CM dashboard
+        //      departmentId / branchId / collarType are left UNTOUCHED.
+        //  (2) PURE STAFF (no department) → detach: staff formula is the primary
+        //      password and the employee anchors stay null. User.branchId is not
+        //      written — ClusterManagerBranchAssignment is the source of truth.
+        let userProfileWrite;
+        if (cmUser.departmentId) {
+            const staffPlain = data.password || defaultPasswordFor({ role: "CLUSTER_MANAGER", empCode: cmUser.empCode, name: cmUser.name });
+            userProfileWrite = {
+                role: "CLUSTER_MANAGER",
+                password: await bcrypt.hash(String(cmUser.empCode), SALT_ROUNDS),
+                passwordHod: await bcrypt.hash(staffPlain, SALT_ROUNDS),
+                // Employee identity + main branch preserved on purpose.
+            };
+        } else {
+            userProfileWrite = {
+                role: "CLUSTER_MANAGER",
+                password: await hashStaffDefaultPassword({
+                    role: "CLUSTER_MANAGER",
+                    empCode: cmUser.empCode,
+                    name: cmUser.name,
+                    override: data.password,
+                }),
+                departmentId: null,
+                branchId: null,
+                passwordHod: null,
+                collarType: null,
+            };
+        }
 
         // Spec rule 2: a branch can have only ONE Cluster Manager.
         // Re-saving the SAME CM on the same branch is still a no-op upsert below.
@@ -154,28 +196,17 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             return conflict("This branch already has a Cluster Manager assigned.");
         }
 
-        // Detach-on-promote + assignment upsert in one transaction so a
-        // failure can't leave a half-promoted user behind.
-        //   - role flipped to CLUSTER_MANAGER
-        //   - password reset to staff formula ("Firstname_##")
-        //   - departmentId / branchId / passwordHod / collarType nulled so
-        //     the user no longer appears in their old branch's employee list
-        //     and bulk-uploads of that branch can't silently demote them
-        //   - User.branchId is intentionally NOT written for CM —
-        //     ClusterManagerBranchAssignment is the single source of truth
+        // Profile write + assignment upsert in one transaction so a failure
+        // can't leave a half-promoted user behind. The profile write preserves
+        // (existing employee) or detaches (pure staff) per userProfileWrite above.
+        // A bulk re-upload still can't demote a CM: the demotion guard keys off
+        // role + assignment rows, not the (now-preserved) departmentId.
         let assignment;
         try {
             assignment = await prisma.$transaction(async (tx) => {
                 await tx.user.update({
                     where: { id: cmUser.id },
-                    data: {
-                        role: "CLUSTER_MANAGER",
-                        password: passwordHash,
-                        departmentId: null,
-                        branchId: null,
-                        passwordHod: null,
-                        collarType: null,
-                    },
+                    data: userProfileWrite,
                 });
                 return tx.clusterManagerBranchAssignment.upsert({
                     where: { cmUserId_branchId: { cmUserId: cmUser.id, branchId } },

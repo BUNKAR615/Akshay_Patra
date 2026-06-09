@@ -19,6 +19,11 @@ const assignSchema = z.object({
     empCode: z.string().optional(),
     name: z.string().min(1).optional(),
     mobile: z.string().optional(),
+    // Department for a manually-added committee member who isn't yet an
+    // employee. When given (and it resolves to a department in this branch) the
+    // new user is created WITH that employee identity, so they show up in the
+    // branch employee list and get the dual-login (employee + committee) below.
+    departmentName: z.string().optional(),
     password: z.string().min(6).optional(),
 });
 
@@ -79,6 +84,15 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             member = await prisma.user.findUnique({ where: { empCode: data.empCode } });
             if (!member) {
                 if (!data.name) return fail("Name required to create a new committee member");
+                // Optional department for a manual add — resolved within this
+                // branch. When present the new member is created as a branch
+                // employee too (departmentId/branchId/collarType set), which
+                // makes the preserve-identity branch below apply automatically.
+                let newDept = null;
+                if (data.departmentName) {
+                    newDept = await prisma.department.findFirst({ where: { name: data.departmentName, branchId } });
+                    if (!newDept) return fail(`Department "${data.departmentName}" not found in ${branch.name}`);
+                }
                 // COMMITTEE default password = `${Firstname}_${last 2 digits of empCode}`
                 const plain = data.password || defaultPasswordFor({ role: "COMMITTEE", empCode: data.empCode, name: data.name });
                 const hash = await bcrypt.hash(plain, SALT_ROUNDS);
@@ -89,6 +103,7 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
                         mobile: data.mobile || null,
                         password: hash,
                         role: "COMMITTEE",
+                        ...(newDept ? { departmentId: newDept.id, branchId, collarType: newDept.collarType } : {}),
                     },
                 });
             }
@@ -144,41 +159,61 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
         ]);
         const keepEvaluatorRole = !!(existingBm || existingCm || existingHr);
 
-        // Pure-committee conversion resets the password to the staff formula
-        // ("Firstname_##"); admins can override via data.password. A dual-role
-        // evaluator keeps their working password untouched — the formula is
-        // identical for both roles, so their credentials already open committee.
-        const passwordHash = keepEvaluatorRole
-            ? null
-            : await hashStaffDefaultPassword({
-                role: "COMMITTEE",
-                empCode: member.empCode,
-                name: member.name,
-                override: data.password,
-            });
+        // Profile write for a pure-committee conversion (a non-evaluator being
+        // made a committee member). Two cases, mirroring the HR/CM routes:
+        //
+        //  (1) EXISTING EMPLOYEE (has a department) → preserve branch identity so
+        //      they STAY in their original branch's employee list with their
+        //      committee role visible, and set up DUAL-LOGIN:
+        //        - password    = empCode       → EMPLOYEE dashboard (main branch)
+        //        - passwordHod = Firstname_##  → committee dashboard
+        //  (2) PURE STAFF (no department) → original detach: staff formula is the
+        //      primary password and the employee anchors are nulled.
+        //
+        // A dual-role evaluator (keepEvaluatorRole) skips this entirely — their
+        // evaluator role, password and anchors are preserved and committee is
+        // purely additive.
+        let committeeProfileWrite = null;
+        if (!keepEvaluatorRole) {
+            if (member.departmentId) {
+                const staffPlain = data.password || defaultPasswordFor({ role: "COMMITTEE", empCode: member.empCode, name: member.name });
+                committeeProfileWrite = {
+                    role: "COMMITTEE",
+                    password: await bcrypt.hash(String(member.empCode), SALT_ROUNDS),
+                    passwordHod: await bcrypt.hash(staffPlain, SALT_ROUNDS),
+                    // Employee identity + main branch preserved on purpose.
+                };
+            } else {
+                committeeProfileWrite = {
+                    role: "COMMITTEE",
+                    password: await hashStaffDefaultPassword({
+                        role: "COMMITTEE",
+                        empCode: member.empCode,
+                        name: member.name,
+                        override: data.password,
+                    }),
+                    departmentId: null,
+                    branchId: null,
+                    passwordHod: null,
+                    collarType: null,
+                };
+            }
+        }
 
         // Committee is global: assign the member to EVERY branch in one go.
         const allBranches = await prisma.branch.findMany({ select: { id: true } });
 
         const assignment = await prisma.$transaction(async (tx) => {
-            // Pure-committee conversion only — flip role to COMMITTEE, reset the
-            // password and null the employee/HOD anchors so the member no longer
-            // appears in their old branch's roster and a bulk-upload can't
-            // silently demote them. User.branchId is never written for COMMITTEE
-            // (CommitteeBranchAssignment is the source of truth). A dual-role
-            // evaluator skips this block entirely: their evaluator assignment,
-            // role and anchors are preserved and committee is purely additive.
-            if (!keepEvaluatorRole) {
+            // Pure-committee conversion only — apply the profile write computed
+            // above (preserve identity + dual-login for an existing employee, or
+            // detach for pure staff). A bulk re-upload still can't demote them:
+            // the demotion guard keys off role + assignment rows, not departmentId.
+            // A dual-role evaluator skips this block entirely: their evaluator
+            // assignment, role and anchors are preserved and committee is additive.
+            if (!keepEvaluatorRole && committeeProfileWrite) {
                 await tx.user.update({
                     where: { id: member.id },
-                    data: {
-                        role: "COMMITTEE",
-                        password: passwordHash,
-                        departmentId: null,
-                        branchId: null,
-                        passwordHod: null,
-                        collarType: null,
-                    },
+                    data: committeeProfileWrite,
                 });
             }
             // Upsert one assignment row per branch — committee is global.
