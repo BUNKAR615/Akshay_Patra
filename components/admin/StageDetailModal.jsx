@@ -69,6 +69,7 @@ export default function StageDetailModal({ branch, stage, quarterId, onClose }) 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [cmBranches, setCmBranches] = useState({}); // empCode -> [branchName]
+    const [team, setTeam] = useState(null); // this branch's evaluators: { bms, cms, hods, hrs }
 
     // Load the branch's ongoing pipeline (per-employee stage rows).
     useEffect(() => {
@@ -82,30 +83,49 @@ export default function StageDetailModal({ branch, stage, quarterId, onClose }) 
         return () => { alive = false; };
     }, [branch.branchId, quarterId]);
 
-    // For Stage 3, work out which branches each Cluster Manager covers so we
-    // can surface the "under branches" list when one CM spans multiple branches.
+    // Load the branch's evaluation team (BM / CM / HOD from the org structure,
+    // HR from the branch HR assignments). Also derive, for Stage 3, which
+    // branches each Cluster Manager covers — so we can surface the "under
+    // branches" list when one CM spans multiple branches.
     useEffect(() => {
-        if (stage !== 3) return;
         let alive = true;
-        api("/api/admin/departments/all-assignments")
-            .then(d => {
-                if (!alive) return;
-                const map = {};
-                for (const dept of d.departments || []) {
-                    for (const cm of dept.clusterManagers || []) {
-                        const key = cm.empCode || cm.name;
-                        if (!key) continue;
-                        if (!map[key]) map[key] = new Set();
-                        map[key].add(dept.branch);
-                    }
+        Promise.all([
+            api("/api/admin/departments/all-assignments").catch(() => ({ departments: [] })),
+            api(`/api/admin/branches/${branch.branchId}/hr-assign`).catch(() => ({ assignments: [] })),
+        ]).then(([assign, hr]) => {
+            if (!alive) return;
+            const depts = assign.departments || [];
+
+            // CM → covered branches (global), used by the Stage 3 panel.
+            const map = {};
+            for (const dept of depts) {
+                for (const cm of dept.clusterManagers || []) {
+                    const key = cm.empCode || cm.name;
+                    if (!key) continue;
+                    if (!map[key]) map[key] = new Set();
+                    map[key].add(dept.branch);
                 }
-                const out = {};
-                for (const k of Object.keys(map)) out[k] = Array.from(map[k]).sort();
-                setCmBranches(out);
-            })
-            .catch(() => {});
+            }
+            const out = {};
+            for (const k of Object.keys(map)) out[k] = Array.from(map[k]).sort();
+            setCmBranches(out);
+
+            // This branch's evaluators only — match on branch name (unique).
+            const mine = depts.filter(d => d.branch === branch.branchName);
+            const dedupe = (arr) => {
+                const m = new Map();
+                for (const u of arr) if (u && u.id && !m.has(u.id)) m.set(u.id, u);
+                return Array.from(m.values());
+            };
+            setTeam({
+                bms: dedupe(mine.flatMap(d => d.branchManagers || [])),
+                cms: dedupe(mine.flatMap(d => d.clusterManagers || [])),
+                hods: dedupe(mine.flatMap(d => d.hods || [])),
+                hrs: dedupe((hr.assignments || []).map(a => a.hr).filter(Boolean)),
+            });
+        });
         return () => { alive = false; };
-    }, [stage]);
+    }, [branch.branchId, branch.branchName]);
 
     // Lock background scroll + close on Escape while the modal is open.
     useEffect(() => {
@@ -173,6 +193,9 @@ export default function StageDetailModal({ branch, stage, quarterId, onClose }) 
                                 <StatTile label="Pending" value={view.pending.length} color="#E65100" soft="#FFF3E0" />
                             </div>
 
+                            {/* Branch evaluation team — branch-specific evaluator names */}
+                            <TeamPanel team={team} branchName={branch.branchName} isBig={branch.branchType === "BIG"} />
+
                             {/* Who is evaluating */}
                             <div className="bg-white border border-[#E6ECF6] rounded-xl p-4">
                                 <h3 className="text-[12px] font-bold uppercase tracking-wide text-[#888]">Who is evaluating</h3>
@@ -228,6 +251,53 @@ function StatTile({ label, value, color, soft }) {
         <div className="rounded-xl p-3 sm:p-4 text-center border" style={{ background: soft, borderColor: `${color}33` }}>
             <p className="text-[26px] sm:text-[32px] font-black leading-none" style={{ color }}>{value}</p>
             <p className="text-[10px] font-bold uppercase tracking-wider text-[#777] mt-1.5">{label}</p>
+        </div>
+    );
+}
+
+// Branch-specific evaluation team — names of the BM, CM, HR and (for BIG
+// branches) the current HODs assigned to THIS branch.
+function TeamPanel({ team, branchName, isBig }) {
+    const roles = [
+        { label: "Branch Manager", people: team?.bms, color: "#00843D", soft: "#E9F7EF" },
+        { label: "Cluster Manager", people: team?.cms, color: "#9A5700", soft: "#FFF3E0" },
+        { label: "HR Personnel", people: team?.hrs, color: "#6C3FB0", soft: "#F3E5F5" },
+    ];
+    if (isBig) roles.push({ label: "Head of Department (HOD)", people: team?.hods, color: "#003087", soft: "#E8EEF9" });
+
+    return (
+        <div className="bg-white border border-[#E6ECF6] rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+                <h3 className="text-[12px] font-bold uppercase tracking-wide text-[#888]">Branch Evaluation Team</h3>
+                <span className="text-[11px] font-bold text-[#003087]">{branchName}</span>
+            </div>
+            {!team ? (
+                <p className="text-[12.5px] text-[#999]">Loading evaluator names…</p>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {roles.map(r => <RoleBox key={r.label} {...r} />)}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function RoleBox({ label, people, color, soft }) {
+    const list = people || [];
+    return (
+        <div className="rounded-lg px-3 py-2.5 border" style={{ background: soft, borderColor: `${color}33` }}>
+            <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color }}>{label}</p>
+            {list.length === 0 ? (
+                <p className="text-[12.5px] text-[#999] mt-1 italic">Not assigned</p>
+            ) : (
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {list.map(p => (
+                        <span key={p.id} className="inline-flex items-center text-[12px] font-bold px-2 py-0.5 rounded-full bg-white border" style={{ color, borderColor: `${color}44` }}>
+                            {p.name}{p.empCode ? <span className="font-medium opacity-70 ml-1">({p.empCode})</span> : null}
+                        </span>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
