@@ -63,17 +63,41 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
         // endpoints; using `department: { branchId }` alone dropped employees
         // attached to the branch by User.branchId, so they went missing from the
         // pipeline detail view even though they were shortlisted into a stage.
+        const employeeSelect = {
+            id: true, empCode: true, name: true, designation: true, collarType: true,
+            department: { select: { id: true, name: true } },
+        };
+
         const employees = await prisma.user.findMany({
             where: {
                 role: "EMPLOYEE",
                 OR: [{ branchId }, { department: { branchId } }],
             },
-            select: {
-                id: true, empCode: true, name: true, designation: true, collarType: true,
-                department: { select: { id: true, name: true } },
-            },
+            select: employeeSelect,
             orderBy: [{ department: { name: "asc" } }, { name: "asc" }],
         });
+
+        // Fold in candidates who were SHORTLISTED in this branch+quarter but have
+        // since changed role (e.g. an employee later promoted to HR / HOD / BM).
+        // They still belong to this branch's evaluation cohort for the quarter, so
+        // the pipeline must keep them — otherwise a stage's "in stage" list drops
+        // them (e.g. Jaipur's 7th HR-round candidate showed as 6).
+        const shortlistRows = await Promise.all([
+            prisma.branchShortlistStage1.findMany({ where: { branchId, quarterId }, select: { userId: true } }),
+            prisma.branchShortlistStage2.findMany({ where: { branchId, quarterId }, select: { userId: true } }),
+            prisma.branchShortlistStage3.findMany({ where: { branchId, quarterId }, select: { userId: true } }),
+            prisma.branchShortlistStage4.findMany({ where: { branchId, quarterId }, select: { userId: true } }),
+        ]);
+        const presentIds = new Set(employees.map(e => e.id));
+        const extraIds = [...new Set(shortlistRows.flat().map(r => r.userId))].filter(id => !presentIds.has(id));
+        if (extraIds.length > 0) {
+            const extraUsers = await prisma.user.findMany({
+                where: { id: { in: extraIds } },
+                select: employeeSelect,
+            });
+            employees.push(...extraUsers);
+        }
+
         const employeeIds = employees.map(e => e.id);
 
         if (employeeIds.length === 0) {
