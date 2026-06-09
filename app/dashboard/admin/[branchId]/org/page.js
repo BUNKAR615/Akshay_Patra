@@ -16,9 +16,12 @@ async function api(url, opts) {
     return json.data;
 }
 
-function AssignmentSection({ title, color, bgColor, borderColor, avatarBg, mode = "multi", assignments, onAssign, onRemove, form, setForm, assigning, emptyHint, note }) {
+function AssignmentSection({ title, color, bgColor, borderColor, avatarBg, mode = "multi", assignments, onAssign, onRemove, form, setForm, assigning, emptyHint, note, employees = [], deptNames = [] }) {
     const isSingle = mode === "single";
     const occupied = isSingle && assignments.length > 0;
+    // Which existing employee (if any) is currently selected in the picker —
+    // matched by empCode so the dropdown reflects the form state.
+    const pickedId = employees.find(x => x.empCode && x.empCode === form.empCode)?.id || "";
 
     return (
         <div className="bg-white border border-[#E0E0E0] rounded-xl p-5">
@@ -62,19 +65,55 @@ function AssignmentSection({ title, color, bgColor, borderColor, avatarBg, mode 
                 <>
                     <div className="bg-[#F9FAFB] rounded-lg p-4 mb-4 space-y-3">
                         <p className="text-[11px] font-bold text-[#999] uppercase tracking-wider">Assign New</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-                            <input value={form.empCode} onChange={e => setForm(p => ({ ...p, empCode: e.target.value }))} placeholder="Emp Code" className="border rounded-lg px-3 py-2 text-sm" />
-                            <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Name (if new)" className="border rounded-lg px-3 py-2 text-sm" />
-                            <input value={form.mobile} onChange={e => setForm(p => ({ ...p, mobile: e.target.value }))} placeholder="Mobile (optional)" className="border rounded-lg px-3 py-2 text-sm" />
-                            <button
-                                onClick={onAssign}
-                                disabled={assigning}
-                                className="bg-[#003087] text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-[#002266] cursor-pointer disabled:opacity-50"
+
+                        {/* Source 1 — pick from the current employee list. Choosing
+                            an employee autofills their code/name/mobile; their
+                            existing branch identity is preserved on assignment. */}
+                        <div>
+                            <label className="block text-[10px] font-bold text-[#999] uppercase tracking-wider mb-1">Select from current employees</label>
+                            <select
+                                value={pickedId}
+                                onChange={e => {
+                                    const emp = employees.find(x => x.id === e.target.value);
+                                    setForm(p => ({
+                                        ...p,
+                                        empCode: emp?.empCode || "",
+                                        name: emp?.name || "",
+                                        mobile: emp?.mobile || "",
+                                        departmentName: "",
+                                    }));
+                                }}
+                                className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
                             >
-                                {assigning ? "Assigning..." : "Assign"}
-                            </button>
+                                <option value="">— Select an employee —</option>
+                                {employees.map(emp => (
+                                    <option key={emp.id} value={emp.id}>
+                                        {emp.name}{emp.empCode ? ` (${emp.empCode})` : ""}{emp.department?.name ? ` · ${emp.department.name}` : ""}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
-                        <p className="text-[10px] text-gray-400">If emp code doesn&apos;t exist, a new user will be created with the given name.</p>
+
+                        <div className="text-[10px] font-bold text-[#999] uppercase tracking-wider text-center">or add manually</div>
+
+                        {/* Source 2 — add manually: name, employee code, department, mobile. */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <input value={form.empCode} onChange={e => setForm(p => ({ ...p, empCode: e.target.value }))} placeholder="Employee Code *" className="border rounded-lg px-3 py-2 text-sm" />
+                            <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Name (if new)" className="border rounded-lg px-3 py-2 text-sm" />
+                            <select value={form.departmentName} onChange={e => setForm(p => ({ ...p, departmentName: e.target.value }))} className="border rounded-lg px-3 py-2 text-sm bg-white">
+                                <option value="">Department (if new)</option>
+                                {deptNames.map(d => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                            <input value={form.mobile} onChange={e => setForm(p => ({ ...p, mobile: e.target.value }))} placeholder="Mobile (optional)" className="border rounded-lg px-3 py-2 text-sm" />
+                        </div>
+                        <button
+                            onClick={onAssign}
+                            disabled={assigning}
+                            className="w-full bg-[#003087] text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-[#002266] cursor-pointer disabled:opacity-50"
+                        >
+                            {assigning ? "Assigning..." : "Assign"}
+                        </button>
+                        <p className="text-[10px] text-gray-400">Pick an existing employee above, or enter a new emp code, name, department &amp; mobile to create one. A new user keeps this branch as their identity.</p>
                     </div>
 
                     {!isSingle && assignments.length > 0 ? (
@@ -128,17 +167,22 @@ export default function BranchOrgPage() {
     // Read-only org data
     const [hods, setHods] = useState([]);
     const [departments, setDepartments] = useState([]);
+    const [allEmployees, setAllEmployees] = useState([]);
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [msg, setMsg] = useState({ text: "", type: "" });
 
     // Forms
-    const [bmForm, setBmForm] = useState({ empCode: "", name: "", mobile: "" });
-    const [hrForm, setHrForm] = useState({ empCode: "", name: "", mobile: "" });
-    const [committeeForm, setCommitteeForm] = useState({ empCode: "", name: "", mobile: "" });
-    const [cmForm, setCmForm] = useState({ empCode: "", name: "", mobile: "" });
+    const [bmForm, setBmForm] = useState({ empCode: "", name: "", mobile: "", departmentName: "" });
+    const [hrForm, setHrForm] = useState({ empCode: "", name: "", mobile: "", departmentName: "" });
+    const [committeeForm, setCommitteeForm] = useState({ empCode: "", name: "", mobile: "", departmentName: "" });
+    const [cmForm, setCmForm] = useState({ empCode: "", name: "", mobile: "", departmentName: "" });
     const [assigning, setAssigning] = useState(false);
+
+    // Department names for this branch + the current employee roster, both used
+    // to drive the "select from employees / add manually" pickers in each section.
+    const deptNames = Array.from(new Set(departments.map(d => d.name).filter(Boolean)));
 
     const fetchAll = async () => {
         try {
@@ -155,6 +199,7 @@ export default function BranchOrgPage() {
             setCommitteeAssignments(committee.assignments || []);
             setCmAssignments(cm.assignments || []);
             const employees = empData.employees || [];
+            setAllEmployees(employees);
             setHods(employees.filter(e => e.role === "HOD"));
             setDepartments(deptData.departments || []);
         } catch (e) {
@@ -171,7 +216,7 @@ export default function BranchOrgPage() {
         setAssigning(true); setMsg({ text: "", type: "" });
         try {
             await api(`/api/admin/branches/${branchId}/bm-assign`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(bmForm) });
-            setBmForm({ empCode: "", name: "", mobile: "" });
+            setBmForm({ empCode: "", name: "", mobile: "", departmentName: "" });
             setMsg({ text: "Branch Manager assigned successfully!", type: "success" });
             fetchAll();
         } catch (e) { setMsg({ text: e.message, type: "error" }); }
@@ -191,7 +236,7 @@ export default function BranchOrgPage() {
         setAssigning(true); setMsg({ text: "", type: "" });
         try {
             await api(`/api/admin/branches/${branchId}/hr-assign`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(hrForm) });
-            setHrForm({ empCode: "", name: "", mobile: "" });
+            setHrForm({ empCode: "", name: "", mobile: "", departmentName: "" });
             setMsg({ text: "HR assigned successfully!", type: "success" });
             fetchAll();
         } catch (e) { setMsg({ text: e.message, type: "error" }); }
@@ -211,7 +256,7 @@ export default function BranchOrgPage() {
         setAssigning(true); setMsg({ text: "", type: "" });
         try {
             await api(`/api/admin/branches/${branchId}/committee-assign`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(committeeForm) });
-            setCommitteeForm({ empCode: "", name: "", mobile: "" });
+            setCommitteeForm({ empCode: "", name: "", mobile: "", departmentName: "" });
             setMsg({ text: "Committee member assigned successfully!", type: "success" });
             fetchAll();
         } catch (e) { setMsg({ text: e.message, type: "error" }); }
@@ -231,7 +276,7 @@ export default function BranchOrgPage() {
         setAssigning(true); setMsg({ text: "", type: "" });
         try {
             await api(`/api/admin/branches/${branchId}/cm-assign`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cmForm) });
-            setCmForm({ empCode: "", name: "", mobile: "" });
+            setCmForm({ empCode: "", name: "", mobile: "", departmentName: "" });
             setMsg({ text: "Cluster Manager assigned successfully!", type: "success" });
             fetchAll();
         } catch (e) { setMsg({ text: e.message, type: "error" }); }
@@ -272,6 +317,8 @@ export default function BranchOrgPage() {
                 form={bmForm}
                 setForm={setBmForm}
                 assigning={assigning}
+                employees={allEmployees}
+                deptNames={deptNames}
                 emptyHint="No Branch Manager assigned to this branch"
             />
 
@@ -288,6 +335,8 @@ export default function BranchOrgPage() {
                 form={cmForm}
                 setForm={setCmForm}
                 assigning={assigning}
+                employees={allEmployees}
+                deptNames={deptNames}
                 emptyHint="No Cluster Manager assigned to this branch"
             />
 
@@ -297,14 +346,17 @@ export default function BranchOrgPage() {
                 bgColor="bg-sky-50"
                 borderColor="border-sky-200"
                 avatarBg="bg-sky-500"
-                mode="multi"
+                mode="single"
                 assignments={hrAssignments}
                 onAssign={assignHr}
                 onRemove={removeHr}
                 form={hrForm}
                 setForm={setHrForm}
                 assigning={assigning}
-                note="Up to 3 HR personnel per branch. The same person may serve multiple branches."
+                employees={allEmployees}
+                deptNames={deptNames}
+                emptyHint="No HR Personnel assigned to this branch"
+                note="Only 1 HR Personnel per branch. The same person may serve as HR in multiple branches."
             />
 
             <AssignmentSection
@@ -320,7 +372,9 @@ export default function BranchOrgPage() {
                 form={committeeForm}
                 setForm={setCommitteeForm}
                 assigning={assigning}
-                note="Committee is global — assigning a member here applies to all branches automatically (max 3 members)."
+                employees={allEmployees}
+                deptNames={deptNames}
+                note="Committee is global — assigning a member here applies to all branches automatically (max 3 members). Members can be chosen from the employee list or added manually."
             />
 
             {hods.length > 0 && (

@@ -21,6 +21,11 @@ const assignSchema = z.object({
     // ...or create one on the fly
     name: z.string().min(1).optional(),
     mobile: z.string().optional(),
+    // Department for a manually-added HR who isn't yet an employee. When given
+    // (and it resolves to a department in this branch) the new user is created
+    // WITH that employee identity, so they show up in the branch employee list
+    // and get the dual-login (employee + HR) treatment below.
+    departmentName: z.string().optional(),
     password: z.string().min(6).optional(),
 });
 
@@ -82,6 +87,15 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
             hrUser = await prisma.user.findUnique({ where: { empCode: data.empCode } });
             if (!hrUser) {
                 if (!data.name) return fail("Name required to create a new HR user");
+                // Optional department for a manual add — resolved within this
+                // branch. When present the new HR is created as a branch employee
+                // too (departmentId/branchId/collarType set), which makes the
+                // dual-login branch below apply automatically.
+                let newDept = null;
+                if (data.departmentName) {
+                    newDept = await prisma.department.findFirst({ where: { name: data.departmentName, branchId } });
+                    if (!newDept) return fail(`Department "${data.departmentName}" not found in ${branch.name}`);
+                }
                 // HR default password = `${Firstname}_${last 2 digits of empCode}`
                 const plain = data.password || defaultPasswordFor({ role: "HR", empCode: data.empCode, name: data.name });
                 const hash = await bcrypt.hash(plain, SALT_ROUNDS);
@@ -92,6 +106,7 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
                         mobile: data.mobile || null,
                         password: hash,
                         role: "HR",
+                        ...(newDept ? { departmentId: newDept.id, branchId, collarType: newDept.collarType } : {}),
                     },
                 });
             }

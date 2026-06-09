@@ -701,6 +701,9 @@ export default function BranchEmployeesPage() {
 
                             {/* Card body: labeled fields, all visible inline */}
                             <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-1.5 text-[12px] min-w-0">
+                                <dt className="text-[#999] font-bold uppercase tracking-wide text-[10px] self-center">Branch</dt>
+                                <dd className="text-[#333] break-words min-w-0">{emp.department?.branch?.name || emp.scopedBranch?.name || "—"}</dd>
+
                                 <dt className="text-[#999] font-bold uppercase tracking-wide text-[10px] self-center">Department</dt>
                                 <dd className="text-[#333] break-words min-w-0">{emp.department?.name || "—"}</dd>
 
@@ -761,6 +764,11 @@ export default function BranchEmployeesPage() {
                                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${ROLE_COLORS[emp.role] || "bg-gray-100 text-gray-700"}`}>
                                             {emp.role}
                                         </span>
+                                        {(emp.department?.branch?.name || emp.scopedBranch?.name) && (
+                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700">
+                                                {emp.department?.branch?.name || emp.scopedBranch?.name}
+                                            </span>
+                                        )}
                                         {emp.collarType && (
                                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${emp.collarType === "WHITE_COLLAR" ? "bg-gray-100 text-gray-600" : "bg-blue-50 text-blue-600"}`}>
                                                 {emp.collarType === "WHITE_COLLAR" ? "White Collar" : "Blue Collar"}

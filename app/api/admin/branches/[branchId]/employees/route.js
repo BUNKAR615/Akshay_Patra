@@ -75,7 +75,14 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
             collarType: true,
             branchId: true,
             departmentId: true,
-            department: { select: { id: true, name: true, collarType: true, branchId: true } },
+            // `scopedBranch` (the user's own branchId relation) and
+            // `department.branch` both carry the name of the person's ORIGINAL
+            // branch so the UI can show it for role-holders who appear here via
+            // an assignment union (e.g. a Jaipur employee elected to the global
+            // committee). One of the two is always populated: BMs anchor on
+            // User.branchId; everyone else anchors on their department's branch.
+            scopedBranch: { select: { id: true, name: true } },
+            department: { select: { id: true, name: true, collarType: true, branchId: true, branch: { select: { id: true, name: true } } } },
             createdAt: true,
         };
 
