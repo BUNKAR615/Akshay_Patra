@@ -467,6 +467,9 @@ export default function AdminDashboard() {
     const [exportError, setExportError] = useState("");
     // Pipeline stage drill-down — { branch, stage } when a stage card is clicked.
     const [stageDetail, setStageDetail] = useState(null);
+    // Pipeline winners list — same data the committee sees (/api/committee/results).
+    const [pipelineWinners, setPipelineWinners] = useState(null);
+    const [pipelineWinnersLoading, setPipelineWinnersLoading] = useState(false);
 
     const fetchQuarters = async () => {
         try {
@@ -695,6 +698,19 @@ export default function AdminDashboard() {
         if (tab === "pipeline" || tab === "quarter") {
             fetchProgress(selectedQuarterId);
         }
+    }, [tab, selectedQuarterId]);
+
+    // Pipeline tab — load the branch winners list (identical data the committee
+    // sees via /api/committee/results; ADMIN gets every branch with results).
+    useEffect(() => {
+        if (tab !== "pipeline" || !selectedQuarterId) return;
+        let alive = true;
+        setPipelineWinnersLoading(true);
+        api(`/api/committee/results?quarterId=${encodeURIComponent(selectedQuarterId)}`)
+            .then(d => { if (alive) setPipelineWinners(d); })
+            .catch(() => { if (alive) setPipelineWinners(null); })
+            .finally(() => { if (alive) setPipelineWinnersLoading(false); });
+        return () => { alive = false; };
     }, [tab, selectedQuarterId]);
 
     useEffect(() => {
@@ -1456,7 +1472,7 @@ export default function AdminDashboard() {
                                         { n: 1, label: "Stage 1 — Self", color: "#003087", total: b.totalEmployees, evaluated: b.stage1.submitted, cleared: b.stage1.shortlisted },
                                         { n: 2, label: "Stage 2 — BM/HOD", color: "#00843D", total: b.stage1.shortlisted, evaluated: b.stage2.evaluated || 0, cleared: b.stage2.shortlisted },
                                         { n: 3, label: "Stage 3 — CM", color: "#F7941D", total: b.stage2.shortlisted, evaluated: b.stage3.evaluated || 0, cleared: b.stage3.shortlisted },
-                                        { n: 4, label: "Stage 4 — HR", color: "#D32F2F", total: b.stage3.shortlisted, evaluated: b.stage4.evaluated || 0, cleared: b.stage4.shortlisted },
+                                        { n: 4, label: "Stage 4 — HR", color: "#D32F2F", total: b.stage3.shortlisted, evaluated: b.stage4.evaluated || 0, cleared: (b.stage4.shortlisted || b.winners.length) },
                                     ];
                                     const winnerTarget = b.branchType === "BIG" ? 4 : 3;
                                     return (
@@ -1523,6 +1539,78 @@ export default function AdminDashboard() {
                             </div>
                         </>
                     )}
+
+                    {/* ═══ Branch Winners — same list the committee sees ═══ */}
+                    <div className="bg-gradient-to-r from-[#FFF8E1] to-[#FFF3E0] border border-[#FFCC80] rounded-xl p-4 sm:p-6 shadow-sm">
+                        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                            <h2 className="text-lg font-bold text-[#F57C00] flex items-center gap-2"><span className="text-xl">🏆</span> Branch Winners</h2>
+                            {pipelineWinners?.total ? <span className="text-[12px] font-bold text-[#F57C00] bg-white/70 border border-[#FFE0B2] px-2.5 py-1 rounded-full">{pipelineWinners.total} declared</span> : null}
+                        </div>
+                        {pipelineWinnersLoading && !pipelineWinners ? (
+                            <p className="text-sm text-[#999999]">Loading winners…</p>
+                        ) : !pipelineWinners?.branches?.length ? (
+                            <p className="text-sm text-[#999999] italic">No winners declared yet. Evaluation in progress.</p>
+                        ) : (
+                            <div className="space-y-4">
+                                {pipelineWinners.branches.map((b) => (
+                                    <div key={b.branchId} className="bg-white/80 border border-[#FFE0B2] rounded-lg p-3 sm:p-4">
+                                        <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
+                                            <p className="text-[13px] font-bold text-[#F57C00]">{b.branchName} <span className="text-[10px] font-medium text-[#666666]">· {b.branchType}</span></p>
+                                            <span className="text-[11px] font-bold text-[#666666]">{b.winners.length} / {b.expectedCount} selected</span>
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left text-[12px] min-w-[560px]">
+                                                <thead>
+                                                    <tr className="text-[10px] uppercase tracking-wider text-[#999999] border-b border-[#FFE0B2]">
+                                                        <th className="py-1.5 pr-2 font-bold">#</th>
+                                                        <th className="py-1.5 pr-2 font-bold">Name</th>
+                                                        <th className="py-1.5 pr-2 font-bold">Department</th>
+                                                        <th className="py-1.5 pr-2 font-bold">Category</th>
+                                                        <th className="py-1.5 px-1 font-bold text-right">S1</th>
+                                                        <th className="py-1.5 px-1 font-bold text-right">S2</th>
+                                                        <th className="py-1.5 px-1 font-bold text-right">S3</th>
+                                                        <th className="py-1.5 px-1 font-bold text-right">S4</th>
+                                                        <th className="py-1.5 pl-2 font-bold text-right">Final</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {b.winners.map((w) => {
+                                                        const sc = (n) => {
+                                                            const v = w.stages?.find(s => s.stage === n)?.score;
+                                                            return (v === null || v === undefined || v === "") ? "—" : fmtScore(v);
+                                                        };
+                                                        const isWC = w.collarType === "WHITE_COLLAR";
+                                                        return (
+                                                            <tr key={w.empCode || w.name} className="border-b border-[#FFF3E0] last:border-0">
+                                                                <td className="py-1.5 pr-2 font-black text-[#F57C00]">{w.rank}</td>
+                                                                <td className="py-1.5 pr-2">
+                                                                    <span className="font-bold text-[#1A1A2E]">{w.name}</span>
+                                                                    {w.empCode ? <span className="text-[#999999]"> · {w.empCode}</span> : null}
+                                                                    {w.designation ? <div className="text-[10px] text-[#999999]">{w.designation}</div> : null}
+                                                                </td>
+                                                                <td className="py-1.5 pr-2 text-[#666666]">{w.department || "—"}</td>
+                                                                <td className="py-1.5 pr-2">
+                                                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold border"
+                                                                        style={{ backgroundColor: isWC ? "#E3F2FD" : "#E8F5E9", color: isWC ? "#003087" : "#00843D", borderColor: isWC ? "#90CAF9" : "#A5D6A7" }}>
+                                                                        {isWC ? "WC" : "BC"}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-1.5 px-1 text-right tabular-nums text-[#666666]">{sc(1)}</td>
+                                                                <td className="py-1.5 px-1 text-right tabular-nums text-[#666666]">{sc(2)}</td>
+                                                                <td className="py-1.5 px-1 text-right tabular-nums text-[#666666]">{sc(3)}</td>
+                                                                <td className="py-1.5 px-1 text-right tabular-nums text-[#666666]">{sc(4)}</td>
+                                                                <td className="py-1.5 pl-2 text-right font-black text-[#003087] tabular-nums">{fmtScore(w.finalScore) || "—"}</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
 
                     {stageDetail && (
                         <StageDetailModal
