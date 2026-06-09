@@ -9,6 +9,7 @@ import { PageSpinner, SkeletonCard, SkeletonStats } from "../../../components/Sk
 import UserProfileCard from "../../../components/UserProfileCard";
 import QuarterCountdown from "../../../components/QuarterCountdown";
 import ReportsPanel from "../../../components/admin/ReportsPanel";
+import StageDetailModal from "../../../components/admin/StageDetailModal";
 
 async function api(url, opts, { retries = 4 } = {}) {
     let lastErr;
@@ -464,6 +465,8 @@ export default function AdminDashboard() {
     const [exportBranchId, setExportBranchId] = useState("");
     const [exportLoading, setExportLoading] = useState(false);
     const [exportError, setExportError] = useState("");
+    // Pipeline stage drill-down — { branch, stage } when a stage card is clicked.
+    const [stageDetail, setStageDetail] = useState(null);
 
     const fetchQuarters = async () => {
         try {
@@ -1439,7 +1442,8 @@ export default function AdminDashboard() {
                         <>
                             <h2 className="text-xl font-bold text-[#003087]">Evaluation Pipeline</h2>
                             <p className="text-[12px] text-[#666666] -mt-2">
-                                For each stage — <span className="font-bold text-[#003087]">Evaluated</span> = scored so far ·
+                                <span className="font-bold text-[#003087]">Click any stage</span> to open its detailed view — totals, evaluator details & answer scripts.
+                                {" "}<span className="font-bold text-[#003087]">Evaluated</span> = scored so far ·
                                 {" "}<span className="font-bold text-[#00843D]">Cleared</span> = passed to the next stage ·
                                 {" "}<span className="font-bold text-[#E65100]">Pending</span> = still awaiting evaluation.
                             </p>
@@ -1449,10 +1453,10 @@ export default function AdminDashboard() {
                                     // stage's cleared pool); evaluated = scored so far; cleared =
                                     // shortlisted onward; pending = entered but not yet evaluated.
                                     const stages = [
-                                        { label: "Stage 1 — Self", color: "#003087", total: b.totalEmployees, evaluated: b.stage1.submitted, cleared: b.stage1.shortlisted },
-                                        { label: "Stage 2 — BM/HOD", color: "#00843D", total: b.stage1.shortlisted, evaluated: b.stage2.evaluated || 0, cleared: b.stage2.shortlisted },
-                                        { label: "Stage 3 — CM", color: "#F7941D", total: b.stage2.shortlisted, evaluated: b.stage3.evaluated || 0, cleared: b.stage3.shortlisted },
-                                        { label: "Stage 4 — HR", color: "#D32F2F", total: b.stage3.shortlisted, evaluated: b.stage4.evaluated || 0, cleared: b.stage4.shortlisted },
+                                        { n: 1, label: "Stage 1 — Self", color: "#003087", total: b.totalEmployees, evaluated: b.stage1.submitted, cleared: b.stage1.shortlisted },
+                                        { n: 2, label: "Stage 2 — BM/HOD", color: "#00843D", total: b.stage1.shortlisted, evaluated: b.stage2.evaluated || 0, cleared: b.stage2.shortlisted },
+                                        { n: 3, label: "Stage 3 — CM", color: "#F7941D", total: b.stage2.shortlisted, evaluated: b.stage3.evaluated || 0, cleared: b.stage3.shortlisted },
+                                        { n: 4, label: "Stage 4 — HR", color: "#D32F2F", total: b.stage3.shortlisted, evaluated: b.stage4.evaluated || 0, cleared: b.stage4.shortlisted },
                                     ];
                                     const winnerTarget = b.branchType === "BIG" ? 4 : 3;
                                     return (
@@ -1468,7 +1472,14 @@ export default function AdminDashboard() {
                                                     const pending = Math.max(0, s.total - s.evaluated);
                                                     const pct = started ? Math.min(100, Math.round((s.evaluated / s.total) * 100)) : 0;
                                                     return (
-                                                        <div key={s.label} className="border border-[#EEEEEE] rounded-lg p-2.5">
+                                                        <button
+                                                            key={s.label}
+                                                            type="button"
+                                                            onClick={() => setStageDetail({ branch: b, stage: s.n })}
+                                                            className="w-full text-left border border-[#EEEEEE] rounded-lg p-2.5 cursor-pointer hover:border-[#CFD8E6] hover:shadow-sm hover:bg-[#FAFBFE] transition-all focus:outline-none focus:ring-2 focus:ring-[#003087]/20"
+                                                            style={{ borderLeft: `3px solid ${s.color}` }}
+                                                            title={`View ${s.label} details`}
+                                                        >
                                                             <div className="flex items-center justify-between mb-1.5">
                                                                 <span className="text-[12px] font-bold text-[#333333]">{s.label}</span>
                                                                 {started ? (
@@ -1498,7 +1509,7 @@ export default function AdminDashboard() {
                                                                     </div>
                                                                 </>
                                                             )}
-                                                        </div>
+                                                        </button>
                                                     );
                                                 })}
                                             </div>
@@ -1511,6 +1522,15 @@ export default function AdminDashboard() {
                                 })}
                             </div>
                         </>
+                    )}
+
+                    {stageDetail && (
+                        <StageDetailModal
+                            branch={stageDetail.branch}
+                            stage={stageDetail.stage}
+                            quarterId={selectedQuarterId}
+                            onClose={() => setStageDetail(null)}
+                        />
                     )}
                 </div>
             )}
