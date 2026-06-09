@@ -307,77 +307,64 @@ function StatTile({ label, value, color, soft }) {
     );
 }
 
-// Stage 4 — this branch's declared winners, plus two Excel downloads:
-//   (i)  with scores   — stage-wise + final scores
-//   (ii) with info      — identity details (name, code, designation, dept…)
+// This branch's declared winners + a single PDF download (scores + info).
 function BranchWinners({ winners, branchName, quarterName }) {
     const slug = (s) => String(s || "").replace(/[^A-Za-z0-9_-]+/g, "_") || "branch";
     const date = new Date().toISOString().slice(0, 10);
     const sc = (w, n) => {
         const v = w.stages?.find(s => s.stage === n)?.score;
-        return (v === null || v === undefined) ? "" : Math.round(v * 100) / 100;
-    };
-    const collar = (ct) => ct === "WHITE_COLLAR" ? "White Collar" : ct === "BLUE_COLLAR" ? "Blue Collar" : "—";
-
-    const writeSheet = async (rows, sheetName, fileName) => {
-        const XLSX = await import("xlsx");
-        const ws = XLSX.utils.json_to_sheet(rows);
-        if (rows.length > 0) {
-            ws["!cols"] = Object.keys(rows[0]).map(k => ({
-                wch: Math.max(k.length, ...rows.map(r => String(r[k] ?? "").length)) + 2,
-            }));
-        }
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
-        XLSX.writeFile(wb, fileName);
+        return (v === null || v === undefined) ? "" : String(Math.round(v * 100) / 100);
     };
 
-    const downloadScores = () => writeSheet(
-        (winners || []).map(w => ({
-            Rank: w.rank,
-            Name: w.name,
-            "Emp Code": w.empCode || "",
-            Department: w.department || "",
-            Category: collar(w.collarType),
-            "S1 (Self)": sc(w, 1),
-            "S2 (BM/HOD)": sc(w, 2),
-            "S3 (CM)": sc(w, 3),
-            "S4 (HR)": sc(w, 4),
-            "Final Score": w.finalScore === null || w.finalScore === undefined ? "" : Math.round(w.finalScore * 100) / 100,
-        })),
-        "Winners — Scores",
-        `Winners_Scores_${slug(branchName)}_${slug(quarterName)}_${date}.xlsx`,
-    );
+    // Download this branch's winner list as a PDF (identity + stage-wise + final).
+    const downloadPDF = async () => {
+        const rows = winners || [];
+        if (!rows.length) return;
+        const { jsPDF } = await import("jspdf");
+        const autoTable = (await import("jspdf-autotable")).default;
+        const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+        const pageW = doc.internal.pageSize.getWidth();
+        const ph = doc.internal.pageSize.getHeight();
 
-    const downloadInfo = () => writeSheet(
-        (winners || []).map(w => ({
-            Rank: w.rank,
-            Name: w.name,
-            "Emp Code": w.empCode || "",
-            Designation: w.designation || "",
-            Department: w.department || "",
-            Category: collar(w.collarType),
-            Branch: w.branch || branchName,
-        })),
-        "Winners — Info",
-        `Winners_Info_${slug(branchName)}_${slug(quarterName)}_${date}.xlsx`,
-    );
+        doc.setFillColor(245, 124, 0); doc.rect(0, 0, pageW, 54, "F"); doc.setTextColor(255, 255, 255);
+        doc.setFontSize(15); doc.setFont(undefined, "bold");
+        doc.text(`Akshaya Patra — ${branchName} Winners`, 36, 26);
+        doc.setFontSize(9); doc.setFont(undefined, "normal");
+        doc.text(`Quarter: ${quarterName || ""}   •   Generated: ${new Date().toLocaleString()}`, 36, 42);
+
+        autoTable(doc, {
+            head: [["#", "Name", "Emp Code", "Designation", "Department", "Category", "S1", "S2", "S3", "S4", "Final"]],
+            body: rows.map(w => [
+                w.rank, w.name, w.empCode || "", w.designation || "", w.department || "",
+                w.collarType === "WHITE_COLLAR" ? "WC" : "BC",
+                sc(w, 1), sc(w, 2), sc(w, 3), sc(w, 4),
+                w.finalScore === null || w.finalScore === undefined ? "" : String(Math.round(w.finalScore * 100) / 100),
+            ]),
+            startY: 70,
+            styles: { fontSize: 8, cellPadding: 3, textColor: [33, 37, 41], lineColor: [200, 200, 200], lineWidth: 0.4 },
+            headStyles: { fillColor: [245, 124, 0], textColor: [255, 255, 255], fontStyle: "bold" },
+            alternateRowStyles: { fillColor: [255, 248, 235] },
+            theme: "grid",
+            margin: { left: 36, right: 36 },
+            didDrawPage: () => {
+                const page = doc.internal.getNumberOfPages();
+                doc.setFontSize(8); doc.setTextColor(120, 120, 120);
+                doc.text(`Page ${page}`, pageW - 60, ph - 18);
+                doc.text(`${rows.length} winners`, 36, ph - 18);
+            },
+        });
+        doc.save(`Winners_${slug(branchName)}_${slug(quarterName)}_${date}.pdf`);
+    };
 
     return (
         <div className="bg-gradient-to-r from-[#FFF8E1] to-[#FFF3E0] border border-[#FFCC80] rounded-xl p-4">
             <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
                 <h3 className="text-[14px] font-black text-[#F57C00] flex items-center gap-1.5"><span>🏆</span> Branch Winners</h3>
                 {winners && winners.length > 0 && (
-                    <div className="flex items-center gap-2">
-                        <button onClick={downloadScores}
-                            className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-[#003087] hover:bg-[#00256b] text-white cursor-pointer transition-colors">
-                            ⬇ Scores (.xlsx)
-                        </button>
-                        <button onClick={downloadInfo}
-                            className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-[#00843D] hover:bg-[#006B32] text-white cursor-pointer transition-colors">
-                            ⬇ Info (.xlsx)
-                        </button>
-                    </div>
+                    <button onClick={downloadPDF}
+                        className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-[#D32F2F] hover:bg-[#B71C1C] text-white cursor-pointer transition-colors flex items-center gap-1.5">
+                        ⬇ Download PDF
+                    </button>
                 )}
             </div>
             {winners === null ? (
