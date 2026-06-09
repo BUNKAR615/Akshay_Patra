@@ -597,6 +597,57 @@ export default function AdminDashboard() {
         }
     };
 
+    // Combined PDF of every branch's winners (same data as the bottom list).
+    const downloadAllWinnersPDF = async () => {
+        if (!pipelineWinners?.branches?.length) return;
+        const { jsPDF } = await import("jspdf");
+        const autoTable = (await import("jspdf-autotable")).default;
+        const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+        const pageW = doc.internal.pageSize.getWidth();
+
+        doc.setFillColor(245, 124, 0); doc.rect(0, 0, pageW, 54, "F"); doc.setTextColor(255, 255, 255);
+        doc.setFontSize(15); doc.setFont(undefined, "bold");
+        doc.text("Akshaya Patra — Branch Winners (All Branches)", 36, 26);
+        doc.setFontSize(9); doc.setFont(undefined, "normal");
+        const qn = pipelineWinners.quarter?.name || "";
+        doc.text(`Quarter: ${qn}   •   Generated: ${new Date().toLocaleString()}`, 36, 42);
+
+        const sc = (w, n) => {
+            const v = w.stages?.find(s => s.stage === n)?.score;
+            return (v === null || v === undefined) ? "" : String(Math.round(v * 100) / 100);
+        };
+        const head = [["Branch", "#", "Name", "Emp Code", "Department", "Cat.", "S1", "S2", "S3", "S4", "Final"]];
+        const body = [];
+        pipelineWinners.branches.forEach(b => {
+            (b.winners || []).forEach(w => {
+                body.push([
+                    b.branchName, w.rank, w.name, w.empCode || "", w.department || "",
+                    w.collarType === "WHITE_COLLAR" ? "WC" : "BC",
+                    sc(w, 1), sc(w, 2), sc(w, 3), sc(w, 4),
+                    w.finalScore === null || w.finalScore === undefined ? "" : String(Math.round(w.finalScore * 100) / 100),
+                ]);
+            });
+        });
+
+        autoTable(doc, {
+            head, body, startY: 66,
+            styles: { fontSize: 7.5, cellPadding: 3, textColor: [33, 37, 41], lineColor: [200, 200, 200], lineWidth: 0.4 },
+            headStyles: { fillColor: [245, 124, 0], textColor: [255, 255, 255], fontStyle: "bold" },
+            alternateRowStyles: { fillColor: [255, 243, 224] },
+            theme: "grid",
+            margin: { left: 36, right: 36 },
+            didDrawPage: () => {
+                const ph = doc.internal.pageSize.getHeight();
+                const page = doc.internal.getNumberOfPages();
+                doc.setFontSize(8); doc.setTextColor(120, 120, 120);
+                doc.text(`Page ${page}`, pageW - 60, ph - 18);
+                doc.text(`${body.length} winners`, 36, ph - 18);
+            },
+        });
+        const fname = `Branch_Winners_All_${(qn || "quarter").replace(/[^A-Za-z0-9_-]+/g, "_")}_${new Date().toISOString().slice(0, 10)}.pdf`;
+        doc.save(fname);
+    };
+
     const fetchReport = async () => {
         setReportLoading(true);
         try {
@@ -1544,7 +1595,17 @@ export default function AdminDashboard() {
                     <div className="bg-gradient-to-r from-[#FFF8E1] to-[#FFF3E0] border border-[#FFCC80] rounded-xl p-4 sm:p-6 shadow-sm">
                         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                             <h2 className="text-lg font-bold text-[#F57C00] flex items-center gap-2"><span className="text-xl">🏆</span> Branch Winners</h2>
-                            {pipelineWinners?.total ? <span className="text-[12px] font-bold text-[#F57C00] bg-white/70 border border-[#FFE0B2] px-2.5 py-1 rounded-full">{pipelineWinners.total} declared</span> : null}
+                            <div className="flex items-center gap-2 flex-wrap">
+                                {pipelineWinners?.total ? <span className="text-[12px] font-bold text-[#F57C00] bg-white/70 border border-[#FFE0B2] px-2.5 py-1 rounded-full">{pipelineWinners.total} declared</span> : null}
+                                {pipelineWinners?.branches?.length ? (
+                                    <button
+                                        onClick={downloadAllWinnersPDF}
+                                        className="text-[12px] font-bold px-3 py-1.5 rounded-lg bg-[#D32F2F] hover:bg-[#B71C1C] text-white cursor-pointer transition-colors flex items-center gap-1.5"
+                                    >
+                                        ⬇ Download PDF (All Branches)
+                                    </button>
+                                ) : null}
+                            </div>
                         </div>
                         {pipelineWinnersLoading && !pipelineWinners ? (
                             <p className="text-sm text-[#999999]">Loading winners…</p>

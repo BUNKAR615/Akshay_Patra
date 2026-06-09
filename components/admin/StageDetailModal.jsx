@@ -70,6 +70,7 @@ export default function StageDetailModal({ branch, stage, quarterId, onClose }) 
     const [error, setError] = useState("");
     const [cmBranches, setCmBranches] = useState({}); // empCode -> [branchName]
     const [team, setTeam] = useState(null); // this branch's evaluators: { bms, cms, hods, hrs }
+    const [winners, setWinners] = useState(null); // this branch's declared winners (Stage 4 only)
 
     // Load the branch's ongoing pipeline (per-employee stage rows).
     useEffect(() => {
@@ -112,6 +113,19 @@ export default function StageDetailModal({ branch, stage, quarterId, onClose }) 
         });
         return () => { alive = false; };
     }, [branch.branchId, quarterId]);
+
+    // Stage 4 — load THIS branch's declared winners (same data the committee
+    // sees). ADMIN may target any branch via ?branchId=.
+    useEffect(() => {
+        if (stage !== 4) return;
+        let alive = true;
+        const qs = new URLSearchParams({ branchId: branch.branchId });
+        if (quarterId) qs.set("quarterId", quarterId);
+        api(`/api/committee/results?${qs.toString()}`)
+            .then(d => { if (alive) setWinners(d?.branches?.[0]?.winners || []); })
+            .catch(() => { if (alive) setWinners([]); });
+        return () => { alive = false; };
+    }, [stage, branch.branchId, quarterId]);
 
     // For Stage 3, work out which branches each Cluster Manager covers so we
     // can surface the "under branches" list when one CM spans multiple branches.
@@ -249,6 +263,15 @@ export default function StageDetailModal({ branch, stage, quarterId, onClose }) 
                                 </div>
                                 <EmployeeList rows={view.pool} stage={stage} quarterId={quarterId} />
                             </div>
+
+                            {/* Stage 4 — this branch's winners + downloads */}
+                            {stage === 4 && (
+                                <BranchWinners
+                                    winners={winners}
+                                    branchName={branch.branchName}
+                                    quarterName={data?.quarter?.name}
+                                />
+                            )}
                         </>
                     )}
                 </div>
@@ -262,6 +285,135 @@ function StatTile({ label, value, color, soft }) {
         <div className="rounded-xl p-3 sm:p-4 text-center border" style={{ background: soft, borderColor: `${color}33` }}>
             <p className="text-[26px] sm:text-[32px] font-black leading-none" style={{ color }}>{value}</p>
             <p className="text-[10px] font-bold uppercase tracking-wider text-[#777] mt-1.5">{label}</p>
+        </div>
+    );
+}
+
+// Stage 4 — this branch's declared winners, plus two Excel downloads:
+//   (i)  with scores   — stage-wise + final scores
+//   (ii) with info      — identity details (name, code, designation, dept…)
+function BranchWinners({ winners, branchName, quarterName }) {
+    const slug = (s) => String(s || "").replace(/[^A-Za-z0-9_-]+/g, "_") || "branch";
+    const date = new Date().toISOString().slice(0, 10);
+    const sc = (w, n) => {
+        const v = w.stages?.find(s => s.stage === n)?.score;
+        return (v === null || v === undefined) ? "" : Math.round(v * 100) / 100;
+    };
+    const collar = (ct) => ct === "WHITE_COLLAR" ? "White Collar" : ct === "BLUE_COLLAR" ? "Blue Collar" : "—";
+
+    const writeSheet = async (rows, sheetName, fileName) => {
+        const XLSX = await import("xlsx");
+        const ws = XLSX.utils.json_to_sheet(rows);
+        if (rows.length > 0) {
+            ws["!cols"] = Object.keys(rows[0]).map(k => ({
+                wch: Math.max(k.length, ...rows.map(r => String(r[k] ?? "").length)) + 2,
+            }));
+        }
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        XLSX.writeFile(wb, fileName);
+    };
+
+    const downloadScores = () => writeSheet(
+        (winners || []).map(w => ({
+            Rank: w.rank,
+            Name: w.name,
+            "Emp Code": w.empCode || "",
+            Department: w.department || "",
+            Category: collar(w.collarType),
+            "S1 (Self)": sc(w, 1),
+            "S2 (BM/HOD)": sc(w, 2),
+            "S3 (CM)": sc(w, 3),
+            "S4 (HR)": sc(w, 4),
+            "Final Score": w.finalScore === null || w.finalScore === undefined ? "" : Math.round(w.finalScore * 100) / 100,
+        })),
+        "Winners — Scores",
+        `Winners_Scores_${slug(branchName)}_${slug(quarterName)}_${date}.xlsx`,
+    );
+
+    const downloadInfo = () => writeSheet(
+        (winners || []).map(w => ({
+            Rank: w.rank,
+            Name: w.name,
+            "Emp Code": w.empCode || "",
+            Designation: w.designation || "",
+            Department: w.department || "",
+            Category: collar(w.collarType),
+            Branch: w.branch || branchName,
+        })),
+        "Winners — Info",
+        `Winners_Info_${slug(branchName)}_${slug(quarterName)}_${date}.xlsx`,
+    );
+
+    return (
+        <div className="bg-gradient-to-r from-[#FFF8E1] to-[#FFF3E0] border border-[#FFCC80] rounded-xl p-4">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                <h3 className="text-[14px] font-black text-[#F57C00] flex items-center gap-1.5"><span>🏆</span> Branch Winners</h3>
+                {winners && winners.length > 0 && (
+                    <div className="flex items-center gap-2">
+                        <button onClick={downloadScores}
+                            className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-[#003087] hover:bg-[#00256b] text-white cursor-pointer transition-colors">
+                            ⬇ Scores (.xlsx)
+                        </button>
+                        <button onClick={downloadInfo}
+                            className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-[#00843D] hover:bg-[#006B32] text-white cursor-pointer transition-colors">
+                            ⬇ Info (.xlsx)
+                        </button>
+                    </div>
+                )}
+            </div>
+            {winners === null ? (
+                <p className="text-[12.5px] text-[#999]">Loading winners…</p>
+            ) : winners.length === 0 ? (
+                <p className="text-[12.5px] text-[#999] italic">No winners declared yet for this branch.</p>
+            ) : (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[12px] min-w-[520px]">
+                        <thead>
+                            <tr className="text-[10px] uppercase tracking-wider text-[#A06A2C] border-b border-[#FFE0B2]">
+                                <th className="py-1.5 pr-2 font-bold">#</th>
+                                <th className="py-1.5 pr-2 font-bold">Name</th>
+                                <th className="py-1.5 pr-2 font-bold">Department</th>
+                                <th className="py-1.5 pr-2 font-bold">Category</th>
+                                <th className="py-1.5 px-1 font-bold text-right">S1</th>
+                                <th className="py-1.5 px-1 font-bold text-right">S2</th>
+                                <th className="py-1.5 px-1 font-bold text-right">S3</th>
+                                <th className="py-1.5 px-1 font-bold text-right">S4</th>
+                                <th className="py-1.5 pl-2 font-bold text-right">Final</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {winners.map(w => {
+                                const isWC = w.collarType === "WHITE_COLLAR";
+                                return (
+                                    <tr key={w.empCode || w.name} className="border-b border-[#FFF3E0] last:border-0">
+                                        <td className="py-1.5 pr-2 font-black text-[#F57C00]">{w.rank}</td>
+                                        <td className="py-1.5 pr-2">
+                                            <span className="font-bold text-[#1A1A2E]">{w.name}</span>
+                                            {w.empCode ? <span className="text-[#999]"> · {w.empCode}</span> : null}
+                                            {w.designation ? <div className="text-[10px] text-[#999]">{w.designation}</div> : null}
+                                        </td>
+                                        <td className="py-1.5 pr-2 text-[#666]">{w.department || "—"}</td>
+                                        <td className="py-1.5 pr-2">
+                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold border"
+                                                style={{ backgroundColor: isWC ? "#E3F2FD" : "#E8F5E9", color: isWC ? "#003087" : "#00843D", borderColor: isWC ? "#90CAF9" : "#A5D6A7" }}>
+                                                {isWC ? "WC" : "BC"}
+                                            </span>
+                                        </td>
+                                        <td className="py-1.5 px-1 text-right tabular-nums text-[#666]">{sc(w, 1) === "" ? "—" : sc(w, 1)}</td>
+                                        <td className="py-1.5 px-1 text-right tabular-nums text-[#666]">{sc(w, 2) === "" ? "—" : sc(w, 2)}</td>
+                                        <td className="py-1.5 px-1 text-right tabular-nums text-[#666]">{sc(w, 3) === "" ? "—" : sc(w, 3)}</td>
+                                        <td className="py-1.5 px-1 text-right tabular-nums text-[#666]">{sc(w, 4) === "" ? "—" : sc(w, 4)}</td>
+                                        <td className="py-1.5 pl-2 text-right font-black text-[#003087] tabular-nums">
+                                            {w.finalScore === null || w.finalScore === undefined ? "—" : Math.round(w.finalScore * 100) / 100}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     );
 }
