@@ -50,7 +50,7 @@ export default function BulkUploadBranchesPage() {
             <p className="text-sm text-[#666]">
                 Uploads a single Excel sheet that bootstraps branches, cluster managers, branch managers, departments,
                 and employees in one transaction. For adding employees to an existing branch, use the main admin
-                dashboard's bulk-upload instead.
+                dashboard&apos;s bulk-upload instead.
             </p>
 
             <div className="bg-[#F5F5F5] border border-[#E0E0E0] rounded-lg p-3 text-xs text-[#555]">

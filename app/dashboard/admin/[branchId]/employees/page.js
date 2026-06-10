@@ -848,7 +848,7 @@ export default function BranchEmployeesPage() {
                 <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden">
                     <div className="p-4 border-b border-[#E0E0E0]">
                         <h3 className="text-base font-bold text-[#003087]">Removed Employees ({archived.length})</h3>
-                        <p className="text-xs text-[#666]">Employees archived from this branch's departments. Newest first.</p>
+                        <p className="text-xs text-[#666]">Employees archived from this branch&apos;s departments. Newest first.</p>
                     </div>
                     {tabLoading ? (
                         <div className="text-center py-8 text-gray-500 text-sm">Loading…</div>
