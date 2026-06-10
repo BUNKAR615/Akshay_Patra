@@ -139,7 +139,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
             }).catch(() => []),
             prisma.branchBestEmployee.findMany({
                 where: { quarterId, userId: { in: employeeIds } },
-                select: { userId: true, collarType: true, finalScore: true },
+                select: { userId: true, collarType: true, finalScore: true, hrScore: true },
             }).catch(() => []),
         ]);
 
@@ -153,6 +153,13 @@ export const GET = withRole(["ADMIN"], async (request) => {
         const hrMap = new Map(hrEvals.map(r => [r.employeeId, r]));
         const s4Map = new Map(s4List.map(r => [r.userId, r]));
         const winnerSet = new Set(winners.map(w => w.userId));
+        // Stage-4 results live in branchBestEmployee — the live pipeline
+        // (regenerateBranchStage4) writes the branch best employees there, NOT
+        // into branchShortlistStage4 (which stays empty outside of import/
+        // recovery scripts). Use this as the source of truth for "passed Stage 4"
+        // so the Reports charts' S4 "Cleared" slice and the Final stage are not
+        // flat-zero across every branch.
+        const bestMap = new Map(winners.map(w => [w.userId, w]));
 
         // Collect distinct evaluators seen across every stage (for the filter).
         const evaluatorMap = new Map(); // key: `${id}|${stage}`
@@ -178,6 +185,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
             const s3 = s3Map.get(emp.id) || null;
             const hr = hrMap.get(emp.id) || null;
             const s4 = s4Map.get(emp.id) || null;
+            const best = bestMap.get(emp.id) || null;
             const isWinner = winnerSet.has(emp.id);
 
             let currentStage = 0;
@@ -260,10 +268,12 @@ export const GET = withRole(["ADMIN"], async (request) => {
                         combinedScore: hr.stage4CombinedScore,
                         submittedAt: hr.submittedAt,
                     } : null,
-                    shortlisted: !!s4,
+                    // Cleared Stage 4 = is a branch best employee. Fall back to
+                    // the legacy branchShortlistStage4 row only when present.
+                    shortlisted: !!best || !!s4,
                     shortlistRank: s4?.rank ?? null,
-                    shortlistHrScore: s4?.hrScore ?? null,
-                    shortlistCombinedScore: s4?.combinedScore ?? null,
+                    shortlistHrScore: best?.hrScore ?? s4?.hrScore ?? null,
+                    shortlistCombinedScore: best?.finalScore ?? s4?.combinedScore ?? null,
                 },
                 isWinner,
                 currentStage,

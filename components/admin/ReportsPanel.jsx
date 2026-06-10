@@ -71,8 +71,9 @@ export default function ReportsPanel() {
 
     const deptOptions = useMemo(() => {
         const list = data?.departments || [];
-        if (!filters.branch) return list;
-        return list.filter(d => d.branch === filters.branch);
+        const scoped = filters.branch ? list.filter(d => d.branch === filters.branch) : list;
+        // Filtering is name-based, so collapse same-named departments across branches.
+        return [...new Set(scoped.map(d => d.name))];
     }, [data, filters.branch]);
 
     // ── Apply filters to the employee universe ──
@@ -161,7 +162,7 @@ export default function ReportsPanel() {
                     <FilterSelect label="Branch" value={filters.branch} onChange={v => { setFilter("branch", v); setFilter("department", ""); }}
                         options={[["", "All Branches"], ...(data?.branches || []).map(b => [b.name, b.name])]} />
                     <FilterSelect label="Department" value={filters.department} onChange={v => setFilter("department", v)}
-                        options={[["", "All Departments"], ...deptOptions.map(d => [d.name, d.name])]} />
+                        options={[["", "All Departments"], ...deptOptions.map(name => [name, name])]} />
                     <FilterSelect label="Employee Category" value={filters.collar} onChange={v => setFilter("collar", v)}
                         options={[["", "All"], ["WHITE_COLLAR", "White Collar"], ["BLUE_COLLAR", "Blue Collar"]]} />
                     <FilterSelect label="Stage" value={filters.stage} onChange={v => setFilter("stage", v)}
