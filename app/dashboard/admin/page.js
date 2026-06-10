@@ -73,6 +73,24 @@ function fmtScore(v) {
     return Math.round(n * 100) / 100;
 }
 
+// Quick-access tile used on the dashboard tab. Pure presentation — the
+// onClick passed in is one of the existing tab-switch / export handlers.
+function QuickAction({ label, sub, color = "#003087", onClick, icon }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className="group bg-white border border-[#E0E0E0] hover:border-[#003087]/40 hover:shadow-md rounded-xl p-3 sm:p-4 text-left transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#003087]/20"
+        >
+            <span className="w-9 h-9 rounded-lg flex items-center justify-center mb-2" style={{ backgroundColor: `${color}14`, color }}>
+                {icon}
+            </span>
+            <span className="block text-[13px] font-bold text-[#1A1A2E] group-hover:text-[#003087] transition-colors">{label}</span>
+            {sub && <span className="block text-[11px] text-[#999999] mt-0.5">{sub}</span>}
+        </button>
+    );
+}
+
 // Share payload built so the admin can send a single link to staff that
 // drops them on the LOGIN page (not the admin dashboard). The accompanying
 // message names the active quarter so recipients know which evaluation to
@@ -1161,20 +1179,42 @@ export default function AdminDashboard() {
             {/* Profile Card */}
             <UserProfileCard user={user} roles={user?.departmentRoles?.map(dr => dr.role)} />
 
-            {/* Global vs Branch dashboard selector */}
-            <div className="mb-4 flex items-center gap-2 flex-wrap">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-[#999999]">Dashboard</label>
-                <select
-                    value=""
-                    onChange={(e) => { if (e.target.value) router.push(`/dashboard/admin/${e.target.value}`); }}
-                    className="border border-[#E0E0E0] rounded-lg px-3 py-2 text-sm font-medium text-[#333333] bg-white"
-                >
-                    <option value="">Global — all branches</option>
-                    {branches.map(b => (
-                        <option key={b.id} value={b.slug}>{b.name}{b.location ? ` — ${b.location}` : ""}</option>
-                    ))}
-                </select>
-                <div className="relative sm:ml-auto">
+            {/* Page toolbar — back, branch scope selector + share */}
+            <div className="mb-5 bg-white border border-[#E0E0E0] rounded-xl shadow-sm px-3 sm:px-4 py-2.5 flex items-center gap-2 sm:gap-3 flex-wrap">
+                {/* In-app Back — returns to the dashboard view. Tab switches use
+                    router.replace (no history entry), so the browser back button
+                    would land on /login; this gives a safe path back instead. */}
+                {tab !== "dashboard" && (
+                    <>
+                        <button
+                            type="button"
+                            onClick={() => setTab("dashboard")}
+                            title="Back to dashboard"
+                            className="h-9 px-3 inline-flex items-center gap-1.5 bg-white border border-[#CCCCCC] hover:bg-[#E3F2FD] hover:border-[#003087]/40 text-[#003087] text-[13px] font-bold rounded-lg cursor-pointer transition-colors shrink-0"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                            Back
+                        </button>
+                        <span className="hidden sm:block w-px h-7 bg-[#E0E0E0]" />
+                    </>
+                )}
+                <span className="hidden sm:flex w-9 h-9 rounded-lg bg-[#E3F2FD] text-[#003087] items-center justify-center shrink-0">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                </span>
+                <div className="min-w-0">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-[#999999] mb-0.5">Viewing</label>
+                    <select
+                        value=""
+                        onChange={(e) => { if (e.target.value) router.push(`/dashboard/admin/${e.target.value}`); }}
+                        className="border border-[#E0E0E0] rounded-lg px-3 py-1.5 text-sm font-semibold text-[#003087] bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#003087]/20 max-w-full"
+                    >
+                        <option value="">Global — all branches</option>
+                        {branches.map(b => (
+                            <option key={b.id} value={b.slug}>{b.name}{b.location ? ` — ${b.location}` : ""}</option>
+                        ))}
+                    </select>
+                </div>
+                <div className="relative ml-auto">
                     <button
                         type="button"
                         onClick={handleShare}
@@ -1293,6 +1333,69 @@ export default function AdminDashboard() {
                                 />
                             </div>
 
+                            {/* SECTION C — Quick Access (one-click shortcuts to common admin views) */}
+                            <div>
+                                <h3 className="text-[12px] font-bold uppercase tracking-wider text-[#999999] mb-2">Quick Access</h3>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                                    <QuickAction
+                                        label="Employees"
+                                        sub="Directory, add & edit"
+                                        color="#003087"
+                                        onClick={() => setTab("employees")}
+                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6-4a3 3 0 11-3-3" /></svg>}
+                                    />
+                                    <QuickAction
+                                        label="Pipeline"
+                                        sub="Stage-wise progress"
+                                        color="#00843D"
+                                        onClick={() => setTab("pipeline")}
+                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>}
+                                    />
+                                    <QuickAction
+                                        label="Reports"
+                                        sub="Quarter summaries"
+                                        color="#F7941D"
+                                        onClick={() => setTab("reports")}
+                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
+                                    />
+                                    <QuickAction
+                                        label="Branches"
+                                        sub="Manage & import"
+                                        color="#6A1B9A"
+                                        onClick={() => setTab("branches")}
+                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>}
+                                    />
+                                    <QuickAction
+                                        label="Questions"
+                                        sub="Question bank"
+                                        color="#0369A1"
+                                        onClick={() => setTab("questions")}
+                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                                    />
+                                    <QuickAction
+                                        label="Audit Logs"
+                                        sub="Activity history"
+                                        color="#374151"
+                                        onClick={() => setTab("logs")}
+                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                                    />
+                                    <QuickAction
+                                        label="Export CSV"
+                                        sub="Quarter report"
+                                        color="#00843D"
+                                        onClick={async () => { const d = await fetchReport(); if (d) exportCSV(d); }}
+                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
+                                    />
+                                    <QuickAction
+                                        label="Refresh"
+                                        sub="Reload live data"
+                                        color="#003087"
+                                        onClick={fetchProgress}
+                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+                                    />
+                                </div>
+                            </div>
+
                             {/* SECTION — Branch-wise Stage Progress */}
                             {quarterProgress.branches && quarterProgress.branches.length > 0 && (
                                 <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 sm:p-6">
@@ -1398,24 +1501,6 @@ export default function AdminDashboard() {
                                 ) : (
                                     <p className="text-sm text-[#999999] italic">No winners declared yet. Evaluation in progress.</p>
                                 )}
-                            </div>
-
-                            {/* SECTION E — Quick Actions */}
-                            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 pb-2">
-                                <button onClick={() => setTab("questions")} className="px-3 sm:px-4 py-2 bg-white border border-[#CCCCCC] hover:bg-[#F5F5F5] hover:text-[#003087] text-[#333333] font-bold rounded-lg text-xs sm:text-sm transition-colors cursor-pointer shadow-sm">
-                                    Manage Questions
-                                </button>
-                                <button onClick={() => setTab("logs")} className="px-3 sm:px-4 py-2 bg-white border border-[#CCCCCC] hover:bg-[#F5F5F5] hover:text-[#003087] text-[#333333] font-bold rounded-lg text-xs sm:text-sm transition-colors cursor-pointer shadow-sm">
-                                    View Audit Logs
-                                </button>
-                                <button onClick={async () => { const d = await fetchReport(); if (d) exportCSV(d); }} className="px-3 sm:px-4 py-2 bg-[#003087] hover:bg-[#00843D] text-white font-bold rounded-lg text-xs sm:text-sm transition-colors cursor-pointer shadow-sm flex items-center justify-center gap-1.5 sm:gap-2">
-                                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                    Export
-                                </button>
-                                <button onClick={fetchProgress} className="px-3 sm:px-4 py-2 bg-white border border-[#CCCCCC] hover:bg-[#E3F2FD] hover:text-[#003087] text-[#333333] font-bold rounded-lg text-xs sm:text-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-sm">
-                                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                                    Refresh
-                                </button>
                             </div>
 
                             {/* SECTION — Recent Activity */}
@@ -2013,6 +2098,10 @@ export default function AdminDashboard() {
             {/* ═══════ QUARTER TAB ═══════ */}
             {tab === "quarter" && (
                 <div className="space-y-6">
+                    <div>
+                        <h2 className="text-xl font-bold text-[#003087]">Quarter Management</h2>
+                        <p className="text-sm text-[#666666]">Start a new evaluation quarter or close the active one.</p>
+                    </div>
                     {quarterMsg.text && (
                         <div className={`p-3 rounded-lg text-sm border ${quarterMsg.type === "success" ? "bg-[#E3F2FD] border-[#90CAF9] text-[#003087]" : "bg-[#FFEBEE] border-[#EF9A9A] text-[#D32F2F]"}`}>{quarterMsg.text}</div>
                     )}
@@ -2068,7 +2157,7 @@ export default function AdminDashboard() {
             {/* ═══════ QUESTIONS TAB ═══════ */}
             {tab === "questions" && (
                 <div className="space-y-6">
-                    {qMsg.text && (<div className={`p-3 rounded-lg text-sm border ${qMsg.type === "success" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>{qMsg.text}</div>)}
+                    {qMsg.text && (<div className={`p-3 rounded-lg text-sm border ${qMsg.type === "success" ? "bg-[#E8F5E9] border-[#A5D6A7] text-[#1B5E20]" : "bg-[#FFEBEE] border-[#EF9A9A] text-[#D32F2F]"}`}>{qMsg.text}</div>)}
 
                     {/* Summary + Add button */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -2202,43 +2291,75 @@ export default function AdminDashboard() {
 
             {/* ═══════ EMPLOYEES TAB ═══════ */}
             {tab === "employees" && (
-                <div className="space-y-6">
-                    <div className="bg-white border rounded-xl p-3 sm:p-5 shadow-sm border-[#E0E0E0] space-y-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <div className="relative w-full sm:flex-1 sm:w-auto sm:min-w-[240px]">
-                                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#999999]"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></span>
-                                <input type="text" placeholder="Search name or code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-10 pl-11 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-base text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
-                            </div>
-                            <select value={empFilter.branch} onChange={(e) => setEmpFilter({ ...empFilter, branch: e.target.value, department: "" })} className="h-10 px-2 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-32">
-                                <option value="">All Branches</option>
-                                {empBranches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
-                            </select>
-                            <select value={empFilter.department} onChange={(e) => setEmpFilter({ ...empFilter, department: e.target.value })} className="h-10 px-2 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-40">
-                                <option value="">All Departments</option>
-                                {empDepartmentOptions.map(d => <option key={d} value={d}>{d}</option>)}
-                            </select>
-                            <select value={empFilter.role} onChange={(e) => setEmpFilter({ ...empFilter, role: e.target.value })} className="h-10 px-2 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full sm:w-32">
-                                <option value="">All Roles</option>
-                                <option value="EMPLOYEE">Employee</option>
-                                <option value="BRANCH_MANAGER">Branch Manager</option>
-                                <option value="CLUSTER_MANAGER">Cluster Manager</option>
-                                <option value="HOD">HOD</option>
-                                <option value="HR">HR</option>
-                                <option value="COMMITTEE">Committee</option>
-                                <option value="ADMIN">Admin</option>
-                            </select>
-                            <button onClick={() => { setShowAddEmp(!showAddEmp); setAddMsg({ type: "", text: "" }); }} className="col-span-1 h-10 px-2.5 sm:px-3 bg-[#00843D] hover:bg-[#006B32] text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1 cursor-pointer transition-colors whitespace-nowrap">
+                <div className="space-y-4 sm:space-y-6">
+                    {/* Header — title, live count + primary actions */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                            <h2 className="text-xl font-bold text-[#003087]">Employees</h2>
+                            <p className="text-sm text-[#666666]">
+                                {empLoading
+                                    ? "Loading…"
+                                    : `${empTotal} employee${empTotal === 1 ? "" : "s"}${(empFilter.search || empFilter.branch || empFilter.department || empFilter.role) ? " matching filters" : ""}`}
+                            </p>
+                        </div>
+                        <div className="grid grid-cols-3 sm:flex gap-2">
+                            <button onClick={() => { setShowAddEmp(!showAddEmp); setAddMsg({ type: "", text: "" }); }} className="h-10 px-2.5 sm:px-3.5 bg-[#00843D] hover:bg-[#006B32] text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap shadow-sm">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
                                 {showAddEmp ? "Cancel" : "Add / Remove"}
                             </button>
-                            <button onClick={() => { setShowBulkUpload(!showBulkUpload); setBulkMsg({ type: "", text: "" }); setBulkResult(null); }} className="col-span-1 h-10 px-2.5 sm:px-3 bg-[#F7941D] hover:bg-[#D87A0A] text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1 cursor-pointer transition-colors whitespace-nowrap">
+                            <button onClick={() => { setShowBulkUpload(!showBulkUpload); setBulkMsg({ type: "", text: "" }); setBulkResult(null); }} className="h-10 px-2.5 sm:px-3.5 bg-[#F7941D] hover:bg-[#D87A0A] text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap shadow-sm">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                                 {showBulkUpload ? "Cancel" : "Bulk Upload"}
                             </button>
-                            <button onClick={downloadExcel} disabled={excelLoading} className="col-span-1 h-10 px-2.5 sm:px-3 bg-[#00843D] hover:bg-[#006B32] text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1 cursor-pointer transition-colors disabled:opacity-60 whitespace-nowrap">
+                            <button onClick={downloadExcel} disabled={excelLoading} className="h-10 px-2.5 sm:px-3.5 bg-white border border-[#CCCCCC] hover:bg-[#F5F5F5] text-[#00843D] text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-60 whitespace-nowrap shadow-sm">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                                 {excelLoading ? "Exporting..." : "Excel"}
                             </button>
+                        </div>
+                    </div>
+
+                    {/* Filter bar — labeled controls, always visible */}
+                    <div className="bg-white border rounded-xl p-3 sm:p-4 shadow-sm border-[#E0E0E0]">
+                        <div className="grid grid-cols-2 lg:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,180px))_auto] gap-2 sm:gap-3 items-end">
+                            <div className="col-span-2 lg:col-span-1">
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#999999] mb-1">Search</label>
+                                <div className="relative">
+                                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#999999]"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></span>
+                                    <input type="text" placeholder="Name or employee code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-10 pl-11 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#999999] mb-1">Branch</label>
+                                <select value={empFilter.branch} onChange={(e) => setEmpFilter({ ...empFilter, branch: e.target.value, department: "" })} className="h-10 px-2 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full">
+                                    <option value="">All Branches</option>
+                                    {empBranches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#999999] mb-1">Department</label>
+                                <select value={empFilter.department} onChange={(e) => setEmpFilter({ ...empFilter, department: e.target.value })} className="h-10 px-2 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full">
+                                    <option value="">All Departments</option>
+                                    {empDepartmentOptions.map(d => <option key={d} value={d}>{d}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#999999] mb-1">Role</label>
+                                <select value={empFilter.role} onChange={(e) => setEmpFilter({ ...empFilter, role: e.target.value })} className="h-10 px-2 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full">
+                                    <option value="">All Roles</option>
+                                    <option value="EMPLOYEE">Employee</option>
+                                    <option value="BRANCH_MANAGER">Branch Manager</option>
+                                    <option value="CLUSTER_MANAGER">Cluster Manager</option>
+                                    <option value="HOD">HOD</option>
+                                    <option value="HR">HR</option>
+                                    <option value="COMMITTEE">Committee</option>
+                                    <option value="ADMIN">Admin</option>
+                                </select>
+                            </div>
+                            {(empFilter.search || empFilter.branch || empFilter.department || empFilter.role) && (
+                                <button onClick={() => setEmpFilter({ search: "", department: "", role: "", branch: "" })} className="h-10 px-3 bg-white border border-[#E0E0E0] hover:bg-[#F5F5F5] text-[#666666] hover:text-[#D32F2F] text-xs font-bold rounded-lg cursor-pointer transition-colors whitespace-nowrap">
+                                    ✕ Clear
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -2436,6 +2557,10 @@ export default function AdminDashboard() {
             {
                 tab === "logs" && (
                     <div className="space-y-4">
+                        <div>
+                            <h2 className="text-xl font-bold text-[#003087]">Audit Logs</h2>
+                            <p className="text-sm text-[#666666]">Every admin and evaluator action, with timestamps and IP addresses.</p>
+                        </div>
                         {/* Filter Bar */}
                         <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-3 sm:p-4 space-y-2 sm:space-y-0 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
                             <div className="w-full sm:w-auto">

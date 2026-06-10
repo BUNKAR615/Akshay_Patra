@@ -25,6 +25,13 @@ export default function GlobalHrCommitteePage() {
 
     return (
         <DashboardShell user={user} title="Organizational Structure">
+            <Link
+                href="/dashboard/admin"
+                className="inline-flex items-center gap-1.5 mb-4 h-9 px-3 bg-white border border-[#CCCCCC] hover:bg-[#E3F2FD] hover:border-[#003087]/40 text-[#003087] text-[13px] font-bold rounded-lg transition-colors no-underline"
+            >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                Back to Dashboard
+            </Link>
             <p className="text-sm text-[#666666] mb-6">
                 Pick a branch to manage its organizational structure.
             </p>
