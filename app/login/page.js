@@ -284,6 +284,7 @@ function CredentialForm({ empCode, setEmpCode, password, setPassword, showPasswo
                             required placeholder="1800349"
                             inputMode="numeric"
                             autoComplete="username"
+                            autoFocus
                             className="w-full h-11 pl-10 pr-4 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] placeholder-[#999999] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] text-sm"
                         />
                     </div>
@@ -307,6 +308,7 @@ function CredentialForm({ empCode, setEmpCode, password, setPassword, showPasswo
                         <button
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
+                            aria-label={showPassword ? "Hide password" : "Show password"}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-[#333333] hover:text-[#003087] cursor-pointer"
                         >
                             {showPassword ? (

@@ -20,8 +20,7 @@ export const metadata = {
         statusBarStyle: "default",
         title: "Akshaya Patra",
     },
-    // Tells iOS Safari + Chrome address bar to theme to brand blue.
-    themeColor: "#003087",
+    // themeColor lives in the `viewport` export below (Next 14 convention).
     formatDetection: {
         telephone: false,    // stop iOS from auto-linking 10-digit empCodes as phone numbers
         date: false,
