@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NAV, resolveActive, DASHBOARD_HOME } from "../../lib/dashboardNav";
 import { Ic } from "../ui/Icons";
 import { AP, ROLE_LABEL } from "../ui/tokens";
 import { Avatar } from "../ui";
+
+const SECTIONS_KEY = "ap.sidebar.sections";
 
 /**
  * Responsive sidebar.
@@ -38,6 +40,32 @@ export default function Sidebar({
     // Strict per-role nav. If role is unknown (loading / unrecognized) render
     // empty groups — never silently fall back to the ADMIN tabset.
     const groups = NAV[role] || [];
+
+    // Collapsible labeled sections, persisted separately from the icon-collapse
+    // state (`ap.sidebar.collapsed` is owned by DashboardShell and untouched).
+    const [closedSections, setClosedSections] = useState({});
+    useEffect(() => {
+        try {
+            const saved = JSON.parse(localStorage.getItem(SECTIONS_KEY) || "{}");
+            if (saved && typeof saved === "object") setClosedSections(saved);
+        } catch { /* corrupt storage — ignore */ }
+    }, []);
+    const toggleSection = (name) => {
+        setClosedSections((prev) => {
+            const next = { ...prev, [name]: !prev[name] };
+            try { localStorage.setItem(SECTIONS_KEY, JSON.stringify(next)); } catch { /* quota — ignore */ }
+            return next;
+        });
+    };
+    // Never leave the active item hidden inside a closed section.
+    useEffect(() => {
+        if (!activeId) return;
+        const grp = groups.find((g) => g.section && g.items.some((i) => i.id === activeId));
+        if (grp && closedSections[grp.section]) {
+            setClosedSections((prev) => ({ ...prev, [grp.section]: false }));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeId, role]);
 
     // On mobile we always render in expanded mode; the desktop collapsed flag
     // is ignored so users still get readable labels on a small screen.
@@ -124,28 +152,43 @@ export default function Sidebar({
                 </div>
 
                 <nav className="flex-1 overflow-y-auto py-2.5" style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}>
-                    {groups.map((grp, gi) => (
-                        <div key={gi} className="mb-0.5">
-                            {grp.section && !isCollapsed && (
-                                <p className="text-[9.5px] font-bold text-white/30 uppercase tracking-[0.12em] px-[18px] pt-2.5 pb-1 m-0">
-                                    {grp.section}
-                                </p>
-                            )}
-                            {grp.section && isCollapsed && <div className="h-px bg-white/5 mx-2.5 my-2" />}
-                            {grp.items.map((item) => {
-                                const active = activeId === item.id;
-                                return (
-                                    <SidebarItem
-                                        key={item.id}
-                                        item={item}
-                                        active={active}
-                                        collapsed={isCollapsed}
-                                        onNavigate={isMobile ? onDrawerClose : undefined}
-                                    />
-                                );
-                            })}
-                        </div>
-                    ))}
+                    {groups.map((grp, gi) => {
+                        const sectionClosed = grp.section && !isCollapsed && closedSections[grp.section];
+                        return (
+                            <div key={gi} className="mb-0.5">
+                                {grp.section && !isCollapsed && (
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleSection(grp.section)}
+                                        aria-expanded={!sectionClosed}
+                                        className="w-full flex items-center justify-between bg-transparent border-none cursor-pointer text-[9.5px] font-bold text-white/30 hover:text-white/60 uppercase tracking-[0.12em] px-[18px] pt-2.5 pb-1 transition-colors"
+                                    >
+                                        {grp.section}
+                                        <svg
+                                            width="10" height="10" fill="none" viewBox="0 0 24 24"
+                                            aria-hidden="true"
+                                            className={`transition-transform duration-150 ${sectionClosed ? "-rotate-90" : ""}`}
+                                        >
+                                            <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                                        </svg>
+                                    </button>
+                                )}
+                                {grp.section && isCollapsed && <div className="h-px bg-white/5 mx-2.5 my-2" />}
+                                {!sectionClosed && grp.items.map((item) => {
+                                    const active = activeId === item.id;
+                                    return (
+                                        <SidebarItem
+                                            key={item.id}
+                                            item={item}
+                                            active={active}
+                                            collapsed={isCollapsed}
+                                            onNavigate={isMobile ? onDrawerClose : undefined}
+                                        />
+                                    );
+                                })}
+                            </div>
+                        );
+                    })}
                 </nav>
 
                 <div
