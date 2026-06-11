@@ -1,100 +1,29 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import DashboardShell from "../../../components/DashboardShell";
-import { Stat, Alert } from "../../../components/ui";
 import ConfirmDialog from "../../../components/ConfirmDialog";
-import { PageSpinner, SkeletonCard, SkeletonStats } from "../../../components/Skeleton";
+import { SkeletonCard, SkeletonStats } from "../../../components/Skeleton";
 import UserProfileCard from "../../../components/UserProfileCard";
-import QuarterCountdown from "../../../components/QuarterCountdown";
-import ReportsPanel from "../../../components/admin/ReportsPanel";
-import StageDetailModal from "../../../components/admin/StageDetailModal";
+import { api } from "../../../lib/clientApi";
+import { getAutoQuarterName } from "../../../lib/quarterUtils";
 
-async function api(url, opts, { retries = 4 } = {}) {
-    let lastErr;
-    for (let attempt = 0; attempt < retries; attempt++) {
-        let res;
-        try {
-            res = await fetch(url, opts);
-        } catch (e) {
-            // Network blip — retry a couple of times before surfacing.
-            lastErr = e;
-            if (attempt < retries - 1) {
-                await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
-                continue;
-            }
-            throw e;
-        }
-        let json = null;
-        try { json = await res.json(); } catch { json = null; }
+// Each ?view= tab is its own lazily-loaded chunk — switching tabs only ever
+// downloads the code for the tab being opened.
+const viewLoading = () => <SkeletonCard lines={4} />;
+const DashboardView = dynamic(() => import("./views/DashboardView"), { ssr: false, loading: viewLoading });
+const PipelineView = dynamic(() => import("./views/PipelineView"), { ssr: false, loading: viewLoading });
+const BranchesView = dynamic(() => import("./views/BranchesView"), { ssr: false, loading: viewLoading });
+const OrgView = dynamic(() => import("./views/OrgView"), { ssr: false, loading: viewLoading });
+const QuarterView = dynamic(() => import("./views/QuarterView"), { ssr: false, loading: viewLoading });
+const QuestionsView = dynamic(() => import("./views/QuestionsView"), { ssr: false, loading: viewLoading });
+const EmployeesView = dynamic(() => import("./views/EmployeesView"), { ssr: false, loading: viewLoading });
+const LogsView = dynamic(() => import("./views/LogsView"), { ssr: false, loading: viewLoading });
+const ReportsPanel = dynamic(() => import("../../../components/admin/ReportsPanel"), { ssr: false, loading: viewLoading });
 
-        // 503 = backend warming up (cold DB / pool). Retry transparently
-        // with backoff so the dashboard never shows a dead error page.
-        if (res.status === 503 && attempt < retries - 1) {
-            lastErr = new Error((json && json.message) || "Service starting up");
-            await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
-            continue;
-        }
-
-        if (!res.ok || !json || !json.success) {
-            const err = new Error((json && json.message) || "Request failed");
-            err.status = res.status;
-            throw err;
-        }
-        return json.data;
-    }
-    throw lastErr || new Error("Request failed");
-}
-
-// Auto-generate quarter name based on current month / financial year
-function getAutoQuarterName() {
-    const now = new Date();
-    const month = now.getMonth(); // 0-11
-    const year = now.getFullYear();
-    const qNum = month < 3 ? 4 : month < 6 ? 1 : month < 9 ? 2 : 3;
-    const fyYear = qNum >= 1 && qNum <= 3 ? year : year - 1;
-    return `Q${qNum}-${fyYear}`;
-}
-
-// Date-only formatter for the ongoing-evaluation export.
-function fmtDate(iso) {
-    if (!iso) return "";
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "";
-    return d.toISOString().slice(0, 10);
-}
-
-// Score formatter — round to 2dp, preserve null/undefined as blank.
-function fmtScore(v) {
-    if (v === null || v === undefined) return "";
-    const n = Number(v);
-    if (Number.isNaN(n)) return "";
-    return Math.round(n * 100) / 100;
-}
-
-// Quick-access tile used on the dashboard tab. Pure presentation — the
-// onClick passed in is one of the existing tab-switch / export handlers.
-function QuickAction({ label, sub, color = "#003087", onClick, icon }) {
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            className="group bg-white border border-[#E0E0E0] hover:border-[#003087]/40 hover:shadow-md rounded-xl p-3 sm:p-4 text-left transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#003087]/20"
-        >
-            <span className="w-9 h-9 rounded-lg flex items-center justify-center mb-2" style={{ backgroundColor: `${color}14`, color }}>
-                {icon}
-            </span>
-            <span className="block text-[13px] font-bold text-[#1A1A2E] group-hover:text-[#003087] transition-colors">{label}</span>
-            {sub && <span className="block text-[11px] text-[#999999] mt-0.5">{sub}</span>}
-        </button>
-    );
-}
-
-// Share payload built so the admin can send a single link to staff that
-// drops them on the LOGIN page (not the admin dashboard). The accompanying
-// message names the active quarter so recipients know which evaluation to
-// complete.
+// Share payload — drops staff on the LOGIN page with the active quarter named.
 function buildAdminSharePayload(quarter) {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     const url = origin ? `${origin}/login` : "/login";
@@ -113,10 +42,6 @@ export default function AdminDashboard() {
     const [user, setUser] = useState(null);
     const [tab, setTabState] = useState(viewParam || "dashboard");
     const [loading, setLoading] = useState(true);
-    const [dismissedAlerts, setDismissedAlerts] = useState([]);
-    const [activity, setActivity] = useState([]);
-    const [shareMenuOpen, setShareMenuOpen] = useState(false);
-    const [shareCopied, setShareCopied] = useState(false);
 
     // Sidebar drives tab via ?view= query param; keep URL in sync when user triggers setTab.
     const setTab = (id) => {
@@ -131,312 +56,40 @@ export default function AdminDashboard() {
     useEffect(() => {
         const next = viewParam || "dashboard";
         if (next !== tab) setTabState(next);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [viewParam]);
 
-    // Confirm dialog
+    // Confirm dialog for quarter start/close (shared by dashboard + quarter tabs).
     const [confirm, setConfirm] = useState({ open: false, type: null });
 
-    // Summary state
-    const [report, setReport] = useState(null);
-    const [reportLoading, setReportLoading] = useState(false);
-    const [expandedSummaryDept, setExpandedSummaryDept] = useState(null);
+    // Quarter archive — list of every quarter + the one currently being viewed.
+    const [quarters, setQuarters] = useState([]);
+    const [activeQuarterId, setActiveQuarterId] = useState(null);
+    const [selectedQuarterId, setSelectedQuarterId] = useState(null);
 
-    // Quarter management
-    const [quarterName, setQuarterName] = useState("");
-    const [startDate, setStartDate] = useState("");
-    const [endDate, setEndDate] = useState("");
-    const [questionCount, setQuestionCount] = useState(15);
-    // AUTO: system picks a random balanced set. MANUAL: lock exactly the
-    // questions marked "In quarter" on the Questions tab.
-    const [quarterMode, setQuarterMode] = useState("AUTO");
+    // Quarter progress (shared by dashboard / pipeline / quarter tabs).
+    const [quarterProgress, setQuarterProgress] = useState(null);
+    const [progressLoading, setProgressLoading] = useState(true);
+
+    // Quarter start/close action state.
     const [quarterMsg, setQuarterMsg] = useState({ type: "", text: "" });
     const [quarterLoading, setQuarterLoading] = useState(false);
 
-    // Questions
+    // Branches — also feeds the toolbar scope selector and pipeline export.
+    const [branches, setBranches] = useState([]);
+    const [branchLoading, setBranchLoading] = useState(false);
+
+    // Cross-tab caches (fetched once per session, same as before the split).
+    const [orgStructure, setOrgStructure] = useState([]);
+    const [orgLoading, setOrgLoading] = useState(false);
     const [questions, setQuestions] = useState([]);
-    const [newQ, setNewQ] = useState({ text: "", textHindi: "", category: "ATTENDANCE", level: "SELF" });
-    const [qMsg, setQMsg] = useState({ type: "", text: "" });
-    const [qFilter, setQFilter] = useState({ level: "", category: "", search: "" });
-    const [editingQ, setEditingQ] = useState(null);
-    const [deleteQ, setDeleteQ] = useState(null);
-    const [showAddForm, setShowAddForm] = useState(false);
 
-    // Employees
-    const [employees, setEmployees] = useState([]);
-    const [empDepartments, setEmpDepartments] = useState([]);
-    const [empTotal, setEmpTotal] = useState(0);
-    const [empTotalPages, setEmpTotalPages] = useState(1);
-    const [empPage, setEmpPage] = useState(1);
-    const [empLoading, setEmpLoading] = useState(false);
-    const [empFilter, setEmpFilter] = useState({ search: "", department: "", role: "", branch: "" });
-    const [empBranches, setEmpBranches] = useState([]);
-    const [empDepartmentStats, setEmpDepartmentStats] = useState([]); // [{ name, branch, count }] — used to scope the Department filter to the selected branch
+    // Org tab → Employees tab "Add Employee" hand-off.
+    const [pendingAddDept, setPendingAddDept] = useState(null);
 
-    // Employee management — add / remove (inline in admin dashboard)
-    // Add employee state
-    const [showAddEmp, setShowAddEmp] = useState(false);
-    const [addForm, setAddForm] = useState({ name: "", mobile: "", departmentName: "", joiningDate: "", reason: "", empCode: "", designation: "" });
-    const [addMsg, setAddMsg] = useState({ type: "", text: "" });
-    const [addLoading, setAddLoading] = useState(false);
-
-    // Remove employee state
-    const [removeId, setRemoveId] = useState(null);
-    const [removeReason, setRemoveReason] = useState("");
-    const [removeLoading, setRemoveLoading] = useState(false);
-
-    // Bulk upload state
-    const [showBulkUpload, setShowBulkUpload] = useState(false);
-    const [bulkFile, setBulkFile] = useState(null);
-    const [bulkLoading, setBulkLoading] = useState(false);
-    const [bulkResult, setBulkResult] = useState(null);
-    const [bulkMsg, setBulkMsg] = useState({ type: "", text: "" });
-
-    const handleBulkUpload = async () => {
-        if (!bulkFile) {
-            setBulkMsg({ type: "error", text: "Please select an Excel file" });
-            return;
-        }
-        setBulkLoading(true);
-        setBulkMsg({ type: "", text: "" });
-        setBulkResult(null);
-        try {
-            const fd = new FormData();
-            fd.append("file", bulkFile);
-            const res = await fetch("/api/admin/employees/bulk-upload", { method: "POST", body: fd });
-            const json = await res.json();
-            if (!res.ok || !json.success) throw new Error(json.message || "Upload failed");
-            setBulkResult(json.data);
-            setBulkMsg({ type: "success", text: `Processed ${json.data.totalRows} rows: ${json.data.createdCount} created, ${json.data.skippedCount} skipped, ${json.data.failedCount} failed.` });
-            setBulkFile(null);
-            fetchEmployees(1);
-            if (orgStructure.length > 0) fetchOrg();
-        } catch (err) {
-            setBulkMsg({ type: "error", text: err.message || "Bulk upload failed" });
-        }
-        setBulkLoading(false);
-    };
-
-    const downloadBulkTemplate = async () => {
-        const XLSX = await import("xlsx");
-        const sampleRows = [
-            { "Emp Code": "5100099", "Name": "Sample Name", "Department": "Production", "Branch": "Jaipur", "Designation": "Operator", "Mobile": "9876543210", "Collar Type": "BLUE_COLLAR" },
-        ];
-        const ws = XLSX.utils.json_to_sheet(sampleRows);
-        ws["!cols"] = [{ wch: 12 }, { wch: 25 }, { wch: 20 }, { wch: 15 }, { wch: 20 }, { wch: 14 }, { wch: 14 }];
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Employees");
-        XLSX.writeFile(wb, "Employee_Upload_Template.xlsx");
-    };
-
-    // Edit employee modal state (admin only)
-    const [editEmp, setEditEmp] = useState(null);           // employee being edited
-    const [editForm, setEditForm] = useState({});           // form values
-    const [editConfirm, setEditConfirm] = useState(false);  // show confirmation step
-    const [editChanges, setEditChanges] = useState([]);     // list of changes to confirm
-    const [editLoading, setEditLoading] = useState(false);
-    const [editMsg, setEditMsg] = useState({ type: "", text: "" });
-
-    const openEditModal = (emp) => {
-        setEditEmp(emp);
-        setEditForm({
-            department: emp.departmentObj?.name || "",
-            role: emp.role || "EMPLOYEE",
-            designation: emp.designation === "—" ? "" : emp.designation || "",
-            password: "",
-        });
-        setEditConfirm(false);
-        setEditChanges([]);
-        setEditMsg({ type: "", text: "" });
-    };
-
-    const buildChanges = () => {
-        const changes = [];
-        if (editForm.department && editForm.department !== (editEmp.departmentObj?.name || ""))
-            changes.push(`Department: "${editEmp.departmentObj?.name || "—"}" → "${editForm.department}"`);
-        if (editForm.role && editForm.role !== editEmp.role)
-            changes.push(`Role: "${editEmp.role}" → "${editForm.role}"`);
-        if (editForm.designation !== (editEmp.designation === "—" ? "" : editEmp.designation || ""))
-            changes.push(`Designation: "${editEmp.designation === "—" ? "" : editEmp.designation || ""}" → "${editForm.designation}"`);
-        if (editForm.password && editForm.password.trim().length >= 6)
-            changes.push("Password will be updated");
-        return changes;
-    };
-
-    const handleEditPreview = () => {
-        const changes = buildChanges();
-        if (changes.length === 0) { setEditMsg({ type: "error", text: "No changes made." }); return; }
-        if (editForm.password && editForm.password.trim().length > 0 && editForm.password.trim().length < 6) {
-            setEditMsg({ type: "error", text: "Password must be at least 6 characters." }); return;
-        }
-        setEditChanges(changes);
-        setEditConfirm(true);
-        setEditMsg({ type: "", text: "" });
-    };
-
-    const handleEditSave = async () => {
-        setEditLoading(true);
-        setEditMsg({ type: "", text: "" });
-        try {
-            const body = {};
-            if (editForm.department && editForm.department !== (editEmp.departmentObj?.name || "")) body.department = editForm.department;
-            if (editForm.role && editForm.role !== editEmp.role) body.role = editForm.role;
-            const origDesig = editEmp.designation === "—" ? "" : editEmp.designation || "";
-            if (editForm.designation !== origDesig) body.designation = editForm.designation;
-            if (editForm.password && editForm.password.trim().length >= 6) body.password = editForm.password.trim();
-
-            const res = await fetch(`/api/admin/employees/${editEmp.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
-            });
-            const json = await res.json();
-            if (!res.ok || !json.success) throw new Error(json.message || "Update failed");
-            setEditMsg({ type: "success", text: "Employee updated successfully!" });
-            setEditConfirm(false);
-            await fetchEmployees(empPage, empFilter);
-            setTimeout(() => setEditEmp(null), 1200);
-        } catch (err) {
-            setEditMsg({ type: "error", text: err.message });
-            setEditConfirm(false);
-        }
-        setEditLoading(false);
-    };
-
-    // Add employee handler
-    const handleAddEmployee = async () => {
-        setAddLoading(true);
-        setAddMsg({ type: "", text: "" });
-        try {
-            const d = await api("/api/admin/employees", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(addForm),
-            });
-            setAddMsg({ type: "success", text: `${d.employee.name} added successfully. Default password: ${d.defaultPassword}` });
-            setAddForm({ name: "", mobile: "", departmentName: "", joiningDate: "", reason: "", empCode: "", designation: "" });
-            fetchEmployees(1);
-            if (orgStructure.length > 0) fetchOrg();
-        } catch (err) {
-            setAddMsg({ type: "error", text: err.message || "Failed to add employee" });
-        }
-        setAddLoading(false);
-    };
-
-    // Remove employee handler
-    const handleRemoveEmployee = async () => {
-        if (!removeId || !removeReason) return;
-        setRemoveLoading(true);
-        try {
-            await api(`/api/admin/employees/${removeId}`, {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ reasonLeaving: removeReason }),
-            });
-            setRemoveId(null);
-            setRemoveReason("");
-            fetchEmployees(1);
-            if (orgStructure.length > 0) fetchOrg();
-        } catch (err) {
-            alert(err.message || "Failed to remove employee");
-        }
-        setRemoveLoading(false);
-    };
-
-    // Org Structure — expandable departments and person detail modal
-    const [expandedDeptId, setExpandedDeptId] = useState(null);
-    const [personDetail, setPersonDetail] = useState(null);
-
-    const toggleDept = (deptId) => setExpandedDeptId(prev => prev === deptId ? null : deptId);
-
-    const openPersonDetail = (person) => setPersonDetail(person);
-    const closePersonDetail = () => setPersonDetail(null);
-
-    // Excel export — downloads filtered employee list as .xlsx
-    const [excelLoading, setExcelLoading] = useState(false);
-    const downloadExcel = async () => {
-        setExcelLoading(true);
-        try {
-            const XLSX = await import("xlsx");
-            const params = new URLSearchParams({ page: "1", export: "true" });
-            if (empFilter.search) params.set("search", empFilter.search);
-            if (empFilter.department) params.set("department", empFilter.department);
-            if (empFilter.role) params.set("role", empFilter.role);
-            if (empFilter.branch) params.set("branch", empFilter.branch);
-            const d = await api(`/api/admin/employees?${params}`);
-            const all = d.employees || [];
-
-            // Last column shows the employee's collar/category (not evaluator role).
-            const collarLabel = (ct) =>
-                ct === "WHITE_COLLAR" ? "White Collar" : ct === "BLUE_COLLAR" ? "Blue Collar" : "—";
-
-            // Branch Manager leads the list (S.No 1), Cluster Manager second
-            // (S.No 2), then everyone else. Derived from the same result set so a
-            // branch-filtered export surfaces that branch's BM/CM.
-            const hasRole = (e, roleKey) =>
-                e.role === roleKey ||
-                (e.roles || []).includes(roleKey) ||
-                (e.evaluatorRoles || []).some(er => er.role === roleKey);
-            const bm = all.find(e => hasRole(e, "BRANCH_MANAGER"));
-            const cm = all.find(e => hasRole(e, "CLUSTER_MANAGER"));
-            const leaders = [];
-            if (bm) leaders.push(bm);
-            if (cm && cm !== bm) leaders.push(cm);
-            const leaderIds = new Set(leaders.map(e => e.id));
-            const ordered = [...leaders, ...all.filter(e => !leaderIds.has(e.id))];
-
-            const rows = ordered.map((e, i) => ({
-                "S.No": i + 1,
-                "Emp Code": e.empCode || "—",
-                "Name": e.name,
-                "Department": e.department,
-                "Branch": e.departmentObj?.branch?.name || "—",
-                "Designation": e.designation || "—",
-                "Mobile": e.mobile || "",
-                "Role": (e.roles || [e.role]).join(", ").replace(/_/g, " "),
-                "Collar / Category": collarLabel(e.collarType),
-            }));
-            const ws = XLSX.utils.json_to_sheet(rows);
-            // Auto-size columns
-            const colWidths = Object.keys(rows[0] || {}).map(key => ({
-                wch: Math.max(key.length, ...rows.map(r => String(r[key] || "").length)) + 2,
-            }));
-            ws["!cols"] = colWidths;
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Employees");
-            const filterLabel = [empFilter.branch, empFilter.department, empFilter.role?.replace(/_/g, " "), empFilter.search].filter(Boolean).join("_") || "All";
-            XLSX.writeFile(wb, `Employees_${filterLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`);
-        } catch (err) {
-            console.error("Excel export error:", err);
-        }
-        setExcelLoading(false);
-    };
-
-    const fetchEmployees = async (pg = empPage, filters = empFilter) => {
-        setEmpLoading(true);
-        try {
-            const params = new URLSearchParams({ page: pg.toString() });
-            if (filters.search) params.set("search", filters.search);
-            if (filters.department) params.set("department", filters.department);
-            if (filters.role) params.set("role", filters.role);
-            if (filters.branch) params.set("branch", filters.branch);
-            const d = await api(`/api/admin/employees?${params}`);
-            setEmployees(d.employees);
-            setEmpTotal(d.total);
-            setEmpTotalPages(d.totalPages);
-            setEmpPage(pg);
-            if (d.departments) setEmpDepartments(d.departments);
-            if (d.departmentStats) setEmpDepartmentStats(d.departmentStats);
-            if (d.branches) setEmpBranches(d.branches);
-        } catch (err) { console.error("[Admin] fetchEmployees failed:", err); }
-        setEmpLoading(false);
-    };
-
-    // Logs
-    const [logs, setLogs] = useState([]);
-    const [logPage, setLogPage] = useState(1);
-    const [logTotal, setLogTotal] = useState(0);
-    const [logActions, setLogActions] = useState([]);
-    const [logFilter, setLogFilter] = useState({ action: "", from: "", to: "" });
+    // Share menu
+    const [shareMenuOpen, setShareMenuOpen] = useState(false);
+    const [shareCopied, setShareCopied] = useState(false);
 
     useEffect(() => {
         (async () => {
@@ -446,48 +99,12 @@ export default function AdminDashboard() {
                 setLoading(false);
             } catch (err) {
                 console.error("[Admin] Auth fetch failed:", err);
-                // Auth could not be established — an expired session, or
-                // persistent backend trouble even after retries. Send the
-                // user to re-login rather than rendering a broken shell;
-                // no browser-cache clear is ever required.
+                // Auth could not be established — send the user to re-login
+                // rather than rendering a broken shell.
                 if (typeof window !== "undefined") window.location.replace("/login");
             }
         })();
     }, []);
-
-    // Org Structure state
-    const [orgStructure, setOrgStructure] = useState([]);
-    const [orgLoading, setOrgLoading] = useState(false);
-    const [orgBranchId, setOrgBranchId] = useState("");
-
-    // Reassign role modal state (org structure tab)
-    const [reassignModal, setReassignModal] = useState(null); // { dept: {id, name}, role }
-    const [reassignSearch, setReassignSearch] = useState("");
-    const [reassignTarget, setReassignTarget] = useState(null); // selected employee obj
-    const [reassignAllEmps, setReassignAllEmps] = useState([]); // flat employee list for picker
-    const [reassignLoading, setReassignLoading] = useState(false);
-    const [reassignMsg, setReassignMsg] = useState({ type: "", text: "" });
-
-    // Quarter Progress
-    const [quarterProgress, setQuarterProgress] = useState(null);
-    const [progressLoading, setProgressLoading] = useState(true);
-
-    // Quarter archive — list of every quarter + the one currently being viewed.
-    // `selectedQuarterId === null` means "active quarter" (resolved by the API).
-    // Set explicitly when the admin picks an archived quarter from the dropdown.
-    const [quarters, setQuarters] = useState([]);
-    const [activeQuarterId, setActiveQuarterId] = useState(null);
-    const [selectedQuarterId, setSelectedQuarterId] = useState(null);
-
-    // Ongoing-evaluation download (Pipeline tab)
-    const [exportBranchId, setExportBranchId] = useState("");
-    const [exportLoading, setExportLoading] = useState(false);
-    const [exportError, setExportError] = useState("");
-    // Pipeline stage drill-down — { branch, stage } when a stage card is clicked.
-    const [stageDetail, setStageDetail] = useState(null);
-    // Pipeline winners list — same data the committee sees (/api/committee/results).
-    const [pipelineWinners, setPipelineWinners] = useState(null);
-    const [pipelineWinnersLoading, setPipelineWinnersLoading] = useState(false);
 
     const fetchQuarters = async () => {
         try {
@@ -514,190 +131,11 @@ export default function AdminDashboard() {
         setProgressLoading(false);
     };
 
-    // Build XLSX of the ongoing evaluation pipeline for a single branch.
-    // Reuses the same API + column shape as the per-branch sub-page so the
-    // file is identical regardless of which entry point admin uses.
-    const downloadOngoingForBranch = async () => {
-        if (!exportBranchId) {
-            setExportError("Please select a branch first.");
-            return;
-        }
-        setExportLoading(true);
-        setExportError("");
-        try {
-            const XLSX = await import("xlsx");
-            const qs = selectedQuarterId ? `?quarterId=${encodeURIComponent(selectedQuarterId)}` : "";
-            const payload = await api(`/api/admin/branches/${exportBranchId}/export/ongoing${qs}`);
-            const rows = (payload.employees || []).map((e, i) => ({
-                "S.No": i + 1,
-                "Emp Code": e.empCode || "",
-                "Name": e.name,
-                "Department": e.department || "",
-                "Designation": e.designation || "",
-                "Collar": e.collarType || "",
-                "Current Stage": e.isWinner ? "WINNER" : (e.currentStage || 0),
-
-                "S1 Submitted": e.stage1.submitted ? "Yes" : "No",
-                "S1 Raw": fmtScore(e.stage1.rawScore),
-                "S1 Normalized": fmtScore(e.stage1.normalizedScore),
-                "S1 Submitted At": fmtDate(e.stage1.submittedAt),
-                "S1 Shortlisted": e.stage1.shortlisted ? "Yes" : "No",
-                "S1 Rank": e.stage1.shortlistRank ?? "",
-
-                "S2 BM Evaluator": e.stage2.bmEval ? `${e.stage2.bmEval.evaluatorName} (${e.stage2.bmEval.evaluatorEmpCode})` : "",
-                "S2 BM Raw": fmtScore(e.stage2.bmEval?.rawScore),
-                "S2 BM Normalized": fmtScore(e.stage2.bmEval?.normalizedScore),
-                "S2 BM Combined": fmtScore(e.stage2.bmEval?.combinedScore),
-                "S2 BM At": fmtDate(e.stage2.bmEval?.submittedAt),
-
-                "S2 HOD Evaluator": e.stage2.hodEval ? `${e.stage2.hodEval.evaluatorName} (${e.stage2.hodEval.evaluatorEmpCode})` : "",
-                "S2 HOD Raw": fmtScore(e.stage2.hodEval?.rawScore),
-                "S2 HOD Normalized": fmtScore(e.stage2.hodEval?.normalizedScore),
-                "S2 HOD Combined": fmtScore(e.stage2.hodEval?.combinedScore),
-                "S2 HOD At": fmtDate(e.stage2.hodEval?.submittedAt),
-
-                "S2 Shortlisted": e.stage2.shortlisted ? "Yes" : "No",
-                "S2 Rank": e.stage2.shortlistRank ?? "",
-                "S2 Combined Score": fmtScore(e.stage2.shortlistCombinedScore),
-
-                "S3 CM Evaluator": e.stage3.cmEval ? `${e.stage3.cmEval.evaluatorName} (${e.stage3.cmEval.evaluatorEmpCode})` : "",
-                "S3 CM Raw": fmtScore(e.stage3.cmEval?.rawScore),
-                "S3 CM Normalized": fmtScore(e.stage3.cmEval?.normalizedScore),
-                "S3 CM Final": fmtScore(e.stage3.cmEval?.finalScore),
-                "S3 CM At": fmtDate(e.stage3.cmEval?.submittedAt),
-
-                "S3 Shortlisted": e.stage3.shortlisted ? "Yes" : "No",
-                "S3 Rank": e.stage3.shortlistRank ?? "",
-                "S3 Combined Score": fmtScore(e.stage3.shortlistCombinedScore),
-
-                "S4 HR Evaluator": e.stage4.hrEval ? `${e.stage4.hrEval.evaluatorName} (${e.stage4.hrEval.evaluatorEmpCode})` : "",
-                "S4 HR Score": fmtScore(e.stage4.hrEval?.hrScore),
-                "S4 Attendance %": fmtScore(e.stage4.hrEval?.attendancePct),
-                "S4 Punctuality %": fmtScore(e.stage4.hrEval?.workingHours),
-                "S4 Combined": fmtScore(e.stage4.hrEval?.combinedScore),
-                "S4 HR At": fmtDate(e.stage4.hrEval?.submittedAt),
-
-                "S4 Shortlisted": e.stage4.shortlisted ? "Yes" : "No",
-                "S4 Rank": e.stage4.shortlistRank ?? "",
-
-                "Winner": e.isWinner ? "Yes" : "",
-            }));
-
-            const ws = XLSX.utils.json_to_sheet(rows);
-            if (rows.length > 0) {
-                ws["!cols"] = Object.keys(rows[0]).map(k => ({
-                    wch: Math.max(k.length, ...rows.map(r => String(r[k] ?? "").length)) + 2,
-                }));
-            }
-
-            const wsMeta = XLSX.utils.json_to_sheet([
-                { Field: "Branch", Value: payload.branch?.name || "" },
-                { Field: "Branch Type", Value: payload.branch?.branchType || "" },
-                { Field: "Quarter", Value: payload.quarter?.name || "" },
-                { Field: "Quarter Status", Value: payload.quarter?.status || "" },
-                { Field: "Exported At", Value: payload.exportedAt || "" },
-                { Field: "Total Employees", Value: rows.length },
-            ]);
-            wsMeta["!cols"] = [{ wch: 18 }, { wch: 40 }];
-
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, wsMeta, "Info");
-            XLSX.utils.book_append_sheet(wb, ws, "Pipeline");
-
-            const slug = payload.branch?.slug || payload.branch?.name?.replace(/\s+/g, "_") || "branch";
-            const qName = (payload.quarter?.name || "quarter").replace(/[^A-Za-z0-9_-]+/g, "_");
-            const today = new Date().toISOString().slice(0, 10);
-            XLSX.writeFile(wb, `OngoingEvaluation_${slug}_${qName}_${today}.xlsx`);
-        } catch (e) {
-            setExportError(e.message || "Download failed");
-        } finally {
-            setExportLoading(false);
-        }
-    };
-
-    // Combined PDF of every branch's winners (same data as the bottom list).
-    const downloadAllWinnersPDF = async () => {
-        if (!pipelineWinners?.branches?.length) return;
-        const { jsPDF } = await import("jspdf");
-        const autoTable = (await import("jspdf-autotable")).default;
-        const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-        const pageW = doc.internal.pageSize.getWidth();
-
-        doc.setFillColor(245, 124, 0); doc.rect(0, 0, pageW, 54, "F"); doc.setTextColor(255, 255, 255);
-        doc.setFontSize(15); doc.setFont(undefined, "bold");
-        doc.text("Akshaya Patra — Branch Winners (All Branches)", 36, 26);
-        doc.setFontSize(9); doc.setFont(undefined, "normal");
-        const qn = pipelineWinners.quarter?.name || "";
-        doc.text(`Quarter: ${qn}   •   Generated: ${new Date().toLocaleString()}`, 36, 42);
-
-        const sc = (w, n) => {
-            const v = w.stages?.find(s => s.stage === n)?.score;
-            return (v === null || v === undefined) ? "" : String(Math.round(v * 100) / 100);
-        };
-        const head = [["#", "Name", "Emp Code", "Department", "Cat.", "S1", "S2", "S3", "S4", "Final"]];
-
-        // One SEPARATE table per branch (each with its own heading), all stacked
-        // into a single PDF file.
-        let startY = 70;
-        let totalWinners = 0;
-        const ph = doc.internal.pageSize.getHeight();
-        pipelineWinners.branches.forEach((b) => {
-            const rows = b.winners || [];
-            totalWinners += rows.length;
-
-            // Page break if the branch heading wouldn't fit near the bottom.
-            if (startY > ph - 90) { doc.addPage(); startY = 50; }
-
-            // Branch heading band.
-            doc.setFillColor(255, 243, 224); doc.rect(36, startY - 12, pageW - 72, 20, "F");
-            doc.setTextColor(193, 92, 0); doc.setFontSize(11); doc.setFont(undefined, "bold");
-            doc.text(`${b.branchName}  (${b.branchType})`, 42, startY + 2);
-            doc.setFontSize(9); doc.setFont(undefined, "normal"); doc.setTextColor(120, 120, 120);
-            doc.text(`${rows.length} / ${b.expectedCount} winners`, pageW - 42, startY + 2, { align: "right" });
-            startY += 16;
-
-            const body = rows.map((w) => [
-                w.rank, w.name, w.empCode || "", w.department || "",
-                w.collarType === "WHITE_COLLAR" ? "WC" : "BC",
-                sc(w, 1), sc(w, 2), sc(w, 3), sc(w, 4),
-                w.finalScore === null || w.finalScore === undefined ? "" : String(Math.round(w.finalScore * 100) / 100),
-            ]);
-
-            autoTable(doc, {
-                head, body, startY,
-                styles: { fontSize: 8, cellPadding: 3, textColor: [33, 37, 41], lineColor: [200, 200, 200], lineWidth: 0.4 },
-                headStyles: { fillColor: [245, 124, 0], textColor: [255, 255, 255], fontStyle: "bold" },
-                alternateRowStyles: { fillColor: [255, 248, 235] },
-                theme: "grid",
-                margin: { left: 36, right: 36 },
-            });
-            startY = doc.lastAutoTable.finalY + 22;
-        });
-
-        // Footer page numbers across all pages.
-        const pages = doc.internal.getNumberOfPages();
-        for (let i = 1; i <= pages; i++) {
-            doc.setPage(i);
-            doc.setFontSize(8); doc.setTextColor(120, 120, 120);
-            doc.text(`Page ${i} / ${pages}`, pageW - 60, ph - 18);
-            doc.text(`${totalWinners} winners · ${pipelineWinners.branches.length} branches`, 36, ph - 18);
-        }
-
-        const fname = `Branch_Winners_All_${(qn || "quarter").replace(/[^A-Za-z0-9_-]+/g, "_")}_${new Date().toISOString().slice(0, 10)}.pdf`;
-        doc.save(fname);
-    };
-
-    const fetchReport = async () => {
-        setReportLoading(true);
-        try {
-            const d = await api("/api/admin/export/quarter-report");
-            setReport(d);
-            return d;
-        } catch {
-            return null;
-        } finally {
-            setReportLoading(false);
-        }
+    const fetchBranches = async () => {
+        setBranchLoading(true);
+        try { const data = await api("/api/admin/branches"); setBranches(data.branches || []); }
+        catch (e) { console.error("[Admin] fetchBranches failed:", e); }
+        finally { setBranchLoading(false); }
     };
 
     const fetchOrg = async () => {
@@ -705,51 +143,8 @@ export default function AdminDashboard() {
         try {
             const d = await api("/api/admin/departments/all-assignments");
             setOrgStructure(d.departments);
-            setOrgBranchId(prev => {
-                const branchesInResp = Array.from(new Set((d.departments || []).map(x => x.branch))).filter(Boolean);
-                if (prev && branchesInResp.includes(prev)) return prev;
-                return branchesInResp[0] || "";
-            });
         } catch (err) { console.error("[Admin] fetchOrg failed:", err); }
         setOrgLoading(false);
-    };
-
-    const openReassignModal = async (dept, role) => {
-        setReassignModal({ dept, role });
-        setReassignSearch("");
-        setReassignTarget(null);
-        setReassignMsg({ type: "", text: "" });
-        if (reassignAllEmps.length === 0) {
-            try {
-                const d = await api("/api/admin/employees?export=true");
-                setReassignAllEmps(d.employees || []);
-            } catch (err) { console.error("[Admin] fetchAllEmps failed:", err); }
-        }
-    };
-
-    const handleReassign = async () => {
-        if (!reassignTarget || !reassignModal) return;
-        setReassignLoading(true);
-        setReassignMsg({ type: "", text: "" });
-        try {
-            const d = await api("/api/admin/departments/assign-role", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    userId: reassignTarget.id,
-                    departmentId: reassignModal.dept.id,
-                    role: reassignModal.role,
-                }),
-            });
-            setReassignMsg({ type: "success", text: d.message });
-            setTimeout(() => {
-                setReassignModal(null);
-                fetchOrg();
-            }, 1200);
-        } catch (err) {
-            setReassignMsg({ type: "error", text: err.message });
-        }
-        setReassignLoading(false);
     };
 
     const fetchQuestions = async () => {
@@ -759,121 +154,44 @@ export default function AdminDashboard() {
         } catch (err) { console.error("[Admin] fetchQuestions failed:", err); }
     };
 
-    // Load the list of every quarter once — drives the dashboard archive
-    // selector. We only fetch the list itself here; the actual quarter
-    // progress fetch is keyed on `selectedQuarterId` below so picking a new
-    // quarter from the dropdown re-fetches automatically.
+    // Always load branches on mount so the Global/Branch dropdown is populated.
+    useEffect(() => { fetchBranches(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+    // Lazily seed shared caches when a tab that needs them opens.
     useEffect(() => {
         if ((tab === "dashboard" || tab === "pipeline" || tab === "quarter") && quarters.length === 0) {
             fetchQuarters();
         }
         if (tab === "org" && orgStructure.length === 0) fetchOrg();
         if (tab === "questions" && questions.length === 0) fetchQuestions();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tab]);
 
-    // Re-fetch progress (and the summary report) whenever the dashboard is
-    // visible and the selected quarter changes — including the very first
-    // resolution from the quarter list. Passing `selectedQuarterId` lets the
-    // admin pin the view to an archived quarter; the API resolves null → active.
+    // Re-fetch progress whenever a quarter-dependent tab is visible and the
+    // selected quarter changes (including first resolution from the list).
     useEffect(() => {
         if (!selectedQuarterId) return;
-        if (tab === "dashboard") {
-            fetchProgress(selectedQuarterId);
-            // NOTE: the quarter-report (CSV) is intentionally NOT prefetched
-            // here. It is a heavy endpoint that the blind-scoring rule rejects
-            // with 400 for ACTIVE quarters, and its result is only consumed as
-            // a fallback by the CSV export button — which fetches its own fresh
-            // copy on click. Prefetching it just burned a request on every load.
-        }
-        if (tab === "pipeline" || tab === "quarter") {
+        if (tab === "dashboard" || tab === "pipeline" || tab === "quarter") {
             fetchProgress(selectedQuarterId);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tab, selectedQuarterId]);
 
-    // Pipeline tab — load the branch winners list (identical data the committee
-    // sees via /api/committee/results; ADMIN gets every branch with results).
-    useEffect(() => {
-        if (tab !== "pipeline" || !selectedQuarterId) return;
-        let alive = true;
-        setPipelineWinnersLoading(true);
-        api(`/api/committee/results?quarterId=${encodeURIComponent(selectedQuarterId)}`)
-            .then(d => { if (alive) setPipelineWinners(d); })
-            .catch(() => { if (alive) setPipelineWinners(null); })
-            .finally(() => { if (alive) setPipelineWinnersLoading(false); });
-        return () => { alive = false; };
-    }, [tab, selectedQuarterId]);
-
-    useEffect(() => {
-        // Auto-refresh dashboard tab every 60s, pinned to the selected quarter
-        // so a user reviewing an archived quarter doesn't get yanked back to
-        // the active quarter on each tick.
-        let interval;
-        if (tab === "dashboard" && selectedQuarterId) {
-            interval = setInterval(() => {
-                fetchProgress(selectedQuarterId);
-            }, 60000);
-        }
-        return () => clearInterval(interval);
-    }, [tab, selectedQuarterId]);
-
-    // Recent activity for the dashboard view.
-    useEffect(() => {
-        if (tab !== "dashboard") return;
-        (async () => {
-            try {
-                const d = await api("/api/admin/audit-logs?page=1&limit=5");
-                setActivity(d.logs || []);
-            } catch (err) { console.error("[Admin] Activity fetch failed:", err); }
-        })();
-    }, [tab]);
-
-    // ── CSV export ──
-    const exportCSV = async (data) => {
-        const source = data || report;
-        if (!source?.employees?.length) return;
-        const stageLabel = { 1: "Self Assessment", 2: "BM / HOD", 3: "Cluster Manager", 4: "HR", 5: "Committee" };
-        const csvData = source.employees.map((e) => ({
-            "Employee Name": e.employeeName,
-            "Department": e.department,
-            "Self (norm)": e.selfNorm?.toFixed(1) || "-",
-            "Self Contrib": e.selfContrib?.toFixed(1) || "-",
-            "Sup Contrib": e.supContrib?.toFixed(1) || "-",
-            "BM Contrib": e.bmContrib?.toFixed(1) || "-",
-            "CM Contrib": e.cmContrib?.toFixed(1) || "-",
-            "Final Score": e.finalScore?.toFixed(1) || "-",
-            "Stage Reached": stageLabel[e.stageReached] || `Stage ${e.stageReached}`,
-            "Best Employee": e.isBestEmployee ? "Yes" : "No",
-        }));
-
-        const Papa = (await import("papaparse")).default;
-        const csv = Papa.unparse(csvData);
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `quarter-report-${source.quarter?.name || "export"}.csv`;
-        link.click();
-        URL.revokeObjectURL(url);
-    };
-
-    // Quarter actions — from Quarter tab (manual form)
-    const requestStartQuarter = () => {
-        if (!quarterName || !startDate || !endDate) return;
-        if (new Date(endDate) <= new Date(startDate)) {
-            setQuarterMsg({ type: "error", text: "End date must be after start date." });
-            return;
-        }
+    // ── Quarter actions (invoked from DashboardView / QuarterView via props) ──
+    const requestStartQuarter = (payload) => {
         setQuarterMsg({ type: "", text: "" });
-        setConfirm({ open: true, type: "start", autoMode: false });
+        setConfirm({ open: true, type: "start", autoMode: false, payload });
     };
-
-    // Quarter actions — from Summary tab (auto-defaults)
     const requestStartQuarterAuto = () => {
         setConfirm({ open: true, type: "start", autoMode: true });
+    };
+    const requestCloseQuarter = () => {
+        setConfirm({ open: true, type: "close" });
     };
 
     const startQuarter = async () => {
         const isAuto = confirm.autoMode;
+        const payload = confirm.payload;
         setConfirm({ open: false, type: null });
         setQuarterLoading(true); setQuarterMsg({ type: "", text: "" });
         try {
@@ -895,10 +213,10 @@ export default function AdminDashboard() {
                 };
             } else {
                 body = {
-                    quarterName,
-                    dateRange: { startDate, endDate },
-                    questionCount: Number(questionCount) || 15,
-                    questionSelectionMode: quarterMode
+                    quarterName: payload.quarterName,
+                    dateRange: { startDate: payload.startDate, endDate: payload.endDate },
+                    questionCount: payload.questionCount,
+                    questionSelectionMode: payload.quarterMode
                 };
             }
             const d = await api("/api/admin/quarters/start", {
@@ -906,20 +224,12 @@ export default function AdminDashboard() {
                 body: JSON.stringify(body),
             });
             setQuarterMsg({ type: "success", text: d.message });
-            setQuarterName(""); setStartDate(""); setEndDate("");
             setQuarterProgress(null);
-            setReport(null);
             // Snap selection to the new active quarter and re-load the list.
             setSelectedQuarterId(null);
             await fetchQuarters();
-            // The selectedQuarterId-watching effect will trigger fetchProgress
-            // once the list resolves and seeds selectedQuarterId.
         } catch (e) { setQuarterMsg({ type: "error", text: e.message }); }
         setQuarterLoading(false);
-    };
-
-    const requestCloseQuarter = () => {
-        setConfirm({ open: true, type: "close" });
     };
 
     const closeQuarter = async () => {
@@ -929,185 +239,14 @@ export default function AdminDashboard() {
             const d = await api("/api/admin/quarters/close", { method: "POST" });
             setQuarterMsg({ type: "success", text: d.message });
             setQuarterProgress(null);
-            setReport(null);
-            // Re-fetch the quarter list (the just-closed one is now archived).
-            // Keep selectedQuarterId pointing at it so the admin can see the
-            // archived view immediately — they explicitly chose to close it.
+            // Keep selectedQuarterId pointing at the just-closed quarter so the
+            // admin can see the archived view immediately.
             await fetchQuarters();
         } catch (e) { setQuarterMsg({ type: "error", text: e.message }); }
         setQuarterLoading(false);
     };
 
-    // Questions
-    const addQuestion = async () => {
-        setQMsg({ type: "", text: "" });
-        if (!newQ.text.trim()) { setQMsg({ type: "error", text: "Question text is required" }); return; }
-        try {
-            const d = await api("/api/admin/questions", {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(newQ),
-            });
-            setQuestions((prev) => [d.question, ...prev]);
-            setNewQ({ text: "", textHindi: "", category: "ATTENDANCE", level: "SELF" });
-            setShowAddForm(false);
-            setQMsg({ type: "success", text: "Question added!" });
-        } catch (e) { setQMsg({ type: "error", text: e.message }); }
-    };
-
-    const toggleQuestion = async (id) => {
-        try {
-            const d = await api(`/api/admin/questions/${id}`, { method: "PATCH" });
-            setQuestions((prev) => prev.map((q) => (q.id === id ? d.question : q)));
-        } catch (err) { console.error("[Admin] toggleQuestion failed:", err); }
-    };
-
-    // Curate which questions a MANUAL-mode quarter locks. Has no effect on
-    // quarters started in Automatic mode.
-    const toggleInclude = async (q) => {
-        try {
-            const d = await api(`/api/admin/questions/${q.id}`, {
-                method: "PUT", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ includedInQuarter: !q.includedInQuarter }),
-            });
-            setQuestions((prev) => prev.map((x) => (x.id === q.id ? d.question : x)));
-        } catch (err) { console.error("[Admin] toggleInclude failed:", err); }
-    };
-
-    const saveEditQuestion = async () => {
-        if (!editingQ) return;
-        setQMsg({ type: "", text: "" });
-        try {
-            const d = await api(`/api/admin/questions/${editingQ.id}`, {
-                method: "PUT", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: editingQ.text, textHindi: editingQ.textHindi, category: editingQ.category, level: editingQ.level }),
-            });
-            setQuestions((prev) => prev.map((q) => (q.id === editingQ.id ? d.question : q)));
-            setEditingQ(null);
-            setQMsg({ type: "success", text: "Question updated!" });
-        } catch (e) { setQMsg({ type: "error", text: e.message }); }
-    };
-
-    const confirmDeleteQuestion = async () => {
-        if (!deleteQ) return;
-        setQMsg({ type: "", text: "" });
-        try {
-            await api(`/api/admin/questions/${deleteQ.id}`, { method: "DELETE" });
-            setQuestions((prev) => prev.filter((q) => q.id !== deleteQ.id));
-            setDeleteQ(null);
-            setQMsg({ type: "success", text: "Question deleted!" });
-        } catch (e) { setQMsg({ type: "error", text: e.message }); setDeleteQ(null); }
-    };
-
-    // Logs with filters
-    const fetchLogs = async (page = 1, filters = logFilter) => {
-        try {
-            const params = new URLSearchParams({ page, limit: 20 });
-            if (filters.action) params.set("action", filters.action);
-            if (filters.from) params.set("from", new Date(filters.from).toISOString());
-            if (filters.to) params.set("to", new Date(filters.to + "T23:59:59").toISOString());
-            const d = await api(`/api/admin/audit-logs?${params}`);
-            setLogs(d.logs); setLogTotal(d.pagination.totalPages); setLogPage(page);
-            if (d.actions) setLogActions(d.actions);
-        } catch (err) { console.error("[Admin] fetchLogs failed:", err); }
-    };
-
-    useEffect(() => { if (tab === "employees") fetchEmployees(1); }, [tab]);
-    useEffect(() => { if (tab === "employees") { const t = setTimeout(() => fetchEmployees(1, empFilter), 300); return () => clearTimeout(t); } }, [empFilter.search, empFilter.department, empFilter.role, empFilter.branch]);
-
-    useEffect(() => { if (tab === "logs") fetchLogs(); }, [tab]);
-
-    // ── Branch management state ──
-    const [branches, setBranches] = useState([]);
-    const [branchLoading, setBranchLoading] = useState(false);
-    const [branchMsg, setBranchMsg] = useState({ type: "", text: "" });
-    const [newBranch, setNewBranch] = useState({ name: "", location: "", branchType: "SMALL" });
-    const [editBranch, setEditBranch] = useState(null);
-
-    // ── Branch sheet import (full replacement) ──
-    const [importFile, setImportFile] = useState(null);
-    const [importBranchName, setImportBranchName] = useState("");
-    const [importLoading, setImportLoading] = useState(false);
-    const [importResult, setImportResult] = useState(null);
-    const [importMsg, setImportMsg] = useState({ type: "", text: "" });
-
-    const runBranchImport = async () => {
-        setConfirm({ open: false, type: null });
-        setImportLoading(true);
-        setImportMsg({ type: "", text: "" });
-        setImportResult(null);
-        try {
-            const fd = new FormData();
-            fd.append("file", importFile);
-            if (importBranchName) fd.append("branchName", importBranchName);
-            const res = await fetch("/api/admin/branches/import", { method: "POST", body: fd });
-            const json = await res.json();
-            if (!res.ok || !json.success) throw new Error(json.message || "Import failed");
-            setImportResult(json.data);
-            const b = json.data.branches || [];
-            setImportMsg({
-                type: "success",
-                text: `Imported ${b.length} branch(es): ${b.reduce((s, x) => s + x.employeesImported, 0)} employees, ${b.reduce((s, x) => s + x.archivedEmployees.length, 0)} archived.`,
-            });
-            setImportFile(null);
-            setImportBranchName("");
-            fetchBranches();
-        } catch (err) {
-            setImportMsg({ type: "error", text: err.message || "Import failed" });
-        }
-        setImportLoading(false);
-    };
-
-    const fetchBranches = async () => {
-        setBranchLoading(true);
-        try { const data = await api("/api/admin/branches"); setBranches(data.branches || []); }
-        catch (e) { setBranchMsg({ type: "error", text: e.message }); }
-        finally { setBranchLoading(false); }
-    };
-
-    const handleCreateBranch = async () => {
-        setBranchMsg({ type: "", text: "" });
-        try {
-            await api("/api/admin/branches", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newBranch) });
-            setBranchMsg({ type: "success", text: "Branch created" });
-            setNewBranch({ name: "", location: "", branchType: "SMALL" });
-            fetchBranches();
-        } catch (e) { setBranchMsg({ type: "error", text: e.message }); }
-    };
-
-    const handleUpdateBranch = async (id, updates) => {
-        try {
-            await api("/api/admin/branches", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...updates }) });
-            setBranchMsg({ type: "success", text: "Branch updated" });
-            setEditBranch(null);
-            fetchBranches();
-        } catch (e) { setBranchMsg({ type: "error", text: e.message }); }
-    };
-
-    useEffect(() => { if (tab === "branches") fetchBranches(); }, [tab]);
-
-    // Always load branches on mount so the Global/Branch dropdown is populated
-    useEffect(() => { fetchBranches(); }, []);
-
-    // Alerts derived from quarter progress: pending-stage warnings + days-left banner.
-    const alerts = useMemo(() => {
-        if (!quarterProgress) return [];
-        const out = [];
-        const endDate = quarterProgress.quarter?.endDate ? new Date(quarterProgress.quarter.endDate) : null;
-        if (endDate) {
-            const daysLeft = Math.ceil((endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-            if (daysLeft > 0 && daysLeft <= 14) {
-                out.push({ id: `qtr-ending-${daysLeft}`, type: daysLeft < 7 ? "warning" : "info", message: `${quarterProgress.quarter.name} ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}.` });
-            }
-        }
-        (quarterProgress.branches || []).forEach((b) => {
-            // Stage-2 cohort = Stage-1 cleared; pending = cohort not yet scored by BM/HOD.
-            const pending2 = (b.stage1.shortlisted || 0) - (b.stage2.evaluated || 0);
-            if (pending2 > 0) out.push({ id: `s2-${b.branchId}`, type: "info", message: `${b.branchName}: ${pending2} Stage-2 evaluation${pending2 === 1 ? "" : "s"} pending.` });
-        });
-        return out;
-    }, [quarterProgress]);
-    const visibleAlerts = alerts.filter(a => !dismissedAlerts.includes(a.id));
-
+    // ── Share ──
     const openShareFallback = () => {
         setShareCopied(false);
         setShareMenuOpen(true);
@@ -1141,30 +280,6 @@ export default function AdminDashboard() {
         }
     };
 
-    const CATEGORIES = ["ATTENDANCE", "DISCIPLINE", "PRODUCTIVITY", "TEAMWORK", "INITIATIVE", "COMMUNICATION", "INTEGRITY"];
-    const LEVELS = ["SELF", "BRANCH_MANAGER", "CLUSTER_MANAGER"];
-
-    // Filtered + grouped questions
-    const filteredQuestions = questions.filter((q) => {
-        if (qFilter.level && q.level !== qFilter.level) return false;
-        if (qFilter.category && q.category !== qFilter.category) return false;
-        if (qFilter.search && !q.text.toLowerCase().includes(qFilter.search.toLowerCase())) return false;
-        return true;
-    });
-    const activeCount = questions.filter((q) => q.isActive).length;
-    const groupedByLevel = LEVELS.reduce((acc, level) => {
-        const levelQs = filteredQuestions.filter((q) => q.level === level);
-        if (levelQs.length > 0) acc.push({ level, questions: levelQs });
-        return acc;
-    }, []);
-    // Department filter options — scoped to the selected branch so a Branch + Department
-    // combination always resolves to a real set (never a blank, impossible pairing).
-    // Falls back to the full name list on first paint, before departmentStats has loaded.
-    const empDepartmentOptions = (empDepartmentStats.length > 0
-        ? (empFilter.branch ? empDepartmentStats.filter((d) => d.branch === empFilter.branch) : empDepartmentStats).map((d) => d.name)
-        : empDepartments
-    ).filter((n, i, a) => a.indexOf(n) === i);
-
     const sharePayload = buildAdminSharePayload(quarterProgress?.quarter);
     const encodedShareText = encodeURIComponent(`${sharePayload.text}\n${sharePayload.url}`);
     const encodedShareSubject = encodeURIComponent(sharePayload.title);
@@ -1180,33 +295,33 @@ export default function AdminDashboard() {
             <UserProfileCard user={user} roles={user?.departmentRoles?.map(dr => dr.role)} />
 
             {/* Page toolbar — back, branch scope selector + share */}
-            <div className="mb-5 bg-white border border-[#E0E0E0] rounded-xl shadow-sm px-3 sm:px-4 py-2.5 flex items-center gap-2 sm:gap-3 flex-wrap">
-                {/* In-app Back — returns to the dashboard view. Tab switches use
-                    router.replace (no history entry), so the browser back button
-                    would land on /login; this gives a safe path back instead. */}
+            <div className="mb-5 bg-white border border-ap-border rounded-card shadow-card px-3 sm:px-4 py-2.5 flex items-center gap-2 sm:gap-3 flex-wrap">
+                {/* In-app Back — tab switches use router.replace (no history entry),
+                    so the browser back button would land on /login; this gives a
+                    safe path back instead. */}
                 {tab !== "dashboard" && (
                     <>
                         <button
                             type="button"
                             onClick={() => setTab("dashboard")}
                             title="Back to dashboard"
-                            className="h-9 px-3 inline-flex items-center gap-1.5 bg-white border border-[#CCCCCC] hover:bg-[#E3F2FD] hover:border-[#003087]/40 text-[#003087] text-[13px] font-bold rounded-lg cursor-pointer transition-colors shrink-0"
+                            className="h-9 px-3 inline-flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-ap-blue-50 hover:border-ap-blue/40 text-ap-blue text-[13px] font-bold rounded-lg cursor-pointer transition-colors shrink-0"
                         >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                             Back
                         </button>
-                        <span className="hidden sm:block w-px h-7 bg-[#E0E0E0]" />
+                        <span className="hidden sm:block w-px h-7 bg-ap-border" />
                     </>
                 )}
-                <span className="hidden sm:flex w-9 h-9 rounded-lg bg-[#E3F2FD] text-[#003087] items-center justify-center shrink-0">
+                <span className="hidden sm:flex w-9 h-9 rounded-lg bg-ap-blue-50 text-ap-blue items-center justify-center shrink-0" aria-hidden="true">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
                 </span>
                 <div className="min-w-0">
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-[#999999] mb-0.5">Viewing</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Viewing</label>
                     <select
                         value=""
                         onChange={(e) => { if (e.target.value) router.push(`/dashboard/admin/${e.target.value}`); }}
-                        className="border border-[#E0E0E0] rounded-lg px-3 py-1.5 text-sm font-semibold text-[#003087] bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#003087]/20 max-w-full"
+                        className="border border-ap-border rounded-lg px-3 py-1.5 text-sm font-semibold text-ap-blue bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-ap-blue/20 max-w-full"
                     >
                         <option value="">Global — all branches</option>
                         {branches.map(b => (
@@ -1220,7 +335,7 @@ export default function AdminDashboard() {
                         onClick={handleShare}
                         aria-haspopup="menu"
                         aria-expanded={shareMenuOpen}
-                        className="min-h-[40px] px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#003087] font-bold text-sm hover:bg-[#F5F5F5] transition-colors cursor-pointer inline-flex items-center gap-2"
+                        className="min-h-[40px] px-3 py-2 bg-white border border-gray-300 rounded-lg text-ap-blue font-bold text-sm hover:bg-gray-50 transition-colors cursor-pointer inline-flex items-center gap-2"
                     >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.59 13.51l6.83 3.98M15.41 6.51 8.59 10.49M21 5a3 3 0 11-6 0 3 3 0 016 0zM9 12a3 3 0 11-6 0 3 3 0 016 0zm12 7a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -1228,1631 +343,92 @@ export default function AdminDashboard() {
                         Share
                     </button>
                     {shareMenuOpen && (
-                        <div role="menu" className="absolute left-0 sm:left-auto sm:right-0 z-30 mt-2 w-64 rounded-xl border border-[#E0E0E0] bg-white p-2 shadow-xl">
-                            <p className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-[#666666]">Share admin link</p>
-                            <a role="menuitem" href={`https://wa.me/?text=${encodedShareText}`} target="_blank" rel="noopener noreferrer" className="block rounded-lg px-3 py-2 text-sm font-semibold text-[#1A1A2E] hover:bg-[#E8F5E9]">WhatsApp</a>
-                            <a role="menuitem" href={`https://mail.google.com/mail/?view=cm&fs=1&su=${encodedShareSubject}&body=${encodedShareBody}`} target="_blank" rel="noopener noreferrer" className="block rounded-lg px-3 py-2 text-sm font-semibold text-[#1A1A2E] hover:bg-[#E3F2FD]">Gmail</a>
-                            <a role="menuitem" href={`mailto:?subject=${encodedShareSubject}&body=${encodedShareBody}`} className="block rounded-lg px-3 py-2 text-sm font-semibold text-[#1A1A2E] hover:bg-[#F5F5F5]">Email app</a>
-                            <button type="button" role="menuitem" onClick={copyShareLink} className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-[#1A1A2E] hover:bg-[#FFF8E1] cursor-pointer">{shareCopied ? "Link copied" : "Copy link"}</button>
-                            <button type="button" onClick={() => setShareMenuOpen(false)} className="mt-1 w-full rounded-lg px-3 py-2 text-sm font-bold text-[#666666] hover:bg-[#F5F5F5] cursor-pointer">Close</button>
+                        <div role="menu" className="absolute left-0 sm:left-auto sm:right-0 z-30 mt-2 w-64 rounded-xl border border-ap-border bg-white p-2 shadow-pop">
+                            <p className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">Share admin link</p>
+                            <a role="menuitem" href={`https://wa.me/?text=${encodedShareText}`} target="_blank" rel="noopener noreferrer" className="block rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-[#E8F5E9]">WhatsApp</a>
+                            <a role="menuitem" href={`https://mail.google.com/mail/?view=cm&fs=1&su=${encodedShareSubject}&body=${encodedShareBody}`} target="_blank" rel="noopener noreferrer" className="block rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-ap-blue-50">Gmail</a>
+                            <a role="menuitem" href={`mailto:?subject=${encodedShareSubject}&body=${encodedShareBody}`} className="block rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50">Email app</a>
+                            <button type="button" role="menuitem" onClick={copyShareLink} className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-gray-900 hover:bg-[#FFF8E1] cursor-pointer">{shareCopied ? "Link copied" : "Copy link"}</button>
+                            <button type="button" onClick={() => setShareMenuOpen(false)} className="mt-1 w-full rounded-lg px-3 py-2 text-sm font-bold text-gray-500 hover:bg-gray-50 cursor-pointer">Close</button>
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* ═══════ REPORTS TAB ═══════ */}
-            {tab === "reports" && <ReportsPanel />}
-
-            {/* ═══════ DASHBOARD TAB ═══════ */}
+            {/* ═══════ Lazily-loaded tab views ═══════ */}
             {tab === "dashboard" && (
-                <div className="space-y-6">
-                    {/* Dismissible alerts */}
-                    {visibleAlerts.length > 0 && (
-                        <div className="space-y-2">
-                            {visibleAlerts.map((a) => (
-                                <Alert
-                                    key={a.id}
-                                    type={a.type}
-                                    message={a.message}
-                                    onClose={() => setDismissedAlerts((prev) => [...prev, a.id])}
-                                />
-                            ))}
-                        </div>
-                    )}
-                    {progressLoading && !quarterProgress ? (
-                        <div className="flex items-center justify-center h-48">
-                            <div className="animate-spin h-8 w-8 border-2 border-[#003087] border-t-transparent rounded-full" />
-                        </div>
-                    ) : quarterProgress ? (
-                        <>
-                            {/* SECTION A — Quarter Status Bar + Archive Selector */}
-                            <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-3 sm:p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 sm:gap-4">
-                                <div className="min-w-0">
-                                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                                        <label className="text-[11px] uppercase tracking-wide text-[#666666] font-bold">Quarter</label>
-                                        <select
-                                            value={selectedQuarterId || ""}
-                                            onChange={(e) => setSelectedQuarterId(e.target.value)}
-                                            className="bg-white border border-[#CCCCCC] rounded-md px-2 py-1 text-base sm:text-lg font-bold text-[#003087] focus:outline-none focus:ring-2 focus:ring-[#003087] cursor-pointer"
-                                            aria-label="Select quarter to view"
-                                        >
-                                            {quarters.map((q) => (
-                                                <option key={q.id} value={q.id}>
-                                                    {q.name}{q.status === "CLOSED" ? " — Archived" : ""}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        <span className={`text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border ${quarterProgress.quarter.status === "ACTIVE" ? "bg-[#E3F2FD] text-[#003087] border-[#90CAF9]" : "bg-[#FFEBEE] text-[#D32F2F] border-[#EF9A9A]"}`}>
-                                            {quarterProgress.quarter.status}
-                                        </span>
-                                        {quarterProgress.quarter.status === "CLOSED" && (
-                                            <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-[#F5F5F5] text-[#666666] border border-[#CCCCCC] font-semibold">
-                                                Read-only archive
-                                            </span>
-                                        )}
-                                    </div>
-                                    <p className="text-[#333333] text-xs sm:text-sm mt-1 font-medium">
-                                        Started: {new Date(quarterProgress.quarter.startDate).toLocaleDateString()}
-                                    </p>
-                                </div>
-                                <QuarterCountdown quarter={quarterProgress.quarter} compact className="w-full lg:max-w-xl lg:flex-1" />
-                                {quarterProgress.quarter.status === "ACTIVE" && quarterProgress.quarter.id === activeQuarterId && (
-                                    <button onClick={requestCloseQuarter} disabled={quarterLoading} className="w-full sm:w-auto px-4 py-2 bg-[#D32F2F] hover:bg-[#B71C1C] text-white font-bold rounded-lg text-sm transition-colors cursor-pointer shadow-sm">
-                                        Close Quarter
-                                    </button>
-                                )}
-                            </div>
-
-                            {/* SECTION B — Overall Stats */}
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
-                                <Stat
-                                    label="Total Employees"
-                                    value={quarterProgress.overallStats.totalEmployees}
-                                    color="#1A1A2E"
-                                />
-                                <Stat
-                                    label="Submitted"
-                                    value={quarterProgress.overallStats.totalSubmitted}
-                                    color="#003087"
-                                    sub={`of ${quarterProgress.overallStats.totalEmployees}`}
-                                />
-                                <Stat
-                                    label="Completion"
-                                    value={`${quarterProgress.overallStats.overallPercentage}%`}
-                                    color="#00843D"
-                                />
-                                <Stat
-                                    label="Winners"
-                                    value={
-                                        quarterProgress.overallStats.quarterWinners?.length > 0
-                                            ? `${quarterProgress.overallStats.quarterWinners.length} / ${quarterProgress.departments.length}`
-                                            : "—"
-                                    }
-                                    color="#F7941D"
-                                    sub={quarterProgress.overallStats.quarterWinners?.length > 0 ? undefined : "In progress"}
-                                />
-                            </div>
-
-                            {/* SECTION C — Quick Access (one-click shortcuts to common admin views) */}
-                            <div>
-                                <h3 className="text-[12px] font-bold uppercase tracking-wider text-[#999999] mb-2">Quick Access</h3>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-                                    <QuickAction
-                                        label="Employees"
-                                        sub="Directory, add & edit"
-                                        color="#003087"
-                                        onClick={() => setTab("employees")}
-                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6-4a3 3 0 11-3-3" /></svg>}
-                                    />
-                                    <QuickAction
-                                        label="Pipeline"
-                                        sub="Stage-wise progress"
-                                        color="#00843D"
-                                        onClick={() => setTab("pipeline")}
-                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>}
-                                    />
-                                    <QuickAction
-                                        label="Reports"
-                                        sub="Quarter summaries"
-                                        color="#F7941D"
-                                        onClick={() => setTab("reports")}
-                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
-                                    />
-                                    <QuickAction
-                                        label="Branches"
-                                        sub="Manage & import"
-                                        color="#6A1B9A"
-                                        onClick={() => setTab("branches")}
-                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>}
-                                    />
-                                    <QuickAction
-                                        label="Questions"
-                                        sub="Question bank"
-                                        color="#0369A1"
-                                        onClick={() => setTab("questions")}
-                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-                                    />
-                                    <QuickAction
-                                        label="Audit Logs"
-                                        sub="Activity history"
-                                        color="#374151"
-                                        onClick={() => setTab("logs")}
-                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-                                    />
-                                    <QuickAction
-                                        label="Export CSV"
-                                        sub="Quarter report"
-                                        color="#00843D"
-                                        onClick={async () => { const d = await fetchReport(); if (d) exportCSV(d); }}
-                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
-                                    />
-                                    <QuickAction
-                                        label="Refresh"
-                                        sub="Reload live data"
-                                        color="#003087"
-                                        onClick={fetchProgress}
-                                        icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* SECTION — Branch-wise Stage Progress */}
-                            {quarterProgress.branches && quarterProgress.branches.length > 0 && (
-                                <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 sm:p-6">
-                                    <h3 className="text-lg font-bold text-[#003087] mb-1 flex items-center gap-2">
-                                        Branch-wise Stage Progress
-                                    </h3>
-                                    <p className="text-[11px] text-[#666666] mb-4 leading-relaxed">
-                                        Each stage shows <b className="text-[#1A1A2E]">In</b> (in stage) ·
-                                        {" "}<b className="text-[#003087]">Ev</b> (evaluated) ·
-                                        {" "}<b className="text-[#00843D]">Cl</b> (cleared) ·
-                                        {" "}<b className="text-[#E65100]">Pe</b> (pending).
-                                        {" "}Employees cleared in one stage flow into the next stage&apos;s <b className="text-[#1A1A2E]">In</b> count.
-                                    </p>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-[12px] border-collapse min-w-[1200px]">
-                                            <thead className="bg-[#F5F5F5]">
-                                                <tr>
-                                                    <th className="text-left px-3 py-2 font-bold text-[#333333]">Branch</th>
-                                                    <th className="text-left px-3 py-2 font-bold text-[#333333]">Type</th>
-                                                    <th className="text-right px-3 py-2 font-bold text-[#333333]">Employees</th>
-                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 1<br /><span className="text-[9px] font-medium text-[#666666]">Self assessment</span></th>
-                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 2<br /><span className="text-[9px] font-medium text-[#666666]">BM / HOD</span></th>
-                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 3<br /><span className="text-[9px] font-medium text-[#666666]">Cluster Manager</span></th>
-                                                    <th className="text-right px-3 py-2 font-bold text-[#003087]">Stage 4<br /><span className="text-[9px] font-medium text-[#666666]">HR</span></th>
-                                                    <th className="text-center px-3 py-2 font-bold text-[#F57C00]">Winners<br /><span className="text-[9px] font-medium text-[#666666]">(of expected)</span></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {quarterProgress.branches.map((b) => {
-                                                    const expected = b.branchType === "BIG" ? 4 : 3;
-                                                    // Stage flow — each stage's "In stage" pool is the prior
-                                                    // stage's cleared (shortlisted) count, so passes cascade
-                                                    // Stage 1 → 2 → 3 → 4 automatically.
-                                                    const stages = [
-                                                        { total: b.totalEmployees, evaluated: b.stage1.submitted, cleared: b.stage1.shortlisted },
-                                                        { total: b.stage1.shortlisted, evaluated: b.stage2.evaluated || 0, cleared: b.stage2.shortlisted },
-                                                        { total: b.stage2.shortlisted, evaluated: b.stage3.evaluated || 0, cleared: b.stage3.shortlisted },
-                                                        { total: b.stage3.shortlisted, evaluated: b.stage4.evaluated || 0, cleared: b.stage4.shortlisted },
-                                                    ];
-                                                    return (
-                                                        <tr key={b.branchId} className="border-t border-[#E0E0E0] hover:bg-[#FAFCFF]">
-                                                            <td className="px-3 py-2 font-bold text-[#1A1A2E]">{b.branchName}</td>
-                                                            <td className="px-3 py-2">
-                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${b.branchType === "BIG" ? "bg-[#F3E5F5] text-[#6A1B9A] border-[#CE93D8]" : "bg-[#FFF8E1] text-[#F57F17] border-[#FFE082]"}`}>{b.branchType}</span>
-                                                            </td>
-                                                            <td className="px-3 py-2 text-right font-bold">{b.totalEmployees}</td>
-                                                            {stages.map((s, i) => {
-                                                                const started = s.total > 0;
-                                                                // Clamp evaluated to the in-stage pool so In = Ev + Pe always reads cleanly.
-                                                                const evaluated = Math.min(s.evaluated, s.total);
-                                                                const pending = Math.max(0, s.total - evaluated);
-                                                                return (
-                                                                    <td key={i} className="px-3 py-2 text-right">
-                                                                        {started ? (
-                                                                            <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px]">
-                                                                                <span className="text-[#888888]">In <b className="text-[#1A1A2E]">{s.total}</b></span>
-                                                                                <span className="text-[#DDDDDD]">·</span>
-                                                                                <span className="text-[#888888]">Ev <b className="text-[#003087]">{evaluated}</b></span>
-                                                                                <span className="text-[#DDDDDD]">·</span>
-                                                                                <span className="text-[#888888]">Cl <b className="text-[#00843D]">{s.cleared}</b></span>
-                                                                                <span className="text-[#DDDDDD]">·</span>
-                                                                                <span className="text-[#888888]">Pe <b className="text-[#E65100]">{pending}</b></span>
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span className="text-[10px] text-[#BBBBBB]">Not started</span>
-                                                                        )}
-                                                                    </td>
-                                                                );
-                                                            })}
-                                                            <td className="px-3 py-2 text-center">
-                                                                <span className={`font-bold ${b.winners.length >= expected ? "text-[#00843D]" : "text-[#F57C00]"}`}>{b.winners.length} / {expected}</span>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* SECTION — Branch Winners List */}
-                            <div className="bg-gradient-to-r from-[#FFF8E1] to-[#FFF3E0] border border-[#FFCC80] rounded-xl p-4 sm:p-6 shadow-sm">
-                                <h3 className="text-lg font-bold text-[#F57C00] mb-3 flex items-center gap-2">
-                                    <span className="text-xl">🏆</span> Branch Winners
-                                </h3>
-                                {quarterProgress.branches && quarterProgress.branches.some(b => b.winners.length > 0) ? (
-                                    <div className="space-y-3">
-                                        {quarterProgress.branches.filter(b => b.winners.length > 0).map(b => (
-                                            <div key={b.branchId} className="bg-white/80 border border-[#FFE0B2] rounded-lg p-3">
-                                                <p className="text-[13px] font-bold text-[#F57C00] mb-2">{b.branchName} <span className="text-[10px] font-medium text-[#666666]">· {b.branchType === "BIG" ? "4 expected" : "3 expected"}</span></p>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {b.winners.map((w, i) => (
-                                                        <span key={w.id} className="text-[11px] font-bold px-2 py-1 rounded-full border"
-                                                              style={{ backgroundColor: w.collarType === "WHITE_COLLAR" ? "#E3F2FD" : "#E8F5E9", color: w.collarType === "WHITE_COLLAR" ? "#003087" : "#00843D", borderColor: w.collarType === "WHITE_COLLAR" ? "#90CAF9" : "#A5D6A7" }}>
-                                                            {i + 1}. {w.name} · {w.collarType === "WHITE_COLLAR" ? "WC" : "BC"}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="text-sm text-[#999999] italic">No winners declared yet. Evaluation in progress.</p>
-                                )}
-                            </div>
-
-                            {/* SECTION — Recent Activity */}
-                            <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 sm:p-6">
-                                <h3 className="text-lg font-bold text-[#003087] mb-3">Recent Activity</h3>
-                                {activity.length === 0 ? (
-                                    <p className="text-sm text-[#999999] italic">No recent activity.</p>
-                                ) : (
-                                    <ul className="divide-y divide-[#E0E0E0]">
-                                        {activity.map((log) => (
-                                            <li key={log.id} className="py-2.5 flex items-start gap-3">
-                                                <div className="w-2 h-2 mt-1.5 rounded-full bg-[#003087] shrink-0" />
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-[13px] text-[#1A1A2E]">
-                                                        <span className="font-bold">{log.user?.name || "System"}</span>
-                                                        <span className="text-[#666666]"> · {log.action.replace(/_/g, " ").toLowerCase()}</span>
-                                                    </p>
-                                                    <p className="text-[11px] text-[#999999] mt-0.5">{new Date(log.createdAt).toLocaleString()}</p>
-                                                </div>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
-                            </div>
-
-                            {/* Department-level progress now lives in the per-branch dashboard */}
-                            <div className="bg-[#F5F5F5] border border-[#E0E0E0] rounded-xl p-5 text-center">
-                                <p className="text-sm text-[#666666]">
-                                    Department-level progress has moved into each branch&apos;s dashboard. Pick a branch from the dropdown at the top to see its evaluation pipeline.
-                                </p>
-                            </div>
-                        </>
-                    ) : (
-                        <div className="bg-white border border-[#E0E0E0] rounded-xl p-10 text-center shadow-sm">
-                            <div className="w-20 h-20 bg-[#E3F2FD] rounded-full flex items-center justify-center mx-auto mb-5">
-                                <span className="text-3xl">📅</span>
-                            </div>
-                            <h3 className="text-xl font-bold text-[#003087] mb-2">No Active Quarter</h3>
-                            <p className="text-[#333333] text-sm mb-6 max-w-md mx-auto">
-                                No evaluation quarter is running. Start <span className="font-bold text-[#003087]">{getAutoQuarterName()}</span> to allow all employees to submit their self-assessments.
-                            </p>
-
-                            {quarterMsg.text && (
-                                <div className={`mb-4 p-3 rounded-lg text-sm border max-w-md mx-auto ${quarterMsg.type === "success" ? "bg-[#E8F5E9] border-[#A5D6A7] text-[#1B5E20]" : "bg-[#FFEBEE] border-[#EF9A9A] text-[#D32F2F]"}`}>{quarterMsg.text}</div>
-                            )}
-
-                            <div className="flex gap-3 justify-center">
-                                <button
-                                    onClick={requestStartQuarterAuto}
-                                    disabled={quarterLoading}
-                                    className="min-h-[48px] px-8 py-3 bg-[#003087] hover:bg-[#00843D] text-white font-bold rounded-lg text-[15px] cursor-pointer transition-all shadow-md disabled:bg-[#CCCCCC] disabled:cursor-not-allowed flex items-center gap-2"
-                                >
-                                    {quarterLoading ? (
-                                        <><div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /> Starting...</>
-                                    ) : (
-                                        <><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> Start {getAutoQuarterName()}</>
-                                    )}
-                                </button>
-                                <button onClick={fetchProgress} className="min-h-[48px] px-6 py-3 bg-white border border-[#CCCCCC] hover:bg-[#F5F5F5] text-[#333333] font-bold rounded-lg text-[14px] cursor-pointer transition-colors">
-                                    Check Again
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </div>
+                <DashboardView
+                    quarterProgress={quarterProgress}
+                    progressLoading={progressLoading}
+                    quarters={quarters}
+                    selectedQuarterId={selectedQuarterId}
+                    setSelectedQuarterId={setSelectedQuarterId}
+                    activeQuarterId={activeQuarterId}
+                    quarterLoading={quarterLoading}
+                    quarterMsg={quarterMsg}
+                    onRequestClose={requestCloseQuarter}
+                    onRequestStartAuto={requestStartQuarterAuto}
+                    onRefresh={fetchProgress}
+                    onNavigate={setTab}
+                />
             )}
-
-            {/* ═══════ PIPELINE TAB — per-branch drill-down ═══════ */}
+            {tab === "reports" && <ReportsPanel />}
             {tab === "pipeline" && (
-                <div className="space-y-6">
-                    {/* Download Ongoing Evaluation — branch picker + Excel export */}
-                    <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 shadow-sm">
-                        <div className="flex items-start sm:items-center gap-3 flex-col sm:flex-row sm:justify-between">
-                            <div>
-                                <h3 className="text-[16px] font-bold text-[#003087]">Download Ongoing Evaluation</h3>
-                                <p className="text-[12px] text-[#666666] mt-0.5">
-                                    Select a branch to download the live evaluation pipeline (Stage 1–4 scores, evaluator names, shortlist status) as an Excel file.
-                                </p>
-                            </div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <select
-                                    value={exportBranchId}
-                                    onChange={e => { setExportBranchId(e.target.value); setExportError(""); }}
-                                    className="min-h-[40px] border border-[#CCCCCC] rounded-lg px-3 py-2 text-[13px] font-medium bg-white"
-                                >
-                                    <option value="">Select a branch…</option>
-                                    {branches.map(b => (
-                                        <option key={b.id} value={b.slug || b.id}>{b.name}</option>
-                                    ))}
-                                </select>
-                                <button
-                                    onClick={downloadOngoingForBranch}
-                                    disabled={exportLoading || !exportBranchId}
-                                    className="min-h-[40px] px-4 py-2 bg-[#00843D] hover:bg-[#006B32] disabled:opacity-60 disabled:cursor-not-allowed text-white text-[13px] font-bold rounded-lg cursor-pointer transition-colors"
-                                >
-                                    {exportLoading ? "Preparing…" : "Download (.xlsx)"}
-                                </button>
-                            </div>
-                        </div>
-                        {exportError && (
-                            <div className="mt-3 p-2 rounded-lg text-[12px] border bg-[#FFEBEE] border-[#EF9A9A] text-[#D32F2F]">
-                                {exportError}
-                            </div>
-                        )}
-                    </div>
-
-                    {!quarterProgress ? (
-                        <div className="bg-white border border-[#E0E0E0] rounded-xl p-8 text-center text-sm text-[#666666]">
-                            {progressLoading ? "Loading pipeline..." : "No active quarter."}
-                        </div>
-                    ) : (
-                        <>
-                            <h2 className="text-xl font-bold text-[#003087]">Evaluation Pipeline</h2>
-                            <p className="text-[12px] text-[#666666] -mt-2">
-                                <span className="font-bold text-[#003087]">Click any stage</span> to open its detailed view — totals, evaluator details & answer scripts.
-                                {" "}<span className="font-bold text-[#003087]">Evaluated</span> = scored so far ·
-                                {" "}<span className="font-bold text-[#00843D]">Cleared</span> = passed to the next stage ·
-                                {" "}<span className="font-bold text-[#E65100]">Pending</span> = still awaiting evaluation.
-                            </p>
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                {(quarterProgress.branches || []).map((b) => {
-                                    // Per stage: total = employees who entered the stage (the prior
-                                    // stage's cleared pool); evaluated = scored so far; cleared =
-                                    // shortlisted onward; pending = entered but not yet evaluated.
-                                    const stages = [
-                                        { n: 1, label: "Stage 1 — Self", color: "#003087", total: b.totalEmployees, evaluated: b.stage1.submitted, cleared: b.stage1.shortlisted },
-                                        { n: 2, label: "Stage 2 — BM/HOD", color: "#00843D", total: b.stage1.shortlisted, evaluated: b.stage2.evaluated || 0, cleared: b.stage2.shortlisted },
-                                        { n: 3, label: "Stage 3 — CM", color: "#F7941D", total: b.stage2.shortlisted, evaluated: b.stage3.evaluated || 0, cleared: b.stage3.shortlisted },
-                                        { n: 4, label: "Stage 4 — HR", color: "#D32F2F", total: b.stage3.shortlisted, evaluated: b.stage4.evaluated || 0, cleared: (b.stage4.shortlisted || b.winners.length) },
-                                    ];
-                                    const winnerTarget = b.branchType === "BIG" ? 4 : 3;
-                                    return (
-                                        <div key={b.branchId} className="bg-white border border-[#E0E0E0] rounded-xl p-4 shadow-sm">
-                                            <div className="flex items-center justify-between mb-1">
-                                                <h3 className="font-bold text-[#1A1A2E]">{b.branchName}</h3>
-                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${b.branchType === "BIG" ? "bg-[#F3E5F5] text-[#6A1B9A] border-[#CE93D8]" : "bg-[#FFF8E1] text-[#F57F17] border-[#FFE082]"}`}>{b.branchType}</span>
-                                            </div>
-                                            <p className="text-[11px] text-[#666666] mb-3">Total employees in pipeline: <span className="font-bold text-[#003087]">{b.totalEmployees}</span></p>
-                                            <div className="space-y-2.5">
-                                                {stages.map((s) => {
-                                                    const started = s.total > 0;
-                                                    const pending = Math.max(0, s.total - s.evaluated);
-                                                    const pct = started ? Math.min(100, Math.round((s.evaluated / s.total) * 100)) : 0;
-                                                    return (
-                                                        <button
-                                                            key={s.label}
-                                                            type="button"
-                                                            onClick={() => setStageDetail({ branch: b, stage: s.n })}
-                                                            className="w-full text-left border border-[#EEEEEE] rounded-lg p-2.5 cursor-pointer hover:border-[#CFD8E6] hover:shadow-sm hover:bg-[#FAFBFE] transition-all focus:outline-none focus:ring-2 focus:ring-[#003087]/20"
-                                                            style={{ borderLeft: `3px solid ${s.color}` }}
-                                                            title={`View ${s.label} details`}
-                                                        >
-                                                            <div className="flex items-center justify-between mb-1.5">
-                                                                <span className="text-[12px] font-bold text-[#333333]">{s.label}</span>
-                                                                {started ? (
-                                                                    <span className="text-[12px] text-[#666666]"><span className="font-black text-[18px] align-middle" style={{ color: s.color }}>{s.total}</span> in stage</span>
-                                                                ) : (
-                                                                    <span className="text-[10px] font-bold text-[#999999] bg-[#F5F5F5] border border-[#E0E0E0] px-1.5 py-0.5 rounded-full">Not started</span>
-                                                                )}
-                                                            </div>
-                                                            {started && (
-                                                                <>
-                                                                    <div className="grid grid-cols-3 gap-1.5 mb-1.5">
-                                                                        <div className="text-center bg-[#F5F7FA] rounded-md py-1">
-                                                                            <p className="text-[9px] font-bold uppercase tracking-wider text-[#888888] leading-none">Evaluated</p>
-                                                                            <p className="text-[15px] font-black leading-tight mt-0.5" style={{ color: s.color }}>{s.evaluated}</p>
-                                                                        </div>
-                                                                        <div className="text-center bg-[#F1F8E9] rounded-md py-1">
-                                                                            <p className="text-[9px] font-bold uppercase tracking-wider text-[#888888] leading-none">Cleared</p>
-                                                                            <p className="text-[15px] font-black leading-tight mt-0.5 text-[#00843D]">{s.cleared}</p>
-                                                                        </div>
-                                                                        <div className="text-center bg-[#FFF3E0] rounded-md py-1">
-                                                                            <p className="text-[9px] font-bold uppercase tracking-wider text-[#888888] leading-none">Pending</p>
-                                                                            <p className="text-[15px] font-black leading-tight mt-0.5 text-[#E65100]">{pending}</p>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="h-1.5 bg-[#F5F5F5] rounded-full overflow-hidden">
-                                                                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: s.color }} />
-                                                                    </div>
-                                                                </>
-                                                            )}
-                                                        </button>
-                                                    );
-                                                })}
-
-                                                {/* Winners — 5th entry in the list; opens this branch's
-                                                    winners with its own separate download. */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setStageDetail({ branch: b, stage: 5 })}
-                                                    className="w-full text-left border border-[#FFE0B2] rounded-lg p-2.5 cursor-pointer hover:border-[#FFCC80] hover:shadow-sm hover:bg-[#FFFDF7] transition-all focus:outline-none focus:ring-2 focus:ring-[#F57C00]/30"
-                                                    style={{ borderLeft: "3px solid #F57C00" }}
-                                                    title="View & download this branch's winners"
-                                                >
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-[12px] font-bold text-[#333333]">🏆 Winners</span>
-                                                        <span className="text-[12px] text-[#666666]"><span className="font-black text-[18px] align-middle text-[#F57C00]">{b.winners.length}</span> / {winnerTarget} selected</span>
-                                                    </div>
-                                                    <p className="text-[10px] text-[#999999] mt-1">Click to view &amp; download this branch&apos;s winners list</p>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </>
-                    )}
-
-                    {/* ═══ Branch Winners — same list the committee sees ═══ */}
-                    <div className="bg-gradient-to-r from-[#FFF8E1] to-[#FFF3E0] border border-[#FFCC80] rounded-xl p-4 sm:p-6 shadow-sm">
-                        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                            <h2 className="text-lg font-bold text-[#F57C00] flex items-center gap-2"><span className="text-xl">🏆</span> Branch Winners</h2>
-                            <div className="flex items-center gap-2 flex-wrap">
-                                {pipelineWinners?.total ? <span className="text-[12px] font-bold text-[#F57C00] bg-white/70 border border-[#FFE0B2] px-2.5 py-1 rounded-full">{pipelineWinners.total} declared</span> : null}
-                                {pipelineWinners?.branches?.length ? (
-                                    <button
-                                        onClick={downloadAllWinnersPDF}
-                                        className="text-[12px] font-bold px-3 py-1.5 rounded-lg bg-[#D32F2F] hover:bg-[#B71C1C] text-white cursor-pointer transition-colors flex items-center gap-1.5"
-                                    >
-                                        ⬇ Download PDF (All Branches)
-                                    </button>
-                                ) : null}
-                            </div>
-                        </div>
-                        {pipelineWinnersLoading && !pipelineWinners ? (
-                            <p className="text-sm text-[#999999]">Loading winners…</p>
-                        ) : !pipelineWinners?.branches?.length ? (
-                            <p className="text-sm text-[#999999] italic">No winners declared yet. Evaluation in progress.</p>
-                        ) : (
-                            <div className="space-y-4">
-                                {pipelineWinners.branches.map((b) => (
-                                    <div key={b.branchId} className="bg-white/80 border border-[#FFE0B2] rounded-lg p-3 sm:p-4">
-                                        <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
-                                            <p className="text-[13px] font-bold text-[#F57C00]">{b.branchName} <span className="text-[10px] font-medium text-[#666666]">· {b.branchType}</span></p>
-                                            <span className="text-[11px] font-bold text-[#666666]">{b.winners.length} / {b.expectedCount} selected</span>
-                                        </div>
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left text-[12px] min-w-[560px]">
-                                                <thead>
-                                                    <tr className="text-[10px] uppercase tracking-wider text-[#999999] border-b border-[#FFE0B2]">
-                                                        <th className="py-1.5 pr-2 font-bold">#</th>
-                                                        <th className="py-1.5 pr-2 font-bold">Name</th>
-                                                        <th className="py-1.5 pr-2 font-bold">Department</th>
-                                                        <th className="py-1.5 pr-2 font-bold">Category</th>
-                                                        <th className="py-1.5 px-1 font-bold text-right">S1</th>
-                                                        <th className="py-1.5 px-1 font-bold text-right">S2</th>
-                                                        <th className="py-1.5 px-1 font-bold text-right">S3</th>
-                                                        <th className="py-1.5 px-1 font-bold text-right">S4</th>
-                                                        <th className="py-1.5 pl-2 font-bold text-right">Final</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {b.winners.map((w) => {
-                                                        const sc = (n) => {
-                                                            const v = w.stages?.find(s => s.stage === n)?.score;
-                                                            return (v === null || v === undefined || v === "") ? "—" : fmtScore(v);
-                                                        };
-                                                        const isWC = w.collarType === "WHITE_COLLAR";
-                                                        return (
-                                                            <tr key={w.empCode || w.name} className="border-b border-[#FFF3E0] last:border-0">
-                                                                <td className="py-1.5 pr-2 font-black text-[#F57C00]">{w.rank}</td>
-                                                                <td className="py-1.5 pr-2">
-                                                                    <span className="font-bold text-[#1A1A2E]">{w.name}</span>
-                                                                    {w.empCode ? <span className="text-[#999999]"> · {w.empCode}</span> : null}
-                                                                    {w.designation ? <div className="text-[10px] text-[#999999]">{w.designation}</div> : null}
-                                                                </td>
-                                                                <td className="py-1.5 pr-2 text-[#666666]">{w.department || "—"}</td>
-                                                                <td className="py-1.5 pr-2">
-                                                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold border"
-                                                                        style={{ backgroundColor: isWC ? "#E3F2FD" : "#E8F5E9", color: isWC ? "#003087" : "#00843D", borderColor: isWC ? "#90CAF9" : "#A5D6A7" }}>
-                                                                        {isWC ? "WC" : "BC"}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="py-1.5 px-1 text-right tabular-nums text-[#666666]">{sc(1)}</td>
-                                                                <td className="py-1.5 px-1 text-right tabular-nums text-[#666666]">{sc(2)}</td>
-                                                                <td className="py-1.5 px-1 text-right tabular-nums text-[#666666]">{sc(3)}</td>
-                                                                <td className="py-1.5 px-1 text-right tabular-nums text-[#666666]">{sc(4)}</td>
-                                                                <td className="py-1.5 pl-2 text-right font-black text-[#003087] tabular-nums">{fmtScore(w.finalScore) || "—"}</td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {stageDetail && (
-                        <StageDetailModal
-                            branch={stageDetail.branch}
-                            stage={stageDetail.stage}
-                            quarterId={selectedQuarterId}
-                            onClose={() => setStageDetail(null)}
-                        />
-                    )}
-                </div>
+                <PipelineView
+                    quarterProgress={quarterProgress}
+                    progressLoading={progressLoading}
+                    branches={branches}
+                    selectedQuarterId={selectedQuarterId}
+                />
             )}
-
-            {/* ═══════ BRANCHES TAB ═══════ */}
             {tab === "branches" && (
-                <div className="space-y-6">
-                    <h2 className="text-xl font-bold text-[#003087]">Branch Management</h2>
-                    {branchMsg.text && <div className={`p-3 rounded-lg text-sm font-medium ${branchMsg.type === "error" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>{branchMsg.text}</div>}
-
-                    {/* Add Branch */}
-                    <div className="bg-white border border-[#E0E0E0] rounded-xl p-4 space-y-3">
-                        <h3 className="font-bold text-[#003087]">Add New Branch</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                            <input value={newBranch.name} onChange={e => setNewBranch(p => ({ ...p, name: e.target.value }))} placeholder="Branch Name" className="border rounded-lg px-3 py-2 text-sm" />
-                            <input value={newBranch.location} onChange={e => setNewBranch(p => ({ ...p, location: e.target.value }))} placeholder="Location" className="border rounded-lg px-3 py-2 text-sm" />
-                            <select value={newBranch.branchType} onChange={e => setNewBranch(p => ({ ...p, branchType: e.target.value }))} className="border rounded-lg px-3 py-2 text-sm">
-                                <option value="SMALL">Small Branch</option>
-                                <option value="BIG">Big Branch</option>
-                            </select>
-                            <button onClick={handleCreateBranch} className="bg-[#003087] text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-[#002266] cursor-pointer">Create Branch</button>
-                        </div>
-                    </div>
-
-                    {/* Replace Branch Data — full sheet import */}
-                    <div className="bg-white border border-[#EF9A9A] rounded-xl p-4 space-y-3">
-                        <h3 className="font-bold text-[#D32F2F]">Replace Branch Data (Import Sheet)</h3>
-                        <p className="text-xs text-[#666666]">
-                            Uploads an employee Excel workbook and <strong>completely replaces</strong> all
-                            employees and departments for each branch it covers. Old employees not in the
-                            sheet are archived; old departments are removed. Multi-branch files (with a
-                            Location column) are split automatically — leave the branch blank. For a
-                            single-branch file (e.g. the Jaipur department-tab file) select the target branch.
-                        </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <input
-                                type="file"
-                                accept=".xlsx,.xls"
-                                onChange={(e) => { setImportFile(e.target.files?.[0] || null); setImportResult(null); setImportMsg({ type: "", text: "" }); }}
-                                className="border rounded-lg px-3 py-2 text-sm"
-                            />
-                            <select
-                                value={importBranchName}
-                                onChange={(e) => setImportBranchName(e.target.value)}
-                                className="border rounded-lg px-3 py-2 text-sm"
-                            >
-                                <option value="">Branch from file (multi-branch)</option>
-                                {branches.map((b) => (
-                                    <option key={b.id} value={b.name}>{b.name}</option>
-                                ))}
-                            </select>
-                            <button
-                                onClick={() => setConfirm({ open: true, type: "import-branch" })}
-                                disabled={!importFile || importLoading}
-                                className="bg-[#D32F2F] text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-[#B71C1C] disabled:bg-[#CCCCCC] disabled:cursor-not-allowed cursor-pointer"
-                            >
-                                {importLoading ? "Importing…" : "Replace Branch Data"}
-                            </button>
-                        </div>
-                        {importMsg.text && (
-                            <div className={`p-3 rounded-lg text-sm font-medium ${importMsg.type === "error" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>{importMsg.text}</div>
-                        )}
-                        {importResult && (
-                            <div className="border border-[#E0E0E0] rounded-lg overflow-hidden">
-                                <table className="w-full text-xs">
-                                    <thead className="bg-[#F5F5F5] text-[#333333]">
-                                        <tr>
-                                            <th className="text-left px-3 py-2 font-bold">Branch</th>
-                                            <th className="text-right px-3 py-2 font-bold">Employees Imported</th>
-                                            <th className="text-right px-3 py-2 font-bold">Departments</th>
-                                            <th className="text-right px-3 py-2 font-bold">Archived (replaced)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {importResult.branches.map((b) => (
-                                            <tr key={b.branch.id} className="border-t border-[#E0E0E0]">
-                                                <td className="px-3 py-2 font-bold text-[#003087]">{b.branch.name}{b.branchCreated ? " (new)" : ""}</td>
-                                                <td className="px-3 py-2 text-right">{b.employeesImported}</td>
-                                                <td className="px-3 py-2 text-right">{b.departmentsCreated.length}</td>
-                                                <td className="px-3 py-2 text-right">{b.archivedEmployees.length}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                {(importResult.errors?.length > 0 || importResult.skipped?.length > 0) && (
-                                    <div className="px-3 py-2 text-[11px] text-[#666666] bg-[#FAFAFA] border-t border-[#E0E0E0]">
-                                        {importResult.skipped?.length || 0} row(s) skipped, {importResult.errors?.length || 0} error(s), {importResult.duplicatesInFile || 0} duplicate(s) in file.
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Branch List */}
-                    {branchLoading ? <div className="text-center py-8 text-gray-500">Loading...</div> : (
-                        <div className="grid gap-4">
-                            {branches.map(branch => (
-                                <div
-                                    key={branch.id}
-                                    onClick={() => router.push(`/dashboard/admin/${branch.slug || branch.id}`)}
-                                    className="bg-white border border-[#E0E0E0] rounded-xl p-4 hover:shadow-md hover:border-[#003087] transition-all cursor-pointer"
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-3 h-3 rounded-full ${branch.branchType === "BIG" ? "bg-orange-500" : "bg-green-500"}`} />
-                                            <div>
-                                                <h4 className="font-bold text-[#003087]">{branch.name}</h4>
-                                                <p className="text-xs text-gray-500">{branch.location} &bull; {branch.branchType} branch &bull; {branch._count?.departments || 0} departments</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                                            <span className={`px-2 py-1 rounded text-xs font-bold ${branch.branchType === "BIG" ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}`}>{branch.branchType}</span>
-                                            {editBranch?.id === branch.id ? (
-                                                <div className="flex items-center gap-2">
-                                                    <select value={editBranch.branchType} onChange={e => setEditBranch(p => ({ ...p, branchType: e.target.value }))} className="border rounded px-2 py-1 text-xs">
-                                                        <option value="SMALL">Small</option>
-                                                        <option value="BIG">Big</option>
-                                                    </select>
-                                                    <button onClick={() => handleUpdateBranch(branch.id, { branchType: editBranch.branchType })} className="text-xs px-2 py-1 bg-blue-600 text-white rounded cursor-pointer">Save</button>
-                                                    <button onClick={() => setEditBranch(null)} className="text-xs px-2 py-1 bg-gray-300 rounded cursor-pointer">Cancel</button>
-                                                </div>
-                                            ) : (
-                                                <button onClick={() => setEditBranch({ id: branch.id, branchType: branch.branchType })} className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded cursor-pointer">Edit Type</button>
-                                            )}
-                                        </div>
-                                    </div>
-                                    {branch.departments?.length > 0 && (
-                                        <div className="mt-3 flex flex-wrap gap-1.5">
-                                            {branch.departments.map(d => (
-                                                <span key={d.id} className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] rounded-full font-medium">{d.name}</span>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                <BranchesView
+                    branches={branches}
+                    branchLoading={branchLoading}
+                    refetchBranches={fetchBranches}
+                    onOpenBranch={(slug) => router.push(`/dashboard/admin/${slug}`)}
+                />
             )}
-
-            {/* ═══════ ORG STRUCTURE TAB ═══════ */}
             {tab === "org" && (
-                <div className="space-y-6">
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <h2 className="text-xl font-bold text-[#003087]">Organization Structure</h2>
-                        <div className="flex items-center gap-2">
-                            <select
-                                value={orgBranchId}
-                                onChange={(e) => setOrgBranchId(e.target.value)}
-                                className="border border-[#CCCCCC] rounded-lg px-3 py-2 text-sm font-medium text-[#333333] bg-white min-h-[44px]"
-                            >
-                                {Array.from(new Set(orgStructure.map(d => d.branch))).filter(Boolean).map(name => (
-                                    <option key={name} value={name}>{name}</option>
-                                ))}
-                            </select>
-                            <button onClick={fetchOrg} className="px-3 py-2 min-h-[44px] min-w-[80px] bg-white border border-[#CCCCCC] rounded-lg text-[#333333] font-bold hover:text-[#003087] hover:bg-[#F5F5F5] text-[14px] flex items-center gap-1.5 cursor-pointer transition-colors">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                                Refresh
-                            </button>
-                        </div>
-                    </div>
-
-                    {orgLoading ? (
-                        <div className="flex items-center justify-center h-32"><div className="animate-spin h-8 w-8 border-2 border-[#003087] border-t-transparent rounded-full" /></div>
-                    ) : (
-                        <div className="grid grid-cols-1 gap-4">
-                            {orgStructure.filter(dept => !orgBranchId || dept.branch === orgBranchId).map((dept) => {
-                                const isExpanded = expandedDeptId === dept.id;
-                                return (
-                                <div key={dept.id} className={`bg-white border rounded-xl shadow-sm transition-all ${isExpanded ? "border-[#003087] ring-1 ring-[#003087]/20" : "border-[#E0E0E0]"}`}>
-                                    {/* Department Header — clickable */}
-                                    <button onClick={() => toggleDept(dept.id)} className="w-full flex items-center justify-between p-3 sm:p-5 cursor-pointer text-left group">
-                                        <div className="flex-1">
-                                            <h3 className="text-base sm:text-lg font-bold text-[#003087] group-hover:text-[#00843D] transition-colors">{dept.name}</h3>
-                                            <p className="text-[10px] sm:text-xs text-[#666666] uppercase tracking-wider">{dept.branch} Branch &middot; {dept.employeeCount} Employees</p>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            {/* Collar badge + top evaluator summary */}
-                                            <div className="hidden sm:flex gap-1.5 items-center">
-                                                {dept.collarType === "WHITE_COLLAR" ? (
-                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-[#003087] border border-blue-200 font-bold">WHITE COLLAR</span>
-                                                ) : (
-                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-[#00843D] border border-emerald-200 font-bold">BLUE COLLAR</span>
-                                                )}
-                                                {dept.collarType === "WHITE_COLLAR" && dept.branchManagers?.[0] && (
-                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#F5F5F5] text-[#333333] border border-[#E0E0E0] font-bold">BM: {dept.branchManagers[0].name.split(" ")[0]}</span>
-                                                )}
-                                                {dept.collarType !== "WHITE_COLLAR" && dept.hods?.[0] && (
-                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#F5F5F5] text-[#333333] border border-[#E0E0E0] font-bold">HOD: {dept.hods[0].name.split(" ")[0]}</span>
-                                                )}
-                                            </div>
-                                            <svg className={`w-5 h-5 text-[#666666] transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                        </div>
-                                    </button>
-
-                                    {/* Expanded content */}
-                                    {isExpanded && (
-                                        <div className="border-t border-[#E0E0E0] p-3 sm:p-5 space-y-5">
-                                            {/* Single evaluator card: BM (WC) or HOD (BC) */}
-                                            {dept.collarType === "WHITE_COLLAR" ? (
-                                                <div className="bg-blue-50/60 rounded-lg p-4 border border-blue-100">
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <p className="text-xs font-bold text-[#003087] uppercase tracking-wider">Branch Manager (Evaluator)</p>
-                                                        <button onClick={() => openReassignModal({ id: dept.id, name: dept.name }, "BRANCH_MANAGER")} className="text-[10px] px-2 py-0.5 rounded bg-[#003087] text-white font-bold hover:bg-[#00843D] transition-colors cursor-pointer">Reassign</button>
-                                                    </div>
-                                                    {dept.branchManagers?.length > 0 ? (
-                                                        <div className="space-y-2">
-                                                            {dept.branchManagers.map(bm => (
-                                                                <button key={bm.id} onClick={() => openPersonDetail(bm)} className="w-full text-left p-2 rounded-lg hover:bg-white transition-colors cursor-pointer group/person">
-                                                                    <p className="text-sm text-[#003087] font-semibold group-hover/person:underline">{bm.name}</p>
-                                                                    <p className="text-xs text-[#666666]">{bm.designation || "—"} {bm.empCode ? `(${bm.empCode})` : ""}</p>
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    ) : <p className="text-sm text-[#999999] italic">Not Assigned</p>}
-                                                </div>
-                                            ) : (
-                                                <div className="bg-emerald-50/60 rounded-lg p-4 border border-emerald-100">
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <p className="text-xs font-bold text-[#00843D] uppercase tracking-wider">Head of Department (Evaluator)</p>
-                                                        <button onClick={() => openReassignModal({ id: dept.id, name: dept.name }, "HOD")} className="text-[10px] px-2 py-0.5 rounded bg-[#00843D] text-white font-bold hover:bg-[#003087] transition-colors cursor-pointer">Reassign</button>
-                                                    </div>
-                                                    {dept.hods?.length > 0 ? (
-                                                        <div className="space-y-2">
-                                                            {dept.hods.map(h => (
-                                                                <button key={h.id} onClick={() => openPersonDetail(h)} className="w-full text-left p-2 rounded-lg hover:bg-white transition-colors cursor-pointer group/person">
-                                                                    <p className="text-sm text-[#00843D] font-semibold group-hover/person:underline">{h.name}</p>
-                                                                    <p className="text-xs text-[#666666]">{h.designation || "—"} {h.empCode ? `(${h.empCode})` : ""}</p>
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    ) : <p className="text-sm text-[#999999] italic">Not Assigned</p>}
-                                                </div>
-                                            )}
-
-                                            {/* Employee List */}
-                                            <div>
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <p className="text-xs font-bold text-[#333333] uppercase tracking-wider">All Employees ({dept.employees?.length || 0})</p>
-                                                    <button onClick={() => { setShowAddEmp(true); setAddForm({ ...addForm, departmentName: dept.name }); setAddMsg({ type: "", text: "" }); setTab("employees"); }} className="text-[10px] px-2.5 py-1 rounded bg-[#00843D] text-white font-bold hover:bg-[#006B32] transition-colors cursor-pointer flex items-center gap-1">
-                                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                                                        Add Employee
-                                                    </button>
-                                                </div>
-                                                {dept.employees?.length > 0 ? (
-                                                    <div className="border border-[#E0E0E0] rounded-lg overflow-hidden">
-                                                        <div className="overflow-x-auto">
-                                                            <table className="w-full text-left border-collapse">
-                                                                <thead>
-                                                                    <tr className="bg-[#F5F5F5] border-b border-[#E0E0E0]">
-                                                                        <th className="px-3 py-2 text-[10px] font-bold text-[#666666] uppercase">Emp Code</th>
-                                                                        <th className="px-3 py-2 text-[10px] font-bold text-[#666666] uppercase">Name</th>
-                                                                        <th className="px-3 py-2 text-[10px] font-bold text-[#666666] uppercase">Designation</th>
-                                                                        <th className="px-3 py-2 text-[10px] font-bold text-[#666666] uppercase">Mobile</th>
-                                                                        <th className="px-3 py-2 text-[10px] font-bold text-[#666666] uppercase">Roles</th>
-                                                                        <th className="px-3 py-2 text-[10px] font-bold text-[#666666] uppercase">Action</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody className="divide-y divide-[#E0E0E0]">
-                                                                    {dept.employees.map(emp => (
-                                                                        <tr key={emp.id} className="hover:bg-[#FAFAFA] transition-colors">
-                                                                            <td className="px-3 py-2 text-xs text-[#333333] font-mono">{emp.empCode || "—"}</td>
-                                                                            <td className="px-3 py-2">
-                                                                                <button onClick={() => openPersonDetail(emp)} className="text-xs font-bold text-[#003087] hover:underline cursor-pointer text-left">{emp.name}</button>
-                                                                            </td>
-                                                                            <td className="px-3 py-2 text-xs text-[#666666]">{emp.designation || "—"}</td>
-                                                                            <td className="px-3 py-2 text-xs text-[#666666]">{emp.mobile || <span className="text-[#BBB] italic">—</span>}</td>
-                                                                            <td className="px-3 py-2">
-                                                                                <div className="flex flex-wrap gap-1">
-                                                                                    {(emp.roles || [emp.role]).map(r => (
-                                                                                        <span key={r} className={`text-[9px] px-1.5 py-0.5 rounded-full border font-bold uppercase ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-600 border-gray-200" : r === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace(/_/g, " ")}</span>
-                                                                                    ))}
-                                                                                </div>
-                                                                            </td>
-                                                                            <td className="px-3 py-2">
-                                                                                {!(emp.roles || [emp.role]).includes("ADMIN") && (
-                                                                                    <button onClick={() => setRemoveId(emp.id)} className="text-[10px] px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded-full font-bold hover:bg-red-100 cursor-pointer">Remove</button>
-                                                                                )}
-                                                                            </td>
-                                                                        </tr>
-                                                                    ))}
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                    </div>
-                                                ) : <p className="text-sm text-[#999999] italic">No employees in this department</p>}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
+                <OrgView
+                    orgStructure={orgStructure}
+                    orgLoading={orgLoading}
+                    fetchOrg={fetchOrg}
+                    onRequestAddEmployee={(deptName) => { setPendingAddDept(deptName); setTab("employees"); }}
+                />
             )}
-
-            {/* ═══════ QUARTER TAB ═══════ */}
             {tab === "quarter" && (
-                <div className="space-y-6">
-                    <div>
-                        <h2 className="text-xl font-bold text-[#003087]">Quarter Management</h2>
-                        <p className="text-sm text-[#666666]">Start a new evaluation quarter or close the active one.</p>
-                    </div>
-                    {quarterMsg.text && (
-                        <div className={`p-3 rounded-lg text-sm border ${quarterMsg.type === "success" ? "bg-[#E3F2FD] border-[#90CAF9] text-[#003087]" : "bg-[#FFEBEE] border-[#EF9A9A] text-[#D32F2F]"}`}>{quarterMsg.text}</div>
-                    )}
-                    <QuarterCountdown quarter={quarterProgress?.quarter} />
-                    {quarterProgress?.quarter?.questionSelectionMode && (
-                        <div className="bg-[#E3F2FD] border border-[#90CAF9] rounded-lg px-4 py-2.5 text-[13px] text-[#333333]">
-                            Question selection mode for <span className="font-bold">{quarterProgress.quarter.name}</span>:{" "}
-                            <span className="font-bold text-[#003087]">{quarterProgress.quarter.questionSelectionMode === "MANUAL" ? "Manual" : "Automatic"}</span>
-                        </div>
-                    )}
-                    <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-6">
-                        <h3 className="text-lg font-semibold text-[#003087] mb-4">Start New Quarter</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            <div><label className="block text-sm text-[#333333] mb-1 font-medium">Quarter Name</label><input type="text" value={quarterName} onChange={(e) => setQuarterName(e.target.value)} placeholder="Q1-2025" className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]" /></div>
-                            <div><label className="block text-sm text-[#333333] mb-1 font-medium">Question Count per Level</label><input type="number" value={questionCount} onChange={(e) => setQuestionCount(parseInt(e.target.value))} min={10} max={25} className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]" /></div>
-                            <div><label className="block text-sm text-[#333333] mb-1 font-medium">Start Date</label><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]" /></div>
-                            <div><label className="block text-sm text-[#333333] mb-1 font-medium">End Date</label><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]" /></div>
-                        </div>
-                        <div className="mb-4">
-                            <label className="block text-sm text-[#333333] mb-1.5 font-medium">Question Selection Mode</label>
-                            <div className="flex flex-wrap gap-2">
-                                {[
-                                    { v: "AUTO", label: "Automatic", desc: "System picks a random, category-balanced set" },
-                                    { v: "MANUAL", label: "Manual", desc: "Lock exactly the questions marked “In quarter”" },
-                                ].map((m) => (
-                                    <button
-                                        key={m.v}
-                                        type="button"
-                                        onClick={() => setQuarterMode(m.v)}
-                                        className={`text-left px-4 py-2.5 rounded-lg border transition-colors cursor-pointer ${quarterMode === m.v ? "bg-[#003087] border-[#003087] text-white" : "bg-white border-[#CCCCCC] text-[#333333] hover:bg-[#F5F7FA]"}`}
-                                    >
-                                        <span className="block text-[14px] font-bold">{m.label}</span>
-                                        <span className={`block text-[11px] ${quarterMode === m.v ? "text-white/80" : "text-[#666666]"}`}>{m.desc}</span>
-                                    </button>
-                                ))}
-                            </div>
-                            {quarterMode === "MANUAL" && (
-                                <p className="text-[12px] text-[#666666] mt-2">
-                                    Manual mode locks every question marked &ldquo;In quarter&rdquo; on the Questions tab. The &ldquo;Question Count per Level&rdquo; value above is ignored.
-                                </p>
-                            )}
-                        </div>
-                        <button onClick={requestStartQuarter} disabled={quarterLoading || !quarterName || !startDate || !endDate} className="min-h-[44px] min-w-[120px] px-6 py-2.5 bg-[#003087] hover:bg-[#00843D] text-[14px] text-white font-bold rounded-lg disabled:bg-[#CCCCCC] disabled:text-[#666666] disabled:cursor-not-allowed cursor-pointer transition-all">{quarterLoading ? "Starting..." : "Start Quarter"}</button>
-                    </div>
-                    <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-6">
-                        <h3 className="text-lg font-semibold text-[#003087] mb-2">Close Active Quarter</h3>
-                        <p className="text-[#333333] text-sm mb-4">No scores can be modified after closing.</p>
-                        <button onClick={requestCloseQuarter} disabled={quarterLoading} className="min-h-[44px] min-w-[120px] text-[14px] px-6 py-2.5 bg-[#003087] text-white border border-[#003087] hover:bg-[#00843D] rounded-lg font-bold disabled:bg-[#CCCCCC] disabled:text-[#666666] cursor-pointer transition-colors shadow-sm">{quarterLoading ? "Closing..." : "Close Current Quarter"}</button>
-                    </div>
-                </div>
+                <QuarterView
+                    quarterProgress={quarterProgress}
+                    quarterMsg={quarterMsg}
+                    quarterLoading={quarterLoading}
+                    onRequestStart={requestStartQuarter}
+                    onRequestClose={requestCloseQuarter}
+                />
             )}
-
-            {/* ═══════ QUESTIONS TAB ═══════ */}
             {tab === "questions" && (
-                <div className="space-y-6">
-                    {qMsg.text && (<div className={`p-3 rounded-lg text-sm border ${qMsg.type === "success" ? "bg-[#E8F5E9] border-[#A5D6A7] text-[#1B5E20]" : "bg-[#FFEBEE] border-[#EF9A9A] text-[#D32F2F]"}`}>{qMsg.text}</div>)}
-
-                    {/* Summary + Add button */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div>
-                            <h2 className="text-xl font-bold text-[#003087]">Question Bank</h2>
-                            <p className="text-sm text-[#333333]">{questions.length} total questions | {activeCount} active</p>
-                        </div>
-                        <div className="flex gap-2">
-                            <button onClick={fetchQuestions} className="min-h-[44px] min-w-[80px] font-bold px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#333333] hover:text-[#003087] text-[14px] cursor-pointer hover:bg-[#F5F5F5] transition-colors">↻ Refresh</button>
-                            <button onClick={() => setShowAddForm(!showAddForm)} className="px-4 py-2 min-h-[44px] min-w-[80px] bg-[#003087] hover:bg-[#00843D] text-white font-bold text-[14px] rounded-lg cursor-pointer transition-all shadow-sm">+ Add Question</button>
-                        </div>
-                    </div>
-
-                    {/* Add Question Form (collapsible) */}
-                    {showAddForm && (
-                        <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-6">
-                            <h3 className="text-lg font-semibold text-[#003087] mb-4">Add New Question</h3>
-                            <div className="space-y-4">
-                                <div><label className="block text-sm text-[#333333] mb-1 font-medium">Question Text (English)</label><textarea value={newQ.text} onChange={(e) => setNewQ({ ...newQ, text: e.target.value })} rows={2} placeholder="Enter the question text in English..." className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087] resize-none" /></div>
-                                <div><label className="block text-sm text-[#333333] mb-1 font-medium">Question Text (Hindi)</label><textarea value={newQ.textHindi} onChange={(e) => setNewQ({ ...newQ, textHindi: e.target.value })} rows={2} placeholder="Enter the question text in Hindi..." className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087] resize-none" /></div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div><label className="block text-sm text-[#333333] mb-1 font-medium">Category</label><select value={newQ.category} onChange={(e) => setNewQ({ ...newQ, category: e.target.value })} className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]">{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
-                                    <div><label className="block text-sm text-[#333333] mb-1 font-medium">Level</label><select value={newQ.level} onChange={(e) => setNewQ({ ...newQ, level: e.target.value })} className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]">{LEVELS.map((l) => <option key={l} value={l}>{l.replaceAll("_", " ")}</option>)}</select></div>
-                                </div>
-                                <div className="flex gap-2">
-                                    <button onClick={addQuestion} className="px-6 py-2.5 bg-[#003087] hover:bg-[#00843D] text-white font-semibold rounded-lg cursor-pointer transition-all shadow-sm">Save Question</button>
-                                    <button onClick={() => setShowAddForm(false)} className="px-4 py-2.5 bg-[#F5F5F5] border border-[#CCCCCC] text-[#333333] hover:text-[#003087] hover:bg-white rounded-lg cursor-pointer transition-colors">Cancel</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Filter Bar */}
-                    <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-3 sm:p-4 space-y-2 sm:space-y-0 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
-                        <div className="w-full sm:flex-1 sm:min-w-[200px]">
-                            <label className="block text-xs text-[#333333] mb-1 font-medium">Search</label>
-                            <input type="text" value={qFilter.search} onChange={(e) => setQFilter({ ...qFilter, search: e.target.value })} placeholder="Search questions..." className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]" />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
-                            <div>
-                                <label className="block text-xs text-[#333333] mb-1 font-medium">Level</label>
-                                <select value={qFilter.level} onChange={(e) => setQFilter({ ...qFilter, level: e.target.value })} className="w-full sm:w-auto px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087] sm:min-w-[150px]">
-                                    <option value="">All Levels</option>
-                                    {LEVELS.map((l) => <option key={l} value={l}>{l.replaceAll("_", " ")}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs text-[#333333] mb-1 font-medium">Category</label>
-                                <select value={qFilter.category} onChange={(e) => setQFilter({ ...qFilter, category: e.target.value })} className="w-full sm:w-auto px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087] sm:min-w-[150px]">
-                                    <option value="">All Categories</option>
-                                    {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                        {(qFilter.search || qFilter.level || qFilter.category) && (
-                            <button onClick={() => setQFilter({ level: "", category: "", search: "" })} className="w-full sm:w-auto px-3 py-2 bg-[#F5F5F5] hover:bg-white border border-[#E0E0E0] text-[#333333] rounded-lg text-sm cursor-pointer transition-colors">Clear</button>
-                        )}
-                    </div>
-
-                    <p className="text-xs text-[#666666]">{filteredQuestions.length} question{filteredQuestions.length !== 1 ? "s" : ""} shown</p>
-
-                    {/* Grouped Questions */}
-                    {groupedByLevel.map(({ level, questions: levelQs }) => {
-                        const byCategory = {};
-                        levelQs.forEach((q) => { if (!byCategory[q.category]) byCategory[q.category] = []; byCategory[q.category].push(q); });
-                        return (
-                            <div key={level} className="space-y-3">
-                                <h3 className="text-lg font-bold text-[#003087] flex items-center gap-2">
-                                    <span className="text-xs px-2.5 py-1 rounded-full bg-[#E8EAF6] text-[#3F51B5] border border-[#C5CAE9] font-semibold">{level.replaceAll("_", " ")}</span>
-                                    <span className="text-sm text-[#333333] font-normal">{levelQs.length} question{levelQs.length !== 1 ? "s" : ""}</span>
-                                </h3>
-                                {Object.entries(byCategory).map(([cat, catQs]) => (
-                                    <div key={cat} className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm">
-                                        <div className="px-4 py-2.5 border-b border-[#E0E0E0] flex items-center justify-between bg-[#F5F5F5]">
-                                            <span className="text-xs font-semibold text-[#003087] uppercase tracking-wider">{cat}</span>
-                                            <span className="text-xs text-[#333333]">{catQs.length}</span>
-                                        </div>
-                                        <div className="divide-y divide-[#E0E0E0]">
-                                            {catQs.map((q) => (
-                                                <div key={q.id} className="px-3 sm:px-4 py-3 hover:bg-[#F5F5F5] transition-colors group">
-                                                    {editingQ?.id === q.id ? (
-                                                        <div className="space-y-2">
-                                                            <textarea value={editingQ.text} onChange={(e) => setEditingQ({ ...editingQ, text: e.target.value })} rows={2} placeholder="English text" className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087] resize-none" />
-                                                            <textarea value={editingQ.textHindi || ""} onChange={(e) => setEditingQ({ ...editingQ, textHindi: e.target.value })} rows={2} placeholder="Hindi text" className="w-full px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087] resize-none" />
-                                                            <div className="grid grid-cols-2 gap-2">
-                                                                <select value={editingQ.category} onChange={(e) => setEditingQ({ ...editingQ, category: e.target.value })} className="px-2 py-1.5 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-xs">{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
-                                                                <select value={editingQ.level} onChange={(e) => setEditingQ({ ...editingQ, level: e.target.value })} className="px-2 py-1.5 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-xs">{LEVELS.map((l) => <option key={l} value={l}>{l.replaceAll("_", " ")}</option>)}</select>
-                                                            </div>
-                                                            <div className="flex gap-2">
-                                                                <button onClick={saveEditQuestion} className="min-h-[40px] px-3 py-1.5 bg-[#003087] hover:bg-[#00843D] text-white text-[13px] sm:text-[14px] font-bold rounded-lg cursor-pointer transition-colors shadow-sm">Save</button>
-                                                                <button onClick={() => setEditingQ(null)} className="min-h-[40px] px-3 py-1.5 bg-white border border-[#CCCCCC] text-[#333333] font-bold text-[13px] sm:text-[14px] rounded-lg cursor-pointer hover:bg-[#F5F5F5] transition-colors">Cancel</button>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                                                            <div className={`flex-1 ${q.isActive ? "" : "opacity-50"}`}>
-                                                                <p className={`text-[13px] sm:text-sm tracking-tight ${q.isActive ? "text-[#1A1A2E]" : "text-[#999999] line-through"}`}>{q.text}</p>
-                                                                {q.textHindi && <p className="text-[12px] sm:text-[13px] text-[#666666] italic mt-0.5">{q.textHindi}</p>}
-                                                            </div>
-                                                            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                                                                <button onClick={() => setEditingQ({ id: q.id, text: q.text, textHindi: q.textHindi || "", category: q.category, level: q.level })} className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-3 py-1.5 bg-[#F5F5F5] font-bold border border-[#E0E0E0] text-[#333333] hover:text-[#003087] rounded-md cursor-pointer transition-colors text-[12px] sm:text-[13px]">Edit</button>
-                                                                <button onClick={() => setDeleteQ(q)} className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-3 py-1.5 bg-[#F5F5F5] font-bold border border-[#E0E0E0] text-[#333333] hover:text-[#D32F2F] rounded-md cursor-pointer transition-colors text-[12px] sm:text-[13px]">Delete</button>
-                                                                <button onClick={() => toggleQuestion(q.id)} className={`min-h-[36px] sm:min-h-[40px] text-[12px] sm:text-[13px] font-bold px-2.5 sm:px-3 py-1.5 rounded-lg border transition-colors cursor-pointer shrink-0 shadow-sm ${q.isActive ? "bg-[#00843D] text-[#FFFFFF] border-[#A5D6A7]" : "bg-[#CCCCCC] text-[#333333] border-[#EF9A9A]"}`}>{q.isActive ? "Active" : "Off"}</button>
-                                                                <button onClick={() => toggleInclude(q)} title="Whether this question is locked into a quarter started in Manual mode" className={`min-h-[36px] sm:min-h-[40px] text-[12px] sm:text-[13px] font-bold px-2.5 sm:px-3 py-1.5 rounded-lg border transition-colors cursor-pointer shrink-0 shadow-sm ${q.includedInQuarter ? "bg-[#003087] text-[#FFFFFF] border-[#90CAF9]" : "bg-[#FFFFFF] text-[#666666] border-[#CCCCCC]"}`}>{q.includedInQuarter ? "In quarter" : "Excluded"}</button>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        );
-                    })}
-                    {filteredQuestions.length === 0 && <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-8 text-center text-[#333333]">No questions match your filters.</div>}
-
-                    {/* Delete Confirmation */}
-                    <ConfirmDialog
-                        open={!!deleteQ}
-                        title="Delete Question?"
-                        message={deleteQ ? `Are you sure you want to delete: "${deleteQ.text}"? This cannot be undone.` : ""}
-                        confirmLabel="Delete"
-                        variant="danger"
-                        onConfirm={confirmDeleteQuestion}
-                        onCancel={() => setDeleteQ(null)}
-                    />
-                </div>
-            )
-            }
-
-            {/* ═══════ EMPLOYEES TAB ═══════ */}
+                <QuestionsView
+                    questions={questions}
+                    setQuestions={setQuestions}
+                    fetchQuestions={fetchQuestions}
+                />
+            )}
             {tab === "employees" && (
-                <div className="space-y-4 sm:space-y-6">
-                    {/* Header — title, live count + primary actions */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div>
-                            <h2 className="text-xl font-bold text-[#003087]">Employees</h2>
-                            <p className="text-sm text-[#666666]">
-                                {empLoading
-                                    ? "Loading…"
-                                    : `${empTotal} employee${empTotal === 1 ? "" : "s"}${(empFilter.search || empFilter.branch || empFilter.department || empFilter.role) ? " matching filters" : ""}`}
-                            </p>
-                        </div>
-                        <div className="grid grid-cols-3 sm:flex gap-2">
-                            <button onClick={() => { setShowAddEmp(!showAddEmp); setAddMsg({ type: "", text: "" }); }} className="h-10 px-2.5 sm:px-3.5 bg-[#00843D] hover:bg-[#006B32] text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap shadow-sm">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
-                                {showAddEmp ? "Cancel" : "Add / Remove"}
-                            </button>
-                            <button onClick={() => { setShowBulkUpload(!showBulkUpload); setBulkMsg({ type: "", text: "" }); setBulkResult(null); }} className="h-10 px-2.5 sm:px-3.5 bg-[#F7941D] hover:bg-[#D87A0A] text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap shadow-sm">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                                {showBulkUpload ? "Cancel" : "Bulk Upload"}
-                            </button>
-                            <button onClick={downloadExcel} disabled={excelLoading} className="h-10 px-2.5 sm:px-3.5 bg-white border border-[#CCCCCC] hover:bg-[#F5F5F5] text-[#00843D] text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-60 whitespace-nowrap shadow-sm">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                {excelLoading ? "Exporting..." : "Excel"}
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Filter bar — labeled controls, always visible */}
-                    <div className="bg-white border rounded-xl p-3 sm:p-4 shadow-sm border-[#E0E0E0]">
-                        <div className="grid grid-cols-2 lg:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,180px))_auto] gap-2 sm:gap-3 items-end">
-                            <div className="col-span-2 lg:col-span-1">
-                                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#999999] mb-1">Search</label>
-                                <div className="relative">
-                                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#999999]"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></span>
-                                    <input type="text" placeholder="Name or employee code..." value={empFilter.search} onChange={(e) => setEmpFilter({ ...empFilter, search: e.target.value })} className="w-full h-10 pl-11 pr-4 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#999999] mb-1">Branch</label>
-                                <select value={empFilter.branch} onChange={(e) => setEmpFilter({ ...empFilter, branch: e.target.value, department: "" })} className="h-10 px-2 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full">
-                                    <option value="">All Branches</option>
-                                    {empBranches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#999999] mb-1">Department</label>
-                                <select value={empFilter.department} onChange={(e) => setEmpFilter({ ...empFilter, department: e.target.value })} className="h-10 px-2 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full">
-                                    <option value="">All Departments</option>
-                                    {empDepartmentOptions.map(d => <option key={d} value={d}>{d}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#999999] mb-1">Role</label>
-                                <select value={empFilter.role} onChange={(e) => setEmpFilter({ ...empFilter, role: e.target.value })} className="h-10 px-2 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-xs sm:text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087] w-full">
-                                    <option value="">All Roles</option>
-                                    <option value="EMPLOYEE">Employee</option>
-                                    <option value="BRANCH_MANAGER">Branch Manager</option>
-                                    <option value="CLUSTER_MANAGER">Cluster Manager</option>
-                                    <option value="HOD">HOD</option>
-                                    <option value="HR">HR</option>
-                                    <option value="COMMITTEE">Committee</option>
-                                    <option value="ADMIN">Admin</option>
-                                </select>
-                            </div>
-                            {(empFilter.search || empFilter.branch || empFilter.department || empFilter.role) && (
-                                <button onClick={() => setEmpFilter({ search: "", department: "", role: "", branch: "" })} className="h-10 px-3 bg-white border border-[#E0E0E0] hover:bg-[#F5F5F5] text-[#666666] hover:text-[#D32F2F] text-xs font-bold rounded-lg cursor-pointer transition-colors whitespace-nowrap">
-                                    ✕ Clear
-                                </button>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Add Employee Form (collapsible) */}
-                    {showAddEmp && (
-                        <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 shadow-sm space-y-4">
-                            <h3 className="text-lg font-bold text-[#003087]">Add New Employee</h3>
-                            {addMsg.text && (
-                                <div className={`p-3 rounded-lg text-sm font-medium ${addMsg.type === "success" ? "bg-green-50 text-green-800 border border-green-200" : "bg-red-50 text-red-800 border border-red-200"}`}>{addMsg.text}</div>
-                            )}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1">Name *</label>
-                                    <input type="text" value={addForm.name} onChange={(e) => setAddForm({ ...addForm, name: e.target.value })} placeholder="Full name" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1">Employee Code</label>
-                                    <input type="text" value={addForm.empCode} onChange={(e) => setAddForm({ ...addForm, empCode: e.target.value })} placeholder="e.g. 5100030" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1">Mobile Number</label>
-                                    <input type="text" value={addForm.mobile} onChange={(e) => setAddForm({ ...addForm, mobile: e.target.value })} placeholder="Phone number" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1">Department *</label>
-                                    <select value={addForm.departmentName} onChange={(e) => setAddForm({ ...addForm, departmentName: e.target.value })} className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm">
-                                        <option value="">Select Department</option>
-                                        {empDepartments.map(d => <option key={d} value={d}>{d}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1">Designation</label>
-                                    <input type="text" value={addForm.designation} onChange={(e) => setAddForm({ ...addForm, designation: e.target.value })} placeholder="e.g. Executive" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-[#666666] mb-1">Joining Date</label>
-                                    <input type="date" value={addForm.joiningDate} onChange={(e) => setAddForm({ ...addForm, joiningDate: e.target.value })} className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
-                                </div>
-                                <div className="sm:col-span-2 lg:col-span-3">
-                                    <label className="block text-xs font-bold text-[#666666] mb-1">Reason for Joining</label>
-                                    <input type="text" value={addForm.reason} onChange={(e) => setAddForm({ ...addForm, reason: e.target.value })} placeholder="e.g. New hire, Transfer from another branch" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
-                                </div>
-                            </div>
-                            <button onClick={handleAddEmployee} disabled={addLoading || !addForm.name || !addForm.departmentName} className="px-6 py-2 bg-[#003087] text-white rounded-lg text-sm font-bold hover:bg-[#002266] transition-colors cursor-pointer disabled:opacity-50">
-                                {addLoading ? "Adding..." : "Add Employee"}
-                            </button>
-                        </div>
-                    )}
-
-                    {/* Bulk Upload Panel */}
-                    {showBulkUpload && (
-                        <div className="bg-white border border-[#E0E0E0] rounded-xl p-5 shadow-sm space-y-4">
-                            <div className="flex items-center justify-between flex-wrap gap-2">
-                                <h3 className="text-lg font-bold text-[#003087]">Bulk Upload Employees (Excel)</h3>
-                                <button onClick={downloadBulkTemplate} className="text-xs px-3 py-1.5 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg font-bold text-[#333333] hover:bg-white cursor-pointer">
-                                    Download Template
-                                </button>
-                            </div>
-                            <div className="text-xs text-[#666666] bg-[#F5F5F5] border border-[#E0E0E0] rounded-lg p-3 space-y-1">
-                                <p className="font-bold text-[#003087]">Required columns: Name, Department</p>
-                                <p>Optional columns: Emp Code, Branch, Designation, Mobile, Collar Type (WHITE_COLLAR | BLUE_COLLAR)</p>
-                                <p>If a department name exists in multiple branches, the Branch column is required to disambiguate.</p>
-                                <p>Default password format: <code className="bg-white px-1 rounded">FirstName_lastTwoDigitsOfEmpCode</code></p>
-                            </div>
-                            {bulkMsg.text && (
-                                <div className={`p-3 rounded-lg text-sm font-medium ${bulkMsg.type === "success" ? "bg-green-50 text-green-800 border border-green-200" : "bg-red-50 text-red-800 border border-red-200"}`}>{bulkMsg.text}</div>
-                            )}
-                            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-                                <input
-                                    type="file"
-                                    accept=".xlsx,.xls"
-                                    onChange={(e) => setBulkFile(e.target.files?.[0] || null)}
-                                    className="flex-1 text-sm file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-[#003087] file:text-white file:font-bold file:cursor-pointer hover:file:bg-[#002266]"
-                                />
-                                <button
-                                    onClick={handleBulkUpload}
-                                    disabled={bulkLoading || !bulkFile}
-                                    className="px-6 py-2 bg-[#F7941D] text-white rounded-lg text-sm font-bold hover:bg-[#D87A0A] transition-colors cursor-pointer disabled:opacity-50"
-                                >
-                                    {bulkLoading ? "Uploading..." : "Upload & Create"}
-                                </button>
-                            </div>
-                            {bulkResult && (
-                                <div className="mt-3 space-y-3">
-                                    <div className="grid grid-cols-3 gap-2 text-center">
-                                        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                                            <div className="text-2xl font-bold text-green-700">{bulkResult.createdCount}</div>
-                                            <div className="text-[11px] text-green-700 font-bold uppercase tracking-wider">Created</div>
-                                        </div>
-                                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                                            <div className="text-2xl font-bold text-amber-700">{bulkResult.skippedCount}</div>
-                                            <div className="text-[11px] text-amber-700 font-bold uppercase tracking-wider">Skipped</div>
-                                        </div>
-                                        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                                            <div className="text-2xl font-bold text-red-700">{bulkResult.failedCount}</div>
-                                            <div className="text-[11px] text-red-700 font-bold uppercase tracking-wider">Failed</div>
-                                        </div>
-                                    </div>
-                                    {bulkResult.failed?.length > 0 && (
-                                        <div className="max-h-40 overflow-y-auto bg-red-50 border border-red-200 rounded-lg p-3">
-                                            <p className="text-xs font-bold text-red-800 mb-1">Failed rows:</p>
-                                            <ul className="text-[11px] text-red-700 space-y-0.5">
-                                                {bulkResult.failed.slice(0, 50).map((f, i) => <li key={i}>Row {f.row}: {f.reason}</li>)}
-                                            </ul>
-                                        </div>
-                                    )}
-                                    {bulkResult.skipped?.length > 0 && (
-                                        <div className="max-h-32 overflow-y-auto bg-amber-50 border border-amber-200 rounded-lg p-3">
-                                            <p className="text-xs font-bold text-amber-800 mb-1">Skipped rows:</p>
-                                            <ul className="text-[11px] text-amber-700 space-y-0.5">
-                                                {bulkResult.skipped.slice(0, 50).map((s, i) => <li key={i}>Row {s.row}: {s.reason}</li>)}
-                                            </ul>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    )}
-                    <div className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden shadow-sm">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="bg-[#F5F5F5] border-b border-[#E0E0E0]">
-                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Emp Code</th>
-                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Name</th>
-                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Department</th>
-                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Designation</th>
-                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Mobile</th>
-                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Collar</th>
-                                        <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Roles</th>
-                                        {user?.role === "ADMIN" && <th className="px-5 py-3 text-[12px] font-bold text-[#666666] uppercase tracking-wider">Action</th>}
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-[#E0E0E0]">
-                                    {empLoading ? <tr><td colSpan={user?.role === "ADMIN" ? 7 : 6} className="px-5 py-8 text-center text-[#666666]">Loading...</td></tr> :
-                                    employees.length === 0 ? <tr><td colSpan={user?.role === "ADMIN" ? 7 : 6} className="px-5 py-8 text-center text-[#666666]">No employees found</td></tr> :
-                                    employees.map(e => {
-                                        const roles = e.roles || [e.role];
-                                        return (
-                                        <tr key={e.id} className="hover:bg-[#FAFAFA] transition-colors">
-                                            <td className="px-5 py-3 text-sm text-[#333333] font-mono">{e.empCode || "—"}</td>
-                                            <td className="px-5 py-3 text-sm font-bold text-[#003087]">{e.name}</td>
-                                            <td className="px-5 py-3 text-sm text-[#333333]">{e.department}{e.evaluatorRoles?.length > 0 && <span className="block text-[10px] text-[#666666] mt-0.5">{e.evaluatorRoles.map(er => `${er.role.replace("_"," ")} — ${er.department}`).join(", ")}</span>}</td>
-                                            <td className="px-5 py-3 text-sm text-[#666666]">{e.designation}</td>
-                                            <td className="px-5 py-3 text-sm text-[#666666]">{e.mobile ? <a href={`tel:${e.mobile}`} className="text-[#003087] hover:underline">{e.mobile}</a> : <span className="text-[#BBBBBB] italic text-xs">Not provided</span>}</td>
-                                            <td className="px-5 py-3">
-                                                {e.role === "EMPLOYEE" && e.collarType ? (
-                                                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${e.collarType === "WHITE_COLLAR" ? "bg-gray-100 text-gray-600" : "bg-blue-50 text-blue-600"}`}>
-                                                        {e.collarType === "WHITE_COLLAR" ? "White Collar" : "Blue Collar"}
-                                                    </span>
-                                                ) : <span className="text-xs text-gray-400">—</span>}
-                                            </td>
-                                            <td className="px-5 py-3"><div className="flex flex-wrap gap-1">{roles.map(r => <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-700 border-gray-200" : r === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : r === "HOD" ? "bg-purple-50 text-purple-700 border-purple-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : r === "HR" ? "bg-amber-50 text-amber-700 border-amber-200" : r === "COMMITTEE" ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace("_", " ")}</span>)}</div></td>
-                                            {user?.role === "ADMIN" && <td className="px-5 py-3"><div className="flex gap-1.5"><button onClick={() => openEditModal(e)} className="text-xs px-3 py-1.5 bg-[#003087] hover:bg-[#00843D] text-white rounded-lg font-semibold transition-colors cursor-pointer">Edit</button>{!roles.includes("ADMIN") && <button onClick={() => setRemoveId(e.id)} className="text-xs px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg font-semibold hover:bg-red-100 cursor-pointer">Remove</button>}</div></td>}
-                                        </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                        {!empLoading && empTotal > 50 && (
-                            <div className="px-5 py-3 border-t border-[#E0E0E0] flex items-center justify-between">
-                                <span className="text-xs text-[#666666]">Showing {(empPage-1)*50+1}-{Math.min(empPage*50,empTotal)} of {empTotal}</span>
-                                <div className="flex gap-1">
-                                    <button disabled={empPage===1} onClick={()=>fetchEmployees(empPage-1,empFilter)} className="px-3 py-1 border border-[#E0E0E0] rounded text-sm disabled:opacity-50 cursor-pointer">Prev</button>
-                                    <button disabled={empPage===empTotalPages} onClick={()=>fetchEmployees(empPage+1,empFilter)} className="px-3 py-1 border border-[#E0E0E0] rounded text-sm disabled:opacity-50 cursor-pointer">Next</button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
+                <EmployeesView
+                    key={`employees-${searchParams.get("search") || ""}`}
+                    user={user}
+                    initialSearch={searchParams.get("search") || ""}
+                    pendingAddDept={pendingAddDept}
+                    onConsumePendingAdd={() => setPendingAddDept(null)}
+                />
             )}
+            {tab === "logs" && <LogsView />}
 
-            {/* ═══════ REMOVE EMPLOYEE MODAL ═══════ */}
-            {removeId && (
-                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl space-y-4">
-                        <h3 className="text-lg font-bold text-red-700">Remove Employee</h3>
-                        <p className="text-sm text-[#666666]">This will archive the employee and remove them from all active lists, evaluations, and department mappings. This cannot be undone.</p>
-                        <div>
-                            <label className="block text-xs font-bold text-[#666666] mb-1">Reason for Leaving *</label>
-                            <textarea value={removeReason} onChange={(e) => setRemoveReason(e.target.value)} placeholder="e.g. Resignation, Termination, Transfer" rows={3} className="w-full px-3 py-2 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm resize-none" />
-                        </div>
-                        <div className="flex gap-3 justify-end">
-                            <button onClick={() => { setRemoveId(null); setRemoveReason(""); }} className="px-4 py-2 border border-[#E0E0E0] rounded-lg text-sm font-bold text-[#333333] cursor-pointer">Cancel</button>
-                            <button onClick={handleRemoveEmployee} disabled={removeLoading || !removeReason} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 cursor-pointer disabled:opacity-50">
-                                {removeLoading ? "Removing..." : "Confirm Remove"}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* ═══════ LOGS TAB ═══════ */}
-            {
-                tab === "logs" && (
-                    <div className="space-y-4">
-                        <div>
-                            <h2 className="text-xl font-bold text-[#003087]">Audit Logs</h2>
-                            <p className="text-sm text-[#666666]">Every admin and evaluator action, with timestamps and IP addresses.</p>
-                        </div>
-                        {/* Filter Bar */}
-                        <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-3 sm:p-4 space-y-2 sm:space-y-0 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
-                            <div className="w-full sm:w-auto">
-                                <label className="block text-xs text-[#333333] mb-1 font-medium">Action</label>
-                                <select value={logFilter.action} onChange={(e) => setLogFilter({ ...logFilter, action: e.target.value })} className="w-full sm:w-auto px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087] sm:min-w-[160px]">
-                                    <option value="">All Actions</option>
-                                    {logActions.map((a) => <option key={a} value={a}>{a}</option>)}
-                                </select>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
-                                <div>
-                                    <label className="block text-xs text-[#333333] mb-1 font-medium">From</label>
-                                    <input type="date" value={logFilter.from} onChange={(e) => setLogFilter({ ...logFilter, from: e.target.value })} className="w-full sm:w-auto px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs text-[#333333] mb-1 font-medium">To</label>
-                                    <input type="date" value={logFilter.to} onChange={(e) => setLogFilter({ ...logFilter, to: e.target.value })} className="w-full sm:w-auto px-3 py-2 bg-white border border-[#CCCCCC] rounded-lg text-[#1A1A2E] text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]" />
-                                </div>
-                            </div>
-                            <div className="flex gap-2">
-                                <button onClick={() => fetchLogs(1, logFilter)} className="flex-1 sm:flex-none px-4 py-2 bg-[#003087] hover:bg-[#00843D] text-white rounded-lg text-sm font-medium cursor-pointer transition-colors shadow-sm">Apply</button>
-                                <button onClick={() => { setLogFilter({ action: "", from: "", to: "" }); fetchLogs(1, { action: "", from: "", to: "" }); }} className="flex-1 sm:flex-none px-4 py-2 bg-[#F5F5F5] hover:bg-white border border-[#E0E0E0] text-[#333333] rounded-lg text-sm cursor-pointer transition-colors">Clear</button>
-                            </div>
-                        </div>
-
-                        {/* Table */}
-                        <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl overflow-hidden">
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm min-w-[700px]">
-                                    <thead><tr className="border-b border-[#E0E0E0] bg-[#F5F5F5]">
-                                        <th className="text-left text-[#333333] font-medium px-4 py-3">Time</th>
-                                        <th className="text-left text-[#333333] font-medium px-4 py-3">User</th>
-                                        <th className="text-left text-[#333333] font-medium px-3 py-3">Role</th>
-                                        <th className="text-left text-[#333333] font-medium px-3 py-3">Action</th>
-                                        <th className="text-left text-[#333333] font-medium px-3 py-3">IP Address</th>
-                                        <th className="text-left text-[#333333] font-medium px-3 py-3 hidden lg:table-cell">Details</th>
-                                    </tr></thead>
-                                    <tbody>
-                                        {logs.map((log) => (
-                                            <tr key={log.id} className="border-b border-[#E0E0E0] hover:bg-[#F5F5F5]">
-                                                <td className="px-4 py-3 text-[#666666] whitespace-nowrap text-xs">{new Date(log.createdAt).toLocaleString()}</td>
-                                                <td className="px-4 py-3 text-[#1A1A2E] text-sm font-medium">{log.user?.name || "system"}</td>
-                                                <td className="px-3 py-3"><span className="text-xs text-[#666666]">{log.user?.role || "-"}</span></td>
-                                                <td className="px-3 py-3"><span className="text-xs px-2.5 py-1 rounded-full bg-[#E3F2FD] text-[#003087] border border-[#90CAF9]">{log.action}</span></td>
-                                                <td className="px-3 py-3 text-[#666666] text-xs font-mono">{log.ipAddress || "-"}</td>
-                                                <td className="px-3 py-3 text-[#666666] text-xs hidden lg:table-cell max-w-xs truncate">{log.details ? JSON.stringify(log.details) : "-"}</td>
-                                            </tr>
-                                        ))}
-                                        {logs.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-[#666666]">No audit logs found</td></tr>}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                        {logTotal > 1 && (
-                            <div className="flex gap-2 justify-center">
-                                {Array.from({ length: Math.min(logTotal, 10) }, (_, i) => (<button key={i} onClick={() => fetchLogs(i + 1)} className={`w-8 h-8 rounded-lg text-sm cursor-pointer border ${logPage === i + 1 ? "bg-[#003087] text-white border-[#003087]" : "bg-white text-[#333333] border-[#CCCCCC] hover:bg-[#F5F5F5]"}`}>{i + 1}</button>))}
-                            </div>
-                        )}
-                    </div>
-                )
-            }
-            {/* ═══════ REASSIGN ROLE MODAL ═══════ */}
-            {reassignModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-[#E0E0E0] flex flex-col max-h-[90vh]">
-                        <div className="px-6 py-5 border-b border-[#E0E0E0] flex items-center justify-between shrink-0">
-                            <div>
-                                <h2 className="text-lg font-bold text-[#003087]">Reassign {reassignModal.role.replace(/_/g, " ")}</h2>
-                                <p className="text-xs text-[#666666] mt-0.5">{reassignModal.dept.name}</p>
-                            </div>
-                            <button onClick={() => setReassignModal(null)} className="text-[#666666] hover:text-[#333333] cursor-pointer">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
-                        </div>
-                        <div className="px-6 py-4 space-y-4 overflow-y-auto flex-1">
-                            {reassignMsg.text && (
-                                <div className={`p-3 rounded-lg text-sm border ${reassignMsg.type === "success" ? "bg-[#E8F5E9] border-[#A5D6A7] text-[#1B5E20]" : "bg-[#FFEBEE] border-[#EF9A9A] text-[#D32F2F]"}`}>{reassignMsg.text}</div>
-                            )}
-                            <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#999]">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                                </span>
-                                <input
-                                    type="text"
-                                    placeholder="Search by name or emp code..."
-                                    value={reassignSearch}
-                                    onChange={e => setReassignSearch(e.target.value)}
-                                    className="w-full pl-9 pr-4 py-2 border border-[#CCCCCC] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]"
-                                    autoFocus
-                                />
-                            </div>
-                            <div className="space-y-1 max-h-64 overflow-y-auto">
-                                {reassignAllEmps.length === 0 && (
-                                    <p className="text-sm text-[#999] italic text-center py-4">Loading employees…</p>
-                                )}
-                                {reassignAllEmps
-                                    .filter(e => {
-                                        const q = reassignSearch.toLowerCase();
-                                        return !q || e.name.toLowerCase().includes(q) || (e.empCode || "").toLowerCase().includes(q);
-                                    })
-                                    .map(e => {
-                                        const selected = reassignTarget?.id === e.id;
-                                        return (
-                                            <button
-                                                key={e.id}
-                                                onClick={() => setReassignTarget(e)}
-                                                className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors cursor-pointer ${selected ? "bg-[#E3F2FD] border-[#003087]" : "bg-white border-[#E0E0E0] hover:bg-[#F5F5F5]"}`}
-                                            >
-                                                <p className={`text-sm font-semibold ${selected ? "text-[#003087]" : "text-[#1A1A2E]"}`}>{e.name}</p>
-                                                <p className="text-xs text-[#666666]">{e.empCode ? `${e.empCode} · ` : ""}{e.department || "No dept"}{e.designation ? ` · ${e.designation}` : ""}</p>
-                                            </button>
-                                        );
-                                    })
-                                }
-                            </div>
-                        </div>
-                        <div className="px-6 py-4 border-t border-[#E0E0E0] shrink-0 flex gap-3">
-                            <button onClick={() => setReassignModal(null)} className="flex-1 py-2.5 border border-[#CCCCCC] rounded-xl text-sm font-semibold text-[#333333] hover:bg-[#F5F5F5] transition-colors cursor-pointer">Cancel</button>
-                            <button
-                                onClick={handleReassign}
-                                disabled={!reassignTarget || reassignLoading}
-                                className="flex-1 py-2.5 bg-[#003087] hover:bg-[#00843D] text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                            >
-                                {reassignLoading ? "Saving…" : reassignTarget ? `Assign ${reassignTarget.name.split(" ")[0]}` : "Select a person"}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* ═══════ PERSON DETAIL MODAL ═══════ */}
-            {personDetail && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-[#E0E0E0]">
-                        <div className="px-6 py-5 border-b border-[#E0E0E0] flex items-center justify-between">
-                            <h2 className="text-lg font-bold text-[#003087]">Employee Details</h2>
-                            <button onClick={closePersonDetail} className="text-[#666666] hover:text-[#333333] transition-colors cursor-pointer">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
-                        </div>
-                        <div className="px-6 py-5 space-y-4">
-                            {/* Avatar + Name */}
-                            <div className="flex items-center gap-4">
-                                <div className="h-14 w-14 rounded-full bg-[#E3F2FD] flex items-center justify-center text-[#003087] font-bold text-xl border-2 border-[#90CAF9] shrink-0">
-                                    {personDetail.name?.charAt(0)?.toUpperCase()}
-                                </div>
-                                <div>
-                                    <p className="text-lg font-bold text-[#003087]">{personDetail.name}</p>
-                                    {personDetail.mappedRole && (
-                                        <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase ${personDetail.mappedRole === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : personDetail.mappedRole === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : personDetail.mappedRole === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-gray-50 text-gray-600 border-gray-200"}`}>{personDetail.mappedRole.replace(/_/g, " ")}</span>
-                                    )}
-                                </div>
-                            </div>
-                            {/* Details grid */}
-                            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-                                <div>
-                                    <p className="text-[10px] text-[#999999] font-bold uppercase tracking-wider">Emp Code</p>
-                                    <p className="text-sm font-semibold text-[#333333]">{personDetail.empCode || "—"}</p>
-                                </div>
-                                <div>
-                                    <p className="text-[10px] text-[#999999] font-bold uppercase tracking-wider">Designation</p>
-                                    <p className="text-sm font-semibold text-[#333333]">{personDetail.designation || "—"}</p>
-                                </div>
-                                <div>
-                                    <p className="text-[10px] text-[#999999] font-bold uppercase tracking-wider">Mobile</p>
-                                    <p className="text-sm font-semibold text-[#333333]">{personDetail.mobile ? <a href={`tel:${personDetail.mobile}`} className="text-[#003087] hover:underline">{personDetail.mobile}</a> : <span className="text-[#BBB] italic">Not provided</span>}</p>
-                                </div>
-                            </div>
-                            {/* Roles */}
-                            {personDetail.roles?.length > 0 && (
-                                <div>
-                                    <p className="text-[10px] text-[#999999] font-bold uppercase tracking-wider mb-1.5">Roles</p>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {personDetail.roles.map(r => (
-                                            <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase ${r === "EMPLOYEE" ? "bg-gray-50 text-gray-600 border-gray-200" : r === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : r === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : r === "CLUSTER_MANAGER" ? "bg-orange-50 text-[#F7941D] border-orange-200" : "bg-[#003087] text-white border-[#003087]"}`}>{r.replace(/_/g, " ")}</span>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            {/* Evaluator roles */}
-                            {personDetail.evaluatorRoles?.length > 0 && (
-                                <div>
-                                    <p className="text-[10px] text-[#999999] font-bold uppercase tracking-wider mb-1.5">Evaluator Assignments</p>
-                                    <div className="space-y-1.5">
-                                        {personDetail.evaluatorRoles.map((er, i) => (
-                                            <div key={i} className="flex items-center gap-2">
-                                                <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase ${er.role === "SUPERVISOR" ? "bg-blue-50 text-[#003087] border-blue-200" : er.role === "BRANCH_MANAGER" ? "bg-emerald-50 text-[#00843D] border-emerald-200" : "bg-orange-50 text-[#F7941D] border-orange-200"}`}>{er.role.replace(/_/g, " ")}</span>
-                                                <span className="text-xs text-[#333333]">{er.department}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        <div className="px-6 py-4 border-t border-[#E0E0E0]">
-                            <button onClick={closePersonDetail} className="w-full py-2.5 bg-[#003087] hover:bg-[#00843D] text-white rounded-xl text-sm font-semibold transition-colors cursor-pointer">Close</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* ═══════ EDIT EMPLOYEE MODAL ═══════ */}
-            {editEmp && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-[#E0E0E0]">
-                        <div className="px-6 py-5 border-b border-[#E0E0E0] flex items-center justify-between">
-                            <div>
-                                <h2 className="text-lg font-bold text-[#003087]">Edit Employee</h2>
-                                <p className="text-xs text-[#666666] mt-0.5">{editEmp.name} &middot; {editEmp.empCode || "No Code"}</p>
-                            </div>
-                            <button onClick={() => setEditEmp(null)} className="text-[#666666] hover:text-[#333333] transition-colors cursor-pointer">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
-                        </div>
-
-                        {editConfirm ? (
-                            <div className="px-6 py-5 space-y-4">
-                                <div className="bg-[#FFF8E1] border border-[#FFD600] rounded-xl p-4">
-                                    <p className="text-sm font-bold text-[#E65100] mb-2">Confirm the following changes:</p>
-                                    <ul className="space-y-1">
-                                        {editChanges.map((c, i) => (
-                                            <li key={i} className="text-sm text-[#333333] flex items-start gap-2">
-                                                <span className="text-[#00843D] font-bold mt-0.5">✓</span>
-                                                <span>{c}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                                <p className="text-xs text-[#666666]">A notification will be sent to the employee about these changes.</p>
-                                {editMsg.text && <p className={`text-sm font-medium ${editMsg.type === "error" ? "text-[#D32F2F]" : "text-[#00843D]"}`}>{editMsg.text}</p>}
-                                <div className="flex gap-3">
-                                    <button onClick={() => setEditConfirm(false)} className="flex-1 py-2.5 border border-[#CCCCCC] rounded-xl text-sm font-semibold text-[#333333] hover:bg-[#F5F5F5] transition-colors cursor-pointer">Back</button>
-                                    <button onClick={handleEditSave} disabled={editLoading} className="flex-1 py-2.5 bg-[#003087] hover:bg-[#00843D] text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 cursor-pointer">
-                                        {editLoading ? "Saving..." : "Confirm & Save"}
-                                    </button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="px-6 py-5 space-y-4">
-                                {editMsg.text && <p className={`text-sm font-medium ${editMsg.type === "error" ? "text-[#D32F2F]" : "text-[#00843D]"}`}>{editMsg.text}</p>}
-
-                                <div>
-                                    <label className="block text-xs font-semibold text-[#333333] mb-1">Department</label>
-                                    <select value={editForm.department} onChange={e => setEditForm({ ...editForm, department: e.target.value })}
-                                        className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]">
-                                        <option value="">— Select Department —</option>
-                                        {empDepartments.map(d => <option key={d} value={d}>{d}</option>)}
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label className="block text-xs font-semibold text-[#333333] mb-1">Role</label>
-                                    <select value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })}
-                                        className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]">
-                                        <option value="EMPLOYEE">Employee</option>
-                                        <option value="BRANCH_MANAGER">Branch Manager</option>
-                                        <option value="CLUSTER_MANAGER">Cluster Manager</option>
-                                        <option value="HOD">HOD</option>
-                                        <option value="HR">HR</option>
-                                        <option value="COMMITTEE">Committee</option>
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label className="block text-xs font-semibold text-[#333333] mb-1">Designation</label>
-                                    <input type="text" value={editForm.designation} onChange={e => setEditForm({ ...editForm, designation: e.target.value })}
-                                        placeholder="e.g. Senior Executive - HR"
-                                        className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
-                                </div>
-
-                                <div>
-                                    <label className="block text-xs font-semibold text-[#333333] mb-1">New Password <span className="text-[#999999] font-normal">(leave blank to keep current)</span></label>
-                                    <input type="password" value={editForm.password} onChange={e => setEditForm({ ...editForm, password: e.target.value })}
-                                        placeholder="Min 6 characters"
-                                        className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#003087]/20 focus:border-[#003087]" />
-                                </div>
-
-                                <div className="flex gap-3 pt-1">
-                                    <button onClick={() => setEditEmp(null)} className="flex-1 py-2.5 border border-[#CCCCCC] rounded-xl text-sm font-semibold text-[#333333] hover:bg-[#F5F5F5] transition-colors cursor-pointer">Cancel</button>
-                                    <button onClick={handleEditPreview} className="flex-1 py-2.5 bg-[#003087] hover:bg-[#00843D] text-white rounded-xl text-sm font-semibold transition-colors cursor-pointer">Preview Changes</button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* Confirmation Dialogs */}
+            {/* Confirmation Dialogs — quarter start/close */}
             <ConfirmDialog
                 open={confirm.open && confirm.type === "start"}
-                title={`Start ${confirm.autoMode ? getAutoQuarterName() : quarterName} Evaluation?`}
-                message={`This will:\n\n✓ Lock 15 random self-assessment questions\n✓ Lock 5 supervisor, 4 branch manager, 3 cluster manager questions\n✓ Allow all employees to submit assessments\n✓ Cannot be undone until quarter is closed\n\nQuarter "${confirm.autoMode ? getAutoQuarterName() : quarterName}" will begin immediately.`}
+                title={`Start ${confirm.autoMode ? getAutoQuarterName() : confirm.payload?.quarterName || ""} Evaluation?`}
+                message={`This will:\n\n✓ Lock 15 random self-assessment questions\n✓ Lock 5 supervisor, 4 branch manager, 3 cluster manager questions\n✓ Allow all employees to submit assessments\n✓ Cannot be undone until quarter is closed\n\nQuarter "${confirm.autoMode ? getAutoQuarterName() : confirm.payload?.quarterName || ""}" will begin immediately.`}
                 confirmLabel="Yes, Start Quarter"
                 variant="warning"
                 loading={quarterLoading}
@@ -2869,16 +445,6 @@ export default function AdminDashboard() {
                 onConfirm={closeQuarter}
                 onCancel={() => setConfirm({ open: false, type: null })}
             />
-            <ConfirmDialog
-                open={confirm.open && confirm.type === "import-branch"}
-                title="Replace Branch Data?"
-                message={`This will REPLACE all employees and departments for ${importBranchName ? `the "${importBranchName}" branch` : "every branch in the uploaded file"}.\n\n✓ The sheet becomes the source of truth\n✓ Employees not in the sheet are archived and removed\n✓ Departments not in the sheet are deleted\n✓ A branch named in the sheet but missing is created\n\nThis cannot be undone.`}
-                confirmLabel="Yes, Replace Data"
-                variant="danger"
-                loading={importLoading}
-                onConfirm={runBranchImport}
-                onCancel={() => setConfirm({ open: false, type: null })}
-            />
-        </DashboardShell >
+        </DashboardShell>
     );
 }
