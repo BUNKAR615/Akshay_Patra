@@ -652,6 +652,25 @@ export default function HRDashboard() {
                                 </div>
                             </div>
 
+                            {/* Live inline validation — same rules the submit handler
+                                enforces, surfaced as the HR types instead of on submit. */}
+                            {(() => {
+                                if (isLocked) return null;
+                                const t = Number(totalWorkingDaysMap[emp.id]);
+                                const p = Number(daysPresentMap[emp.id]);
+                                const pu = Number(punctualDaysMap[emp.id]);
+                                const hasTotal = totalWorkingDaysMap[emp.id] !== undefined && totalWorkingDaysMap[emp.id] !== "" && !isNaN(t);
+                                const warns = [];
+                                if (hasTotal && t <= 0) warns.push("Total working days must be greater than 0");
+                                if (hasTotal && t > 0 && !isNaN(p) && daysPresentMap[emp.id] !== "" && daysPresentMap[emp.id] !== undefined && p > t) warns.push("Present days cannot exceed total working days");
+                                if (hasTotal && t > 0 && !isNaN(pu) && punctualDaysMap[emp.id] !== "" && punctualDaysMap[emp.id] !== undefined && pu > t) warns.push("Punctual days cannot exceed total working days");
+                                return warns.length > 0 ? (
+                                    <p role="alert" className="text-[12px] font-bold text-[#D32F2F] bg-[#FFEBEE] border border-[#EF9A9A] rounded-lg px-3 py-2 m-0">
+                                        ⚠ {warns.join(" · ")}
+                                    </p>
+                                ) : null;
+                            })()}
+
                             {/* Derived percentages (auto-calculated from the day counts).
                                 Marks / weightage are intentionally NOT shown to HR. */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

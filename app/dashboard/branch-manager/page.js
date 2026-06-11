@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import DashboardShell from "../../../components/DashboardShell";
 import EvaluationForm from "../../../components/EvaluationForm";
 import UserProfileCard from "../../../components/UserProfileCard";
+import { Tabs } from "../../../components/ui";
 
 async function api(url, opts) {
     const res = await fetch(url, opts);
@@ -320,8 +321,15 @@ export default function BranchManagerDashboard() {
     // Which sidebar view is active. The role sidebar (lib/dashboardNav) routes
     // to the same page with a ?view= param; "Evaluation" carries no param so the
     // bare /dashboard/branch-manager landing defaults here.
+    const router = useRouter();
     const searchParams = useSearchParams();
     const activeView = searchParams.get("view") || "evaluate";
+
+    // In-page tab strip mirrors the sidebar's ?view= URLs (same shapes the
+    // nav config uses) so views are reachable without opening the sidebar.
+    const switchView = (id) => {
+        router.replace(`/dashboard/branch-manager${id === "evaluate" ? "" : `?view=${id}`}`, { scroll: false });
+    };
 
     const [user, setUser] = useState(null);
     const [currentQuarterName, setCurrentQuarterName] = useState("");
@@ -653,6 +661,19 @@ export default function BranchManagerDashboard() {
                     ))}
                 </div>
             )}
+
+            {/* In-page view switcher (mirrors sidebar ?view= links) */}
+            <Tabs
+                ariaLabel="Branch manager views"
+                tabs={[
+                    { id: "evaluate", label: "Evaluation", count: shortlistMeta.remainingCount ?? undefined },
+                    { id: "shortlist", label: "Branch Overview" },
+                    { id: "departments", label: isBigBranch ? "Delegate to HODs" : "Departments" },
+                    { id: "history", label: "History" },
+                ]}
+                active={activeView}
+                onChange={switchView}
+            />
 
             {/* ═══════ BRANCH OVERVIEW (Shortlist view) ═══════ */}
             {activeView === "shortlist" && bmStats && (
