@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect } from "react";
 import { AP, BADGE_PALETTE } from "./tokens";
 import { Xicon } from "./Icons";
+import { useFocusTrap, lockBodyScroll, unlockBodyScroll } from "./useFocusTrap";
+import { Empty, EmptyState } from "./EmptyState";
+import { KpiCard } from "./KpiCard";
 
 export function Avatar({ name = "", size = 32, color = AP.blue }) {
     const ini = (name || "?").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
@@ -15,6 +18,7 @@ export function Avatar({ name = "", size = 32, color = AP.blue }) {
                 fontSize: Math.round(size * 0.38),
             }}
             className="rounded-full flex items-center justify-center shrink-0 text-white font-bold"
+            aria-hidden="true"
         >
             {ini}
         </div>
@@ -33,42 +37,39 @@ export function Badge({ label, color = "blue" }) {
     );
 }
 
-export function Btn({ children, variant = "primary", size = "md", onClick, disabled, icon, full, type = "button", title }) {
-    const vs = {
-        primary: { bg: AP.blue, text: "#fff", bd: "transparent", hov: "#002266" },
-        green: { bg: AP.green, text: "#fff", bd: "transparent", hov: "#006B32" },
-        orange: { bg: AP.orange, text: "#fff", bd: "transparent", hov: "#D87A0A" },
-        ghost: { bg: "transparent", text: "#374151", bd: "#D1D5DB", hov: "#F9FAFB" },
-        danger: { bg: "#DC2626", text: "#fff", bd: "transparent", hov: "#B91C1C" },
-        subtle: { bg: "#F3F4F6", text: "#374151", bd: "transparent", hov: "#E5E7EB" },
-    };
-    const ss = {
-        sm: { p: "5px 11px", fs: 12 },
-        md: { p: "8px 16px", fs: 13 },
-        lg: { p: "11px 24px", fs: 14 },
-    };
-    const v = vs[variant] || vs.primary;
-    const s = ss[size] || ss.md;
-    const [h, setH] = useState(false);
+const BTN_VARIANTS = {
+    primary: "bg-ap-blue hover:bg-ap-blue-700 text-white border-transparent",
+    green: "bg-ap-green hover:bg-ap-green-700 text-white border-transparent",
+    orange: "bg-ap-orange hover:bg-ap-orange-600 text-white border-transparent",
+    ghost: "bg-transparent hover:bg-gray-50 text-gray-700 border-gray-300",
+    danger: "bg-red-600 hover:bg-red-700 text-white border-transparent",
+    subtle: "bg-gray-100 hover:bg-gray-200 text-gray-700 border-transparent",
+};
+const BTN_SIZES = {
+    sm: "px-[11px] py-[5px] text-xs",
+    md: "px-4 py-2 text-[13px]",
+    lg: "px-6 py-[11px] text-sm",
+};
+
+export function Btn({ children, variant = "primary", size = "md", onClick, disabled, icon, full, type = "button", title, loading }) {
+    const isDisabled = disabled || loading;
     return (
         <button
             type={type}
             onClick={onClick}
-            disabled={disabled}
+            disabled={isDisabled}
             title={title}
-            onMouseEnter={() => setH(true)}
-            onMouseLeave={() => setH(false)}
-            style={{
-                background: h && !disabled ? v.hov : v.bg,
-                color: v.text,
-                borderColor: v.bd,
-                padding: s.p,
-                fontSize: s.fs,
-                width: full ? "100%" : "auto",
-            }}
-            className="inline-flex items-center gap-1.5 border rounded-lg font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer justify-center leading-5"
+            aria-busy={loading || undefined}
+            className={`inline-flex items-center gap-1.5 border rounded-lg font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer justify-center leading-5 ${BTN_VARIANTS[variant] || BTN_VARIANTS.primary} ${BTN_SIZES[size] || BTN_SIZES.md} ${full ? "w-full" : ""}`}
         >
-            {icon && <span className="flex">{icon}</span>}
+            {loading ? (
+                <svg className="animate-spin h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+            ) : (
+                icon && <span className="flex" aria-hidden="true">{icon}</span>
+            )}
             {children}
         </button>
     );
@@ -79,17 +80,17 @@ export function Field({ label, required, error, hint, children }) {
         <div className="flex flex-col gap-1">
             <label className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">
                 {label}
-                {required && <span className="text-red-600 ml-0.5">*</span>}
+                {required && <span className="text-red-600 ml-0.5" aria-hidden="true">*</span>}
             </label>
             {children}
             {hint && <span className="text-[11px] text-gray-400">{hint}</span>}
-            {error && <span className="text-[11px] text-red-600 font-semibold">{error}</span>}
+            {error && <span role="alert" className="text-[11px] text-red-600 font-semibold">{error}</span>}
         </div>
     );
 }
 
-export function TInput({ value, onChange, placeholder, type = "text", disabled, rows, name }) {
-    const base = "w-full border-[1.5px] border-gray-300 focus:border-[#003087] rounded-lg px-3 py-2 text-[13px] bg-white text-gray-900 outline-none transition-colors disabled:bg-gray-50";
+export function TInput({ value, onChange, placeholder, type = "text", disabled, rows, name, invalid, autoComplete, inputMode, min, max, step }) {
+    const base = `w-full border-[1.5px] ${invalid ? "border-red-400 focus:border-red-500" : "border-gray-300 focus:border-ap-blue"} rounded-lg px-3 py-2 text-[13px] bg-white text-gray-900 outline-none transition-colors disabled:bg-gray-50`;
     if (rows) {
         return (
             <textarea
@@ -99,6 +100,7 @@ export function TInput({ value, onChange, placeholder, type = "text", disabled, 
                 placeholder={placeholder}
                 rows={rows}
                 disabled={disabled}
+                aria-invalid={invalid || undefined}
                 className={`${base} resize-y`}
             />
         );
@@ -111,6 +113,12 @@ export function TInput({ value, onChange, placeholder, type = "text", disabled, 
             onChange={onChange}
             placeholder={placeholder}
             disabled={disabled}
+            autoComplete={autoComplete}
+            inputMode={inputMode}
+            min={min}
+            max={max}
+            step={step}
+            aria-invalid={invalid || undefined}
             className={base}
         />
     );
@@ -123,7 +131,7 @@ export function Sel({ value, onChange, children, disabled, name }) {
             value={value}
             onChange={onChange}
             disabled={disabled}
-            className="w-full border-[1.5px] border-gray-300 rounded-lg px-3 py-2 text-[13px] bg-white text-gray-900 outline-none disabled:bg-gray-50"
+            className="w-full border-[1.5px] border-gray-300 focus:border-ap-blue rounded-lg px-3 py-2 text-[13px] bg-white text-gray-900 outline-none disabled:bg-gray-50"
         >
             {children}
         </select>
@@ -132,23 +140,15 @@ export function Sel({ value, onChange, children, disabled, name }) {
 
 export function Card({ children, className = "", style }) {
     return (
-        <div style={style} className={`bg-white border border-[#E4E7ED] rounded-[14px] ${className}`}>
+        <div style={style} className={`bg-white border border-ap-border rounded-card shadow-card ${className}`}>
             {children}
         </div>
     );
 }
 
+/** Legacy stat card — thin wrapper over KpiCard so existing call sites keep working. */
 export function Stat({ label, value, sub, color = AP.blue, icon }) {
-    return (
-        <Card className="px-5 py-4 flex flex-col gap-1.5">
-            <div className="flex justify-between items-start">
-                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider m-0">{label}</p>
-                {icon && <span style={{ color, opacity: 0.6 }}>{icon}</span>}
-            </div>
-            <p style={{ color }} className="text-[28px] font-extrabold m-0 leading-tight">{value}</p>
-            {sub && <p className="text-xs text-gray-400 m-0 font-medium">{sub}</p>}
-        </Card>
-    );
+    return <KpiCard label={label} value={value} sub={sub} color={color} icon={icon} />;
 }
 
 export function Alert({ type = "info", message, onClose }) {
@@ -160,12 +160,13 @@ export function Alert({ type = "info", message, onClose }) {
     }[type] || { bg: "#EFF6FF", text: "#1E40AF", bd: "#93C5FD" };
     return (
         <div
+            role={type === "error" ? "alert" : "status"}
             style={{ background: p.bg, borderColor: p.bd, color: p.text }}
             className="border rounded-lg px-4 py-2.5 flex justify-between items-center gap-3"
         >
             <p className="m-0 text-[13px] font-semibold">{message}</p>
             {onClose && (
-                <button onClick={onClose} style={{ color: p.text }} className="bg-transparent border-none cursor-pointer opacity-70 hover:opacity-100 flex p-0">
+                <button onClick={onClose} aria-label="Dismiss message" style={{ color: p.text }} className="bg-transparent border-none cursor-pointer opacity-70 hover:opacity-100 flex p-0">
                     <Xicon />
                 </button>
             )}
@@ -173,55 +174,59 @@ export function Alert({ type = "info", message, onClose }) {
     );
 }
 
-export function Modal({ open, onClose, title, width = 560, children }) {
+export function Modal({ open, onClose, title, width = 560, children, footer }) {
+    const trapRef = useFocusTrap(open, onClose);
+
+    useEffect(() => {
+        if (!open) return;
+        lockBodyScroll();
+        return () => unlockBodyScroll();
+    }, [open]);
+
     if (!open) return null;
     return (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-5">
-            <div onClick={onClose} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center sm:p-5">
+            <div onClick={onClose} className="absolute inset-0 bg-black/40 backdrop-blur-sm" aria-hidden="true" />
             <div
+                ref={trapRef}
+                role="dialog"
+                aria-modal="true"
+                aria-label={typeof title === "string" ? title : undefined}
+                tabIndex={-1}
                 style={{ maxWidth: width }}
-                className="relative bg-white rounded-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl"
+                className="relative bg-white w-full flex flex-col outline-none shadow-2xl h-full max-h-[100dvh] rounded-none sm:h-auto sm:max-h-[90vh] sm:rounded-2xl"
             >
-                <div className="sticky top-0 bg-white z-10 flex items-center justify-between px-6 py-4 border-b border-[#E4E7ED]">
+                <div className="bg-white z-10 flex items-center justify-between px-6 py-4 border-b border-ap-border shrink-0 pt-safe sm:pt-4 rounded-t-none sm:rounded-t-2xl">
                     <h2 className="m-0 text-base font-extrabold text-gray-900">{title}</h2>
                     <button
                         onClick={onClose}
+                        aria-label="Close dialog"
                         className="bg-gray-100 border-none rounded-lg w-8 h-8 flex items-center justify-center cursor-pointer text-gray-500 hover:bg-gray-200"
                     >
                         <Xicon />
                     </button>
                 </div>
-                <div className="px-6 py-5">{children}</div>
+                <div className="px-6 py-5 overflow-y-auto flex-1">{children}</div>
+                {footer && (
+                    <div className="px-6 py-4 border-t border-ap-border shrink-0 pb-safe sm:pb-4 rounded-b-none sm:rounded-b-2xl bg-white">
+                        {footer}
+                    </div>
+                )}
             </div>
-        </div>
-    );
-}
-
-export function Header({ title, subtitle, actions }) {
-    return (
-        <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
-            <div>
-                <h1 className="text-[21px] font-extrabold text-gray-900 m-0 tracking-tight">{title}</h1>
-                {subtitle && <p className="text-[13px] text-gray-500 mt-1 m-0">{subtitle}</p>}
-            </div>
-            {actions && <div className="flex gap-2 flex-wrap">{actions}</div>}
-        </div>
-    );
-}
-
-export function Empty({ icon = "📄", title, sub }) {
-    return (
-        <div className="text-center py-12 px-6 text-gray-400">
-            <div className="text-4xl mb-2.5">{icon}</div>
-            <p className="text-sm font-bold text-gray-700 mb-1 m-0">{title}</p>
-            {sub && <p className="text-xs m-0">{sub}</p>}
         </div>
     );
 }
 
 export function ProgressBar({ value, color = AP.blue, height = 6 }) {
     return (
-        <div style={{ height }} className="bg-gray-100 rounded-full overflow-hidden">
+        <div
+            style={{ height }}
+            className="bg-gray-100 rounded-full overflow-hidden"
+            role="progressbar"
+            aria-valuenow={Math.round(Math.min(value, 100))}
+            aria-valuemin={0}
+            aria-valuemax={100}
+        >
             <div
                 style={{ width: `${Math.min(value, 100)}%`, background: color }}
                 className="h-full rounded-full transition-all duration-500"
@@ -230,10 +235,13 @@ export function ProgressBar({ value, color = AP.blue, height = 6 }) {
     );
 }
 
-export function Toggle({ on, onChange }) {
+export function Toggle({ on, onChange, label }) {
     return (
         <button
             type="button"
+            role="switch"
+            aria-checked={on}
+            aria-label={label}
             onClick={() => onChange(!on)}
             style={{ background: on ? AP.green : "#D1D5DB" }}
             className="w-10 h-[22px] rounded-full border-none cursor-pointer relative transition-colors shrink-0"
@@ -245,3 +253,14 @@ export function Toggle({ on, onChange }) {
         </button>
     );
 }
+
+// ── Design-system additions (Phase 1 redesign) ──
+export { Empty, EmptyState };
+export { KpiCard };
+export { PageHeader, Header } from "./PageHeader";
+export { Tabs } from "./Tabs";
+export { SearchInput } from "./SearchInput";
+export { Drawer } from "./Drawer";
+export { FormField, useForm } from "./FormField";
+export { ToastProvider, useToast } from "./Toast";
+export { default as DataTable } from "./DataTable";

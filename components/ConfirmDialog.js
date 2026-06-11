@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
+import { useFocusTrap, lockBodyScroll, unlockBodyScroll } from "./ui/useFocusTrap";
 
 /**
  * Reusable confirmation dialog with overlay.
@@ -27,20 +28,14 @@ export default function ConfirmDialog({
     onConfirm,
     onCancel,
 }) {
-    const dialogRef = useRef(null);
+    // Full focus trap: Tab cycling, Esc → onCancel, focus restore on close.
+    const dialogRef = useFocusTrap(open, onCancel);
 
-    // Focus trap
-    useEffect(() => {
-        if (open) dialogRef.current?.focus();
-    }, [open]);
-
-    // Escape key
     useEffect(() => {
         if (!open) return;
-        const handler = (e) => { if (e.key === "Escape") onCancel(); };
-        document.addEventListener("keydown", handler);
-        return () => document.removeEventListener("keydown", handler);
-    }, [open, onCancel]);
+        lockBodyScroll();
+        return () => unlockBodyScroll();
+    }, [open]);
 
     if (!open) return null;
 
@@ -72,7 +67,10 @@ export default function ConfirmDialog({
             <div
                 ref={dialogRef}
                 tabIndex={-1}
-                className="relative bg-white border border-[#E0E0E0] rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95"
+                role="alertdialog"
+                aria-modal="true"
+                aria-label={title}
+                className="relative bg-white border border-ap-border rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 outline-none"
                 style={{ animation: "dialogIn 0.2s ease-out" }}
             >
                 <div className="flex items-start gap-4">

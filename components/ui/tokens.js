@@ -1,3 +1,5 @@
+// JS-side brand colors (recharts, inline styles). Class-side mirror lives in
+// tailwind.config.js (`ap-blue`, `ap-border`, …) — keep the two in sync.
 export const AP = {
     blue: "#003087",
     green: "#00843D",
@@ -42,7 +44,7 @@ export const SCORE_COLORS = ["#DC2626", "#F97316", "#6B7280", "#0369A1", AP.gree
 export const BADGE_PALETTE = {
     blue: { bg: "#EEF3FB", text: AP.blue, bd: "#C7D9F5" },
     green: { bg: "#EBF7F1", text: AP.green, bd: "#A3D9BC" },
-    orange: { bg: "#FEF4E8", text: AP.orange, bd: "#FAD4A0" },
+    orange: { bg: "#FEF4E8", text: "#C2410C", bd: "#FAD4A0" }, // darker than brand orange for WCAG AA on light bg
     red: { bg: "#FEE8E8", text: "#DC2626", bd: "#FCBBBB" },
     purple: { bg: "#F3EFFE", text: "#7C3AED", bd: "#C4B5FD" },
     sky: { bg: "#EBF6FD", text: "#0369A1", bd: "#BAE0F5" },
