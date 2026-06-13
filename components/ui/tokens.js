@@ -8,6 +8,18 @@ export const AP = {
     bg: "#F4F6FA",
 };
 
+// Semantic intent palette — Primary/Success/Warning/Danger/Info. JS-side mirror
+// of the `primary|success|warning|danger|info` Tailwind colors (see
+// tailwind.config.js). Use for recharts / inline styles so status colors stay
+// consistent with the class-side tokens. Each: { DEFAULT, 50, 100, 600, 700 }.
+export const SEMANTIC = {
+    primary: { DEFAULT: "#003087", 50: "#EEF3FB", 100: "#DCE6F7", 600: "#0A3FA0", 700: "#002266" },
+    success: { DEFAULT: "#00843D", 50: "#EBF7F1", 100: "#D2EEDF", 600: "#0A9B4E", 700: "#006B32" },
+    warning: { DEFAULT: "#B45309", 50: "#FFFBEB", 100: "#FEF3C7", 600: "#D97706", 700: "#92400E" },
+    danger: { DEFAULT: "#DC2626", 50: "#FEF2F2", 100: "#FEE2E2", 600: "#DC2626", 700: "#B91C1C" },
+    info: { DEFAULT: "#0369A1", 50: "#EFF6FF", 100: "#DBEAFE", 600: "#0284C7", 700: "#0369A1" },
+};
+
 export const ROLE_COLOR = {
     EMPLOYEE: "blue",
     HOD: "purple",

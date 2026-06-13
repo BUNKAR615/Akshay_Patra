@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { api } from "../../../../lib/clientApi";
 import { fmtDate, fmtScore } from "../../../../lib/quarterUtils";
+import { ProgressBar } from "../../../../components/ui";
+import { AP, SEMANTIC } from "../../../../components/ui/tokens";
 import StageDetailModal from "../../../../components/admin/StageDetailModal";
 
 /** Pipeline tab — per-branch stage drill-down, ongoing-eval export, winners list. */
@@ -192,51 +194,70 @@ export default function PipelineView({ quarterProgress, progressLoading, branche
         doc.save(fname);
     };
 
+    // Aggregate funnel — Stage 1 → Final, summed across every branch. Gives the
+    // bird's-eye flow the per-branch cards below can't show at a glance.
+    const funnel = useMemo(() => {
+        const list = quarterProgress?.branches || [];
+        const sum = (fn) => list.reduce((acc, b) => acc + (fn(b) || 0), 0);
+        const winners = sum((b) => b.winners?.length || 0);
+        return [
+            { n: 1, label: "Self", color: SEMANTIC.primary.DEFAULT, reached: sum((b) => b.totalEmployees), evaluated: sum((b) => b.stage1.submitted), cleared: sum((b) => b.stage1.shortlisted) },
+            { n: 2, label: "BM / HOD", color: SEMANTIC.success.DEFAULT, reached: sum((b) => b.stage1.shortlisted), evaluated: sum((b) => b.stage2.evaluated || 0), cleared: sum((b) => b.stage2.shortlisted) },
+            { n: 3, label: "Cluster", color: SEMANTIC.info.DEFAULT, reached: sum((b) => b.stage2.shortlisted), evaluated: sum((b) => b.stage3.evaluated || 0), cleared: sum((b) => b.stage3.shortlisted) },
+            { n: 4, label: "HR", color: SEMANTIC.danger.DEFAULT, reached: sum((b) => b.stage3.shortlisted), evaluated: sum((b) => b.stage4.evaluated || 0), cleared: sum((b) => b.stage4.shortlisted) },
+            { n: 5, label: "Final", color: AP.orange, isFinal: true, reached: sum((b) => b.stage4.shortlisted), evaluated: winners, cleared: winners },
+        ];
+    }, [quarterProgress]);
+
     return (
         <div className="space-y-6">
-            {/* Download Ongoing Evaluation — branch picker + Excel export */}
-            <div className="bg-white border border-ap-border rounded-card p-5 shadow-card">
-                <div className="flex items-start sm:items-center gap-3 flex-col sm:flex-row sm:justify-between">
-                    <div>
-                        <h3 className="text-[16px] font-bold text-ap-blue m-0">Download Ongoing Evaluation</h3>
-                        <p className="text-[12px] text-gray-500 mt-0.5 m-0">
-                            Select a branch to download the live evaluation pipeline (Stage 1–4 scores, evaluator names, shortlist status) as an Excel file.
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <select
-                            value={exportBranchId}
-                            onChange={e => { setExportBranchId(e.target.value); setExportError(""); }}
-                            aria-label="Branch to export"
-                            className="min-h-[40px] border border-gray-300 rounded-lg px-3 py-2 text-[13px] font-medium bg-white"
-                        >
-                            <option value="">Select a branch…</option>
-                            {branches.map(b => (
-                                <option key={b.id} value={b.slug || b.id}>{b.name}</option>
-                            ))}
-                        </select>
-                        <button
-                            onClick={downloadOngoingForBranch}
-                            disabled={exportLoading || !exportBranchId}
-                            className="min-h-[40px] px-4 py-2 bg-ap-green hover:bg-ap-green-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-[13px] font-bold rounded-lg cursor-pointer transition-colors"
-                        >
-                            {exportLoading ? "Preparing…" : "Download (.xlsx)"}
-                        </button>
-                    </div>
-                </div>
-                {exportError && (
-                    <div className="mt-3 p-2 rounded-lg text-[12px] border bg-[#FFEBEE] border-[#EF9A9A] text-[#D32F2F]">
-                        {exportError}
-                    </div>
-                )}
-            </div>
-
             {!quarterProgress ? (
                 <div className="bg-white border border-ap-border rounded-card p-8 text-center text-sm text-gray-500">
                     {progressLoading ? "Loading pipeline..." : "No active quarter."}
                 </div>
             ) : (
                 <>
+                    {/* Aggregate funnel — Stage 1 → Final flow across all branches */}
+                    <div className="bg-white border border-ap-border rounded-card p-4 sm:p-6 shadow-card">
+                        <h2 className="text-base font-bold text-gray-900 m-0">Evaluation Funnel</h2>
+                        <p className="text-[11px] text-gray-500 mt-0.5 mb-4 m-0">All branches combined — how candidates flow from self-assessment through to final winners.</p>
+                        <div className="flex flex-col lg:flex-row lg:items-stretch gap-2">
+                            {funnel.map((s, i) => {
+                                const pending = Math.max(0, s.reached - s.evaluated);
+                                const pct = s.reached > 0 ? Math.round((s.evaluated / s.reached) * 100) : 0;
+                                return (
+                                    <Fragment key={s.n}>
+                                        <div className="flex-1 rounded-xl border border-ap-border p-3 min-w-0" style={{ borderTop: `3px solid ${s.color}` }}>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">{s.label}</span>
+                                                <span className="text-[10px] font-bold text-white rounded-full w-5 h-5 flex items-center justify-center shrink-0" style={{ background: s.color }} aria-hidden="true">{s.isFinal ? "★" : s.n}</span>
+                                            </div>
+                                            <p className="text-[26px] font-black leading-none m-0" style={{ color: s.color }}>{s.cleared}</p>
+                                            <p className="text-[10px] text-gray-400 mt-0.5 mb-2 m-0">{s.isFinal ? "winners declared" : "cleared to next stage"}</p>
+                                            {s.isFinal ? (
+                                                <p className="text-[10px] text-gray-500 m-0">from <b className="text-gray-700">{s.reached}</b> finalists</p>
+                                            ) : (
+                                                <>
+                                                    <ProgressBar value={pct} color={s.color} height={5} />
+                                                    <div className="flex items-center justify-between text-[10px] text-gray-500 mt-1.5">
+                                                        <span>In <b className="text-gray-700 tabular-nums">{s.reached}</b></span>
+                                                        <span>Eval <b className="text-gray-700 tabular-nums">{s.evaluated}</b></span>
+                                                        <span>Pend <b className="text-warning-700 tabular-nums">{pending}</b></span>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                        {i < funnel.length - 1 && (
+                                            <div className="flex items-center justify-center text-gray-300 shrink-0" aria-hidden="true">
+                                                <svg className="w-5 h-5 rotate-90 lg:rotate-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                            </div>
+                                        )}
+                                    </Fragment>
+                                );
+                            })}
+                        </div>
+                    </div>
+
                     <h2 className="text-xl font-bold text-ap-blue">Evaluation Pipeline</h2>
                     <p className="text-[12px] text-gray-500 -mt-2">
                         <span className="font-bold text-ap-blue">Click any stage</span> to open its detailed view — totals, evaluator details &amp; answer scripts.
@@ -249,8 +270,8 @@ export default function PipelineView({ quarterProgress, progressLoading, branche
                             const stages = [
                                 { n: 1, label: "Stage 1 — Self", color: "#003087", total: b.totalEmployees, evaluated: b.stage1.submitted, cleared: b.stage1.shortlisted },
                                 { n: 2, label: "Stage 2 — BM/HOD", color: "#00843D", total: b.stage1.shortlisted, evaluated: b.stage2.evaluated || 0, cleared: b.stage2.shortlisted },
-                                { n: 3, label: "Stage 3 — CM", color: "#F7941D", total: b.stage2.shortlisted, evaluated: b.stage3.evaluated || 0, cleared: b.stage3.shortlisted },
-                                { n: 4, label: "Stage 4 — HR", color: "#D32F2F", total: b.stage3.shortlisted, evaluated: b.stage4.evaluated || 0, cleared: (b.stage4.shortlisted || b.winners.length) },
+                                { n: 3, label: "Stage 3 — CM", color: "#0369A1", total: b.stage2.shortlisted, evaluated: b.stage3.evaluated || 0, cleared: b.stage3.shortlisted },
+                                { n: 4, label: "Stage 4 — HR", color: "#DC2626", total: b.stage3.shortlisted, evaluated: b.stage4.evaluated || 0, cleared: (b.stage4.shortlisted || b.winners.length) },
                             ];
                             const winnerTarget = b.branchType === "BIG" ? 4 : 3;
                             return (
@@ -407,6 +428,45 @@ export default function PipelineView({ quarterProgress, progressLoading, branche
                                 </div>
                             </div>
                         ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Download Ongoing Evaluation — branch picker + Excel export.
+                Demoted below the funnel + winners: it's a power-user export, not
+                the headline of the page. */}
+            <div className="bg-white border border-ap-border rounded-card p-5 shadow-card">
+                <div className="flex items-start sm:items-center gap-3 flex-col sm:flex-row sm:justify-between">
+                    <div>
+                        <h3 className="text-[16px] font-bold text-ap-blue m-0">Download Ongoing Evaluation</h3>
+                        <p className="text-[12px] text-gray-500 mt-0.5 m-0">
+                            Select a branch to download the live evaluation pipeline (Stage 1–4 scores, evaluator names, shortlist status) as an Excel file.
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <select
+                            value={exportBranchId}
+                            onChange={e => { setExportBranchId(e.target.value); setExportError(""); }}
+                            aria-label="Branch to export"
+                            className="min-h-[40px] border border-gray-300 rounded-lg px-3 py-2 text-[13px] font-medium bg-white"
+                        >
+                            <option value="">Select a branch…</option>
+                            {branches.map(b => (
+                                <option key={b.id} value={b.slug || b.id}>{b.name}</option>
+                            ))}
+                        </select>
+                        <button
+                            onClick={downloadOngoingForBranch}
+                            disabled={exportLoading || !exportBranchId}
+                            className="min-h-[40px] px-4 py-2 bg-ap-green hover:bg-ap-green-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-[13px] font-bold rounded-lg cursor-pointer transition-colors"
+                        >
+                            {exportLoading ? "Preparing…" : "Download (.xlsx)"}
+                        </button>
+                    </div>
+                </div>
+                {exportError && (
+                    <div className="mt-3 p-2 rounded-lg text-[12px] border bg-danger-50 border-danger-100 text-danger-700">
+                        {exportError}
                     </div>
                 )}
             </div>

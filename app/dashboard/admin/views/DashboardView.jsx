@@ -3,27 +3,67 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../../../lib/clientApi";
 import { getAutoQuarterName } from "../../../../lib/quarterUtils";
-import { Stat, Alert } from "../../../../components/ui";
+import { Stat, Alert, ProgressBar } from "../../../../components/ui";
+import { AP, SEMANTIC } from "../../../../components/ui/tokens";
 import QuarterCountdown from "../../../../components/QuarterCountdown";
 
-// Quick-access tile — pure presentation, onClick is a tab-switch or export handler.
-function QuickAction({ label, sub, color = "#003087", onClick, icon }) {
+// Stage accent ramp — shared meaning with PipelineView (Self → HR).
+const STAGE_META = [
+    { key: "s1", label: "Self", color: SEMANTIC.primary.DEFAULT },
+    { key: "s2", label: "BM / HOD", color: SEMANTIC.success.DEFAULT },
+    { key: "s3", label: "Cluster", color: AP.orange },
+    { key: "s4", label: "HR", color: SEMANTIC.danger.DEFAULT },
+];
+
+/**
+ * One branch's stage-by-stage progress as a responsive card — replaces the old
+ * 1200px-wide table with its cryptic In/Ev/Cl/Pe legend. Four mini progress
+ * meters (Self → HR), each showing evaluated / in-stage + cleared.
+ */
+function BranchProgressRow({ b }) {
+    const expected = b.branchType === "BIG" ? 4 : 3;
+    const stages = [
+        { total: b.totalEmployees, evaluated: b.stage1.submitted, cleared: b.stage1.shortlisted },
+        { total: b.stage1.shortlisted, evaluated: b.stage2.evaluated || 0, cleared: b.stage2.shortlisted },
+        { total: b.stage2.shortlisted, evaluated: b.stage3.evaluated || 0, cleared: b.stage3.shortlisted },
+        { total: b.stage3.shortlisted, evaluated: b.stage4.evaluated || 0, cleared: b.stage4.shortlisted },
+    ];
     return (
-        <button
-            type="button"
-            onClick={onClick}
-            className="group bg-white border border-ap-border hover:border-ap-blue/40 hover:shadow-card-hover rounded-card p-3 sm:p-4 text-left transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-ap-blue/20"
-        >
-            <span className="w-9 h-9 rounded-lg flex items-center justify-center mb-2" style={{ backgroundColor: `${color}14`, color }} aria-hidden="true">
-                {icon}
-            </span>
-            <span className="block text-[13px] font-bold text-gray-900 group-hover:text-ap-blue transition-colors">{label}</span>
-            {sub && <span className="block text-[11px] text-gray-400 mt-0.5">{sub}</span>}
-        </button>
+        <div className="border border-ap-border rounded-xl p-3 sm:p-4">
+            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-bold text-gray-900 truncate">{b.branchName}</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${b.branchType === "BIG" ? "bg-ap-blue-50 text-ap-blue border-ap-blue-100" : "bg-ap-bg text-gray-600 border-ap-border"}`}>{b.branchType}</span>
+                </div>
+                <span className="text-[11px] font-bold text-gray-500 whitespace-nowrap">
+                    {b.totalEmployees} employees
+                    <span className="mx-1.5 text-gray-300">·</span>
+                    Winners <span className={b.winners.length >= expected ? "text-success-700" : "text-warning-700"}>{b.winners.length}/{expected}</span>
+                </span>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                {stages.map((s, i) => {
+                    const meta = STAGE_META[i];
+                    const started = s.total > 0;
+                    const evaluated = Math.min(s.evaluated, s.total);
+                    const pct = started ? Math.round((evaluated / s.total) * 100) : 0;
+                    return (
+                        <div key={meta.key} className="rounded-lg border border-ap-border bg-ap-bg/60 px-2.5 py-2">
+                            <div className="flex items-center justify-between mb-1.5">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{meta.label}</span>
+                                <span className="text-[11px] font-bold tabular-nums text-gray-700">{started ? `${evaluated}/${s.total}` : "—"}</span>
+                            </div>
+                            <ProgressBar value={pct} color={meta.color} height={5} />
+                            <p className="text-[10px] text-gray-400 mt-1 m-0">{started ? `${s.cleared} cleared` : "Not started"}</p>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
     );
 }
 
-/** Admin overview tab: quarter status, KPI strip, quick access, branch progress, winners, activity. */
+/** Admin command center: alerts, quarter status, KPI strip, branch progress, activity. */
 export default function DashboardView({
     quarterProgress,
     progressLoading,
@@ -36,7 +76,6 @@ export default function DashboardView({
     onRequestClose,
     onRequestStartAuto,
     onRefresh,
-    onNavigate,
 }) {
     const [dismissedAlerts, setDismissedAlerts] = useState([]);
     const [activity, setActivity] = useState([]);
@@ -97,7 +136,7 @@ export default function DashboardView({
         URL.revokeObjectURL(url);
     };
 
-    // Alerts derived from quarter progress.
+    // Alerts derived from quarter progress (Important Alerts panel).
     const alerts = useMemo(() => {
         if (!quarterProgress) return [];
         const out = [];
@@ -116,8 +155,32 @@ export default function DashboardView({
     }, [quarterProgress]);
     const visibleAlerts = alerts.filter(a => !dismissedAlerts.includes(a.id));
 
+    // Derived KPI values (computed once per progress payload).
+    const kpis = useMemo(() => {
+        if (!quarterProgress) return null;
+        const os = quarterProgress.overallStats || {};
+        const branchList = quarterProgress.branches || [];
+        const branchCount = branchList.length;
+        const bigCount = branchList.filter((b) => b.branchType === "BIG").length;
+        const totalEmp = os.totalEmployees || 0;
+        const submitted = os.totalSubmitted || 0;
+        const winnerCount = os.quarterWinners?.length || branchList.reduce((s, b) => s + (b.winners?.length || 0), 0);
+        return {
+            totalEmp,
+            submitted,
+            pending: Math.max(0, totalEmp - submitted),
+            completion: os.overallPercentage ?? 0,
+            branchCount,
+            bigCount,
+            smallCount: branchCount - bigCount,
+            winnerCount,
+            deptCount: quarterProgress.departments?.length || 0,
+        };
+    }, [quarterProgress]);
+
     return (
         <div className="space-y-6">
+            {/* Important Alerts */}
             {visibleAlerts.length > 0 && (
                 <div className="space-y-2">
                     {visibleAlerts.map((a) => (
@@ -153,7 +216,7 @@ export default function DashboardView({
                                         </option>
                                     ))}
                                 </select>
-                                <span className={`text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border ${quarterProgress.quarter.status === "ACTIVE" ? "bg-ap-blue-50 text-ap-blue border-[#90CAF9]" : "bg-[#FFEBEE] text-[#D32F2F] border-[#EF9A9A]"}`}>
+                                <span className={`text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border ${quarterProgress.quarter.status === "ACTIVE" ? "bg-success-50 text-success-700 border-success-100" : "bg-gray-100 text-gray-500 border-gray-300"}`}>
                                     {quarterProgress.quarter.status}
                                 </span>
                                 {quarterProgress.quarter.status === "CLOSED" && (
@@ -168,211 +231,67 @@ export default function DashboardView({
                         </div>
                         <QuarterCountdown quarter={quarterProgress.quarter} compact className="w-full lg:max-w-xl lg:flex-1" />
                         {quarterProgress.quarter.status === "ACTIVE" && quarterProgress.quarter.id === activeQuarterId && (
-                            <button onClick={onRequestClose} disabled={quarterLoading} className="w-full sm:w-auto px-4 py-2 bg-[#D32F2F] hover:bg-[#B71C1C] text-white font-bold rounded-lg text-sm transition-colors cursor-pointer shadow-sm">
+                            <button onClick={onRequestClose} disabled={quarterLoading} className="w-full sm:w-auto px-4 py-2 bg-danger hover:bg-danger-700 text-white font-bold rounded-lg text-sm transition-colors cursor-pointer shadow-sm">
                                 Close Quarter
                             </button>
                         )}
                     </div>
 
-                    {/* KPI strip */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
-                        <Stat
-                            label="Total Employees"
-                            value={quarterProgress.overallStats.totalEmployees}
-                            color="#1A1A2E"
-                        />
-                        <Stat
-                            label="Submitted"
-                            value={quarterProgress.overallStats.totalSubmitted}
-                            color="#003087"
-                            sub={`of ${quarterProgress.overallStats.totalEmployees}`}
-                        />
-                        <Stat
-                            label="Completion"
-                            value={`${quarterProgress.overallStats.overallPercentage}%`}
-                            color="#00843D"
-                        />
-                        <Stat
-                            label="Winners"
-                            value={
-                                quarterProgress.overallStats.quarterWinners?.length > 0
-                                    ? `${quarterProgress.overallStats.quarterWinners.length} / ${quarterProgress.departments.length}`
-                                    : "—"
-                            }
-                            color="#F7941D"
-                            sub={quarterProgress.overallStats.quarterWinners?.length > 0 ? undefined : "In progress"}
-                        />
-                    </div>
-
-                    {/* Quick Access */}
-                    <div>
-                        <h3 className="text-[12px] font-bold uppercase tracking-wider text-gray-400 mb-2">Quick Access</h3>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-                            <QuickAction
-                                label="Employees"
-                                sub="Directory, add & edit"
-                                color="#003087"
-                                onClick={() => onNavigate("employees")}
-                                icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6-4a3 3 0 11-3-3" /></svg>}
-                            />
-                            <QuickAction
-                                label="Pipeline"
-                                sub="Stage-wise progress"
-                                color="#00843D"
-                                onClick={() => onNavigate("pipeline")}
-                                icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>}
-                            />
-                            <QuickAction
-                                label="Reports"
-                                sub="Quarter summaries"
-                                color="#F7941D"
-                                onClick={() => onNavigate("reports")}
-                                icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
-                            />
-                            <QuickAction
-                                label="Branches"
-                                sub="Manage & import"
-                                color="#6A1B9A"
-                                onClick={() => onNavigate("branches")}
-                                icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>}
-                            />
-                            <QuickAction
-                                label="Questions"
-                                sub="Question bank"
-                                color="#0369A1"
-                                onClick={() => onNavigate("questions")}
-                                icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-                            />
-                            <QuickAction
-                                label="Audit Logs"
-                                sub="Activity history"
-                                color="#374151"
-                                onClick={() => onNavigate("logs")}
-                                icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-                            />
-                            <QuickAction
-                                label="Export CSV"
-                                sub="Quarter report"
-                                color="#00843D"
-                                onClick={async () => { const d = await fetchReport(); if (d) exportCSV(d); }}
-                                icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
-                            />
-                            <QuickAction
-                                label="Refresh"
-                                sub="Reload live data"
-                                color="#003087"
-                                onClick={() => onRefresh(selectedQuarterId)}
-                                icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+                    {/* KPI strip — 6 command-center metrics */}
+                    {kpis && (
+                        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2 sm:gap-3">
+                            <Stat label="Total Employees" value={kpis.totalEmp} color={AP.dark} />
+                            <Stat label="Submitted" value={kpis.submitted} sub={`of ${kpis.totalEmp}`} color={SEMANTIC.primary.DEFAULT} />
+                            <Stat label="Branches" value={kpis.branchCount} sub={`${kpis.bigCount} big · ${kpis.smallCount} small`} color={SEMANTIC.info.DEFAULT} />
+                            <Stat label="Completion" value={`${kpis.completion}%`} color={SEMANTIC.success.DEFAULT} />
+                            <Stat label="Pending" value={kpis.pending} sub="self-assessment" color={SEMANTIC.warning.DEFAULT} />
+                            <Stat
+                                label="Winners"
+                                value={kpis.winnerCount > 0 && kpis.deptCount > 0 ? `${kpis.winnerCount} / ${kpis.deptCount}` : kpis.winnerCount || "—"}
+                                sub={kpis.winnerCount > 0 ? "declared" : "in progress"}
+                                color={AP.orange}
                             />
                         </div>
-                    </div>
+                    )}
 
-                    {/* Branch-wise Stage Progress */}
+                    {/* Branch Progress Overview — responsive, replaces the wide table */}
                     {quarterProgress.branches && quarterProgress.branches.length > 0 && (
                         <div className="bg-white border border-ap-border shadow-card rounded-card p-4 sm:p-6">
-                            <h3 className="text-lg font-bold text-ap-blue mb-1 flex items-center gap-2">
-                                Branch-wise Stage Progress
-                            </h3>
-                            <p className="text-[11px] text-gray-500 mb-4 leading-relaxed">
-                                Each stage shows <b className="text-gray-900">In</b> (in stage) ·
-                                {" "}<b className="text-ap-blue">Ev</b> (evaluated) ·
-                                {" "}<b className="text-ap-green">Cl</b> (cleared) ·
-                                {" "}<b className="text-[#E65100]">Pe</b> (pending).
-                                {" "}Employees cleared in one stage flow into the next stage&apos;s <b className="text-gray-900">In</b> count.
-                            </p>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-[12px] border-collapse min-w-[1200px]">
-                                    <thead className="bg-gray-50">
-                                        <tr>
-                                            <th className="text-left px-3 py-2 font-bold text-gray-700">Branch</th>
-                                            <th className="text-left px-3 py-2 font-bold text-gray-700">Type</th>
-                                            <th className="text-right px-3 py-2 font-bold text-gray-700">Employees</th>
-                                            <th className="text-right px-3 py-2 font-bold text-ap-blue">Stage 1<br /><span className="text-[9px] font-medium text-gray-500">Self assessment</span></th>
-                                            <th className="text-right px-3 py-2 font-bold text-ap-blue">Stage 2<br /><span className="text-[9px] font-medium text-gray-500">BM / HOD</span></th>
-                                            <th className="text-right px-3 py-2 font-bold text-ap-blue">Stage 3<br /><span className="text-[9px] font-medium text-gray-500">Cluster Manager</span></th>
-                                            <th className="text-right px-3 py-2 font-bold text-ap-blue">Stage 4<br /><span className="text-[9px] font-medium text-gray-500">HR</span></th>
-                                            <th className="text-center px-3 py-2 font-bold text-[#F57C00]">Winners<br /><span className="text-[9px] font-medium text-gray-500">(of expected)</span></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {quarterProgress.branches.map((b) => {
-                                            const expected = b.branchType === "BIG" ? 4 : 3;
-                                            const stages = [
-                                                { total: b.totalEmployees, evaluated: b.stage1.submitted, cleared: b.stage1.shortlisted },
-                                                { total: b.stage1.shortlisted, evaluated: b.stage2.evaluated || 0, cleared: b.stage2.shortlisted },
-                                                { total: b.stage2.shortlisted, evaluated: b.stage3.evaluated || 0, cleared: b.stage3.shortlisted },
-                                                { total: b.stage3.shortlisted, evaluated: b.stage4.evaluated || 0, cleared: b.stage4.shortlisted },
-                                            ];
-                                            return (
-                                                <tr key={b.branchId} className="border-t border-ap-border hover:bg-[#FAFCFF]">
-                                                    <td className="px-3 py-2 font-bold text-gray-900">{b.branchName}</td>
-                                                    <td className="px-3 py-2">
-                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${b.branchType === "BIG" ? "bg-[#F3E5F5] text-[#6A1B9A] border-[#CE93D8]" : "bg-[#FFF8E1] text-[#F57F17] border-[#FFE082]"}`}>{b.branchType}</span>
-                                                    </td>
-                                                    <td className="px-3 py-2 text-right font-bold">{b.totalEmployees}</td>
-                                                    {stages.map((s, i) => {
-                                                        const started = s.total > 0;
-                                                        const evaluated = Math.min(s.evaluated, s.total);
-                                                        const pending = Math.max(0, s.total - evaluated);
-                                                        return (
-                                                            <td key={i} className="px-3 py-2 text-right">
-                                                                {started ? (
-                                                                    <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px]">
-                                                                        <span className="text-gray-400">In <b className="text-gray-900">{s.total}</b></span>
-                                                                        <span className="text-gray-200">·</span>
-                                                                        <span className="text-gray-400">Ev <b className="text-ap-blue">{evaluated}</b></span>
-                                                                        <span className="text-gray-200">·</span>
-                                                                        <span className="text-gray-400">Cl <b className="text-ap-green">{s.cleared}</b></span>
-                                                                        <span className="text-gray-200">·</span>
-                                                                        <span className="text-gray-400">Pe <b className="text-[#E65100]">{pending}</b></span>
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="text-[10px] text-gray-300">Not started</span>
-                                                                )}
-                                                            </td>
-                                                        );
-                                                    })}
-                                                    <td className="px-3 py-2 text-center">
-                                                        <span className={`font-bold ${b.winners.length >= expected ? "text-ap-green" : "text-[#F57C00]"}`}>{b.winners.length} / {expected}</span>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+                            <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+                                <div className="min-w-0">
+                                    <h3 className="text-base font-bold text-gray-900 m-0">Branch Progress Overview</h3>
+                                    <p className="text-[11px] text-gray-500 mt-0.5 m-0">
+                                        Evaluated / in-stage per branch · <b className="text-success-700">cleared</b> = passed to the next stage.
+                                    </p>
+                                </div>
+                                <div className="flex gap-2 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => onRefresh(selectedQuarterId)}
+                                        className="h-9 px-3 inline-flex items-center gap-1.5 bg-white border border-ap-border hover:bg-gray-50 text-gray-600 text-[13px] font-bold rounded-lg cursor-pointer transition-colors"
+                                    >
+                                        Refresh
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={async () => { const d = await fetchReport(); if (d) exportCSV(d); }}
+                                        className="h-9 px-3 inline-flex items-center gap-1.5 bg-white border border-ap-border hover:bg-gray-50 text-success-700 text-[13px] font-bold rounded-lg cursor-pointer transition-colors"
+                                    >
+                                        Export CSV
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                {quarterProgress.branches.map((b) => (
+                                    <BranchProgressRow key={b.branchId} b={b} />
+                                ))}
                             </div>
                         </div>
                     )}
 
-                    {/* Branch Winners List */}
-                    <div className="bg-gradient-to-r from-[#FFF8E1] to-[#FFF3E0] border border-[#FFCC80] rounded-card p-4 sm:p-6 shadow-card">
-                        <h3 className="text-lg font-bold text-[#F57C00] mb-3 flex items-center gap-2">
-                            <span className="text-xl" aria-hidden="true">🏆</span> Branch Winners
-                        </h3>
-                        {quarterProgress.branches && quarterProgress.branches.some(b => b.winners.length > 0) ? (
-                            <div className="space-y-3">
-                                {quarterProgress.branches.filter(b => b.winners.length > 0).map(b => (
-                                    <div key={b.branchId} className="bg-white/80 border border-[#FFE0B2] rounded-lg p-3">
-                                        <p className="text-[13px] font-bold text-[#F57C00] mb-2 m-0">{b.branchName} <span className="text-[10px] font-medium text-gray-500">· {b.branchType === "BIG" ? "4 expected" : "3 expected"}</span></p>
-                                        <div className="flex flex-wrap gap-2">
-                                            {b.winners.map((w, i) => (
-                                                <span key={w.id} className="text-[11px] font-bold px-2 py-1 rounded-full border"
-                                                    style={{ backgroundColor: w.collarType === "WHITE_COLLAR" ? "#E3F2FD" : "#E8F5E9", color: w.collarType === "WHITE_COLLAR" ? "#003087" : "#00843D", borderColor: w.collarType === "WHITE_COLLAR" ? "#90CAF9" : "#A5D6A7" }}>
-                                                    {i + 1}. {w.name} · {w.collarType === "WHITE_COLLAR" ? "WC" : "BC"}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="text-sm text-gray-400 italic m-0">No winners declared yet. Evaluation in progress.</p>
-                        )}
-                    </div>
-
                     {/* Recent Activity */}
                     <div className="bg-white border border-ap-border shadow-card rounded-card p-4 sm:p-6">
-                        <h3 className="text-lg font-bold text-ap-blue mb-3">Recent Activity</h3>
+                        <h3 className="text-base font-bold text-gray-900 mb-3">Recent Activity</h3>
                         {activity.length === 0 ? (
                             <p className="text-sm text-gray-400 italic m-0">No recent activity.</p>
                         ) : (
@@ -392,13 +311,6 @@ export default function DashboardView({
                             </ul>
                         )}
                     </div>
-
-                    {/* Department-level progress lives in the per-branch dashboard */}
-                    <div className="bg-gray-50 border border-ap-border rounded-card p-5 text-center">
-                        <p className="text-sm text-gray-500 m-0">
-                            Department-level progress has moved into each branch&apos;s dashboard. Pick a branch from the dropdown at the top to see its evaluation pipeline.
-                        </p>
-                    </div>
                 </>
             ) : (
                 <div className="bg-white border border-ap-border rounded-card p-10 text-center shadow-card">
@@ -411,7 +323,7 @@ export default function DashboardView({
                     </p>
 
                     {quarterMsg.text && (
-                        <div className={`mb-4 p-3 rounded-lg text-sm border max-w-md mx-auto ${quarterMsg.type === "success" ? "bg-[#E8F5E9] border-[#A5D6A7] text-[#1B5E20]" : "bg-[#FFEBEE] border-[#EF9A9A] text-[#D32F2F]"}`}>{quarterMsg.text}</div>
+                        <div className={`mb-4 p-3 rounded-lg text-sm border max-w-md mx-auto ${quarterMsg.type === "success" ? "bg-success-50 border-success-100 text-success-700" : "bg-danger-50 border-danger-100 text-danger-700"}`}>{quarterMsg.text}</div>
                     )}
 
                     <div className="flex gap-3 justify-center flex-wrap">

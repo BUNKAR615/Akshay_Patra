@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../../../lib/clientApi";
 import DataTable from "../../../../components/ui/DataTable";
-import { Modal, SearchInput, useToast } from "../../../../components/ui";
+import { Modal, Drawer, SearchInput, useToast } from "../../../../components/ui";
 
 const ROLE_BADGE = (r) =>
     r === "EMPLOYEE" ? "bg-gray-50 text-gray-700 border-gray-200"
@@ -62,6 +62,9 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
     const [editMsg, setEditMsg] = useState({ type: "", text: "" });
 
     const [excelLoading, setExcelLoading] = useState(false);
+
+    // Read-only employee details drawer — the "View" in the Employee Hub.
+    const [detailEmp, setDetailEmp] = useState(null);
 
     const fetchEmployees = async (pg = empPage, filters = empFilter) => {
         setEmpLoading(true);
@@ -316,7 +319,7 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
         { key: "designation", header: "Designation", hideBelow: "lg", render: (e) => <span className="text-gray-500">{e.designation}</span> },
         {
             key: "mobile", header: "Mobile", hideBelow: "lg",
-            render: (e) => e.mobile ? <a href={`tel:${e.mobile}`} className="text-ap-blue hover:underline">{e.mobile}</a> : <span className="text-gray-300 italic text-xs">Not provided</span>,
+            render: (e) => e.mobile ? <a href={`tel:${e.mobile}`} onClick={(ev) => ev.stopPropagation()} className="text-ap-blue hover:underline">{e.mobile}</a> : <span className="text-gray-300 italic text-xs">Not provided</span>,
         },
         {
             key: "collar", header: "Collar", hideBelow: "md",
@@ -342,8 +345,8 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
                 const roles = e.roles || [e.role];
                 return (
                     <div className="flex gap-1.5">
-                        <button onClick={() => openEditModal(e)} className="text-xs px-3 py-1.5 bg-ap-blue hover:bg-ap-green text-white rounded-lg font-semibold transition-colors cursor-pointer">Edit</button>
-                        {!roles.includes("ADMIN") && <button onClick={() => setRemoveId(e.id)} className="text-xs px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg font-semibold hover:bg-red-100 cursor-pointer">Remove</button>}
+                        <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="text-xs px-3 py-1.5 bg-ap-blue hover:bg-ap-green text-white rounded-lg font-semibold transition-colors cursor-pointer">Edit</button>
+                        {!roles.includes("ADMIN") && <button onClick={(ev) => { ev.stopPropagation(); setRemoveId(e.id); }} className="text-xs px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg font-semibold hover:bg-red-100 cursor-pointer">Remove</button>}
                     </div>
                 );
             },
@@ -497,6 +500,7 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
                 columns={columns}
                 rows={employees}
                 rowKey={(e) => e.id}
+                onRowClick={(e) => setDetailEmp(e)}
                 loading={empLoading}
                 emptyIcon="🧑‍💼"
                 emptyTitle="No employees found"
@@ -550,8 +554,8 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
                         </div>
                         {isAdmin && (
                             <div className="flex gap-1.5 pt-1">
-                                <button onClick={() => openEditModal(e)} className="text-xs px-3 py-1.5 bg-ap-blue text-white rounded-lg font-semibold cursor-pointer">Edit</button>
-                                {!(e.roles || [e.role]).includes("ADMIN") && <button onClick={() => setRemoveId(e.id)} className="text-xs px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg font-semibold cursor-pointer">Remove</button>}
+                                <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="text-xs px-3 py-1.5 bg-ap-blue text-white rounded-lg font-semibold cursor-pointer">Edit</button>
+                                {!(e.roles || [e.role]).includes("ADMIN") && <button onClick={(ev) => { ev.stopPropagation(); setRemoveId(e.id); }} className="text-xs px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg font-semibold cursor-pointer">Remove</button>}
                             </div>
                         )}
                     </div>
@@ -641,6 +645,87 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
                     </div>
                 ))}
             </Modal>
+
+            {/* Read-only Employee Details — the "View" of the Employee Hub.
+                Opens on row click; profile + roles in a side drawer instead of a
+                full page change. Admin actions live in the footer. */}
+            <Drawer
+                open={!!detailEmp}
+                onClose={() => setDetailEmp(null)}
+                title="Employee Details"
+                width={460}
+                footer={isAdmin && detailEmp ? (
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => { const emp = detailEmp; setDetailEmp(null); openEditModal(emp); }}
+                            className="flex-1 py-2.5 bg-ap-blue hover:bg-ap-green text-white rounded-lg text-sm font-bold transition-colors cursor-pointer"
+                        >
+                            Edit
+                        </button>
+                        {!(detailEmp.roles || [detailEmp.role]).includes("ADMIN") && (
+                            <button
+                                onClick={() => { const id = detailEmp.id; setDetailEmp(null); setRemoveId(id); }}
+                                className="flex-1 py-2.5 bg-danger-50 text-danger-700 border border-danger-100 rounded-lg text-sm font-bold hover:bg-danger-100 transition-colors cursor-pointer"
+                            >
+                                Remove
+                            </button>
+                        )}
+                    </div>
+                ) : null}
+            >
+                {detailEmp && (
+                    <div className="space-y-5">
+                        <div className="flex items-center gap-3">
+                            <div className="h-12 w-12 rounded-full bg-ap-blue-50 border border-ap-blue-100 flex items-center justify-center text-ap-blue font-bold text-lg shrink-0">
+                                {detailEmp.name?.charAt(0)?.toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                                <h3 className="text-base font-extrabold text-gray-900 m-0 truncate">{detailEmp.name}</h3>
+                                <p className="text-xs text-gray-500 m-0 font-mono">{detailEmp.empCode || "No employee code"}</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                            <DetailField label="Department" value={detailEmp.department} />
+                            <DetailField label="Branch" value={detailEmp.departmentObj?.branch?.name} />
+                            <DetailField label="Designation" value={detailEmp.designation && detailEmp.designation !== "—" ? detailEmp.designation : null} />
+                            <DetailField label="Mobile" value={detailEmp.mobile} />
+                            <DetailField label="Collar / Category" value={detailEmp.collarType === "WHITE_COLLAR" ? "White Collar" : detailEmp.collarType === "BLUE_COLLAR" ? "Blue Collar" : null} />
+                        </div>
+
+                        <div>
+                            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 m-0">Roles</p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {(detailEmp.roles || [detailEmp.role]).map((r) => (
+                                    <span key={r} className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${ROLE_BADGE(r)}`}>{r.replace(/_/g, " ")}</span>
+                                ))}
+                            </div>
+                        </div>
+
+                        {detailEmp.evaluatorRoles?.length > 0 && (
+                            <div>
+                                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 m-0">Evaluator assignments</p>
+                                <ul className="space-y-1 m-0 p-0 list-none">
+                                    {detailEmp.evaluatorRoles.map((er, i) => (
+                                        <li key={i} className="text-[13px] text-gray-700">
+                                            <span className="font-semibold">{er.role.replace(/_/g, " ")}</span> — {er.department}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </Drawer>
+        </div>
+    );
+}
+
+function DetailField({ label, value }) {
+    return (
+        <div>
+            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-0.5 m-0">{label}</p>
+            <p className="text-[13px] font-semibold text-gray-900 m-0">{value || <span className="text-gray-300 font-normal">—</span>}</p>
         </div>
     );
 }

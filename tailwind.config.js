@@ -34,6 +34,15 @@ module.exports = {
           50: '#FEF4E8',
         },
         'ap-dark': '#0D1B3E',
+        // Semantic intent palette — Primary/Success/Warning/Danger/Info.
+        // Single source of truth for status colors; mirrors SEMANTIC in
+        // components/ui/tokens.js (JS side) and BADGE_PALETTE shades. Use these
+        // instead of literal hex so status meaning stays consistent everywhere.
+        primary: { DEFAULT: '#003087', 50: '#EEF3FB', 100: '#DCE6F7', 600: '#0A3FA0', 700: '#002266' },
+        success: { DEFAULT: '#00843D', 50: '#EBF7F1', 100: '#D2EEDF', 600: '#0A9B4E', 700: '#006B32' },
+        warning: { DEFAULT: '#B45309', 50: '#FFFBEB', 100: '#FEF3C7', 600: '#D97706', 700: '#92400E' },
+        danger: { DEFAULT: '#DC2626', 50: '#FEF2F2', 100: '#FEE2E2', 600: '#DC2626', 700: '#B91C1C' },
+        info: { DEFAULT: '#0369A1', 50: '#EFF6FF', 100: '#DBEAFE', 600: '#0284C7', 700: '#0369A1' },
         // Semantic tokens — single source for surfaces/borders/text.
         'ap-surface': '#FFFFFF',
         'ap-bg': '#F4F6FA',

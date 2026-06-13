@@ -43,13 +43,16 @@ export default function AdminDashboard() {
     const [tab, setTabState] = useState(viewParam || "dashboard");
     const [loading, setLoading] = useState(true);
 
-    // Sidebar drives tab via ?view= query param; keep URL in sync when user triggers setTab.
+    // Sidebar drives tab via ?view= query param; keep URL in sync when user
+    // triggers setTab. We push (not replace) so each view becomes a real history
+    // entry — the browser Back button and the topbar breadcrumb both walk back
+    // naturally, which is why the old hand-rolled in-app "Back" button is gone.
     const setTab = (id) => {
         setTabState(id);
         const params = new URLSearchParams(Array.from(searchParams.entries()));
         if (id === "dashboard") params.delete("view"); else params.set("view", id);
         const qs = params.toString();
-        router.replace(`/dashboard/admin${qs ? `?${qs}` : ""}`, { scroll: false });
+        router.push(`/dashboard/admin${qs ? `?${qs}` : ""}`, { scroll: false });
     };
 
     // React to URL changes from sidebar clicks.
@@ -291,28 +294,17 @@ export default function AdminDashboard() {
 
     return (
         <DashboardShell user={user} title="Admin Panel">
-            {/* Profile Card */}
+            {/* Profile + scope/share toolbar live only on the command-center
+                (dashboard) view. Sub-views have their own headers + breadcrumbs,
+                so repeating these on every tab was pure clutter; the old in-app
+                "Back" button is gone now that tab nav uses router.push (browser
+                back + the topbar breadcrumb both walk back naturally). */}
+            {tab === "dashboard" && (
+            <>
             <UserProfileCard user={user} roles={user?.departmentRoles?.map(dr => dr.role)} />
 
-            {/* Page toolbar — back, branch scope selector + share */}
+            {/* Branch scope selector + share portal link */}
             <div className="mb-5 bg-white border border-ap-border rounded-card shadow-card px-3 sm:px-4 py-2.5 flex items-center gap-2 sm:gap-3 flex-wrap">
-                {/* In-app Back — tab switches use router.replace (no history entry),
-                    so the browser back button would land on /login; this gives a
-                    safe path back instead. */}
-                {tab !== "dashboard" && (
-                    <>
-                        <button
-                            type="button"
-                            onClick={() => setTab("dashboard")}
-                            title="Back to dashboard"
-                            className="h-9 px-3 inline-flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-ap-blue-50 hover:border-ap-blue/40 text-ap-blue text-[13px] font-bold rounded-lg cursor-pointer transition-colors shrink-0"
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                            Back
-                        </button>
-                        <span className="hidden sm:block w-px h-7 bg-ap-border" />
-                    </>
-                )}
                 <span className="hidden sm:flex w-9 h-9 rounded-lg bg-ap-blue-50 text-ap-blue items-center justify-center shrink-0" aria-hidden="true">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
                 </span>
@@ -354,6 +346,8 @@ export default function AdminDashboard() {
                     )}
                 </div>
             </div>
+            </>
+            )}
 
             {/* ═══════ Lazily-loaded tab views ═══════ */}
             {tab === "dashboard" && (
