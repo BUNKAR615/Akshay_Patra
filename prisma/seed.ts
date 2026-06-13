@@ -128,11 +128,11 @@ async function main() {
     if (existing) {
       await prisma.question.update({
         where: { id: existing.id },
-        data: { textHindi: q.textHindi, category: q.category as any, level: q.level as any, isActive: q.isActive },
+        data: { textHindi: q.textHindi, category: q.category as any, level: q.level as any, collarType: ((q as any).collarType ?? null) as any, isActive: q.isActive },
       });
     } else {
       await prisma.question.create({
-        data: { text: q.text, textHindi: q.textHindi, category: q.category as any, level: q.level as any, isActive: q.isActive },
+        data: { text: q.text, textHindi: q.textHindi, category: q.category as any, level: q.level as any, collarType: ((q as any).collarType ?? null) as any, isActive: q.isActive },
       });
     }
   }

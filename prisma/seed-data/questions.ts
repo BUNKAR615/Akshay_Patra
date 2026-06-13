@@ -129,4 +129,77 @@ export const QUESTIONS = [
   { text: 'This employee is reliable and trustworthy at the highest level.', textHindi: 'यह कर्मचारी उच्चतम स्तर पर विश्वसनीय और भरोसेमंद है।', category: 'INTEGRITY', level: 'CLUSTER_MANAGER', isActive: true },
   { text: 'This employee consistently upholds the mission of Akshaya Patra.', textHindi: 'यह कर्मचारी लगातार अक्षय पात्र के मिशन को बनाए रखता/रखती है।', category: 'INTEGRITY', level: 'CLUSTER_MANAGER', isActive: true },
   { text: 'This employee is a role model for ethical conduct in the cluster.', textHindi: 'यह कर्मचारी क्लस्टर में नैतिक आचरण के लिए एक आदर्श है।', category: 'INTEGRITY', level: 'CLUSTER_MANAGER', isActive: true },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  CATEGORY-SPECIFIC SETS  (collarType: 'BLUE_COLLAR' | 'WHITE_COLLAR')
+  //  Questions ABOVE have no collarType → SHARED (apply to both categories).
+  //  Questions BELOW apply ONLY to the tagged category. Blue-collar = simple,
+  //  practical, work-level; White-collar = role / knowledge / decision based.
+  //  To run a quarter with FULLY separate sets, start it in MANUAL mode and
+  //  include only the collar-specific questions (toggle the shared ones off).
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ───────── STAGE 1 · SELF · BLUE-COLLAR (simple, practical) ─────────
+  { text: 'I reach my work area on time and am ready before my shift starts.', textHindi: 'मैं समय पर अपने काम की जगह पहुँचता/पहुँचती हूँ और शिफ्ट शुरू होने से पहले तैयार रहता/रहती हूँ।', category: 'ATTENDANCE', level: 'SELF', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'I inform my supervisor in advance before taking leave.', textHindi: 'छुट्टी लेने से पहले मैं अपने सुपरवाइज़र को पहले से सूचित करता/करती हूँ।', category: 'ATTENDANCE', level: 'SELF', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'I wear my cap, apron, and gloves properly while working.', textHindi: 'काम करते समय मैं अपनी टोपी, एप्रन और दस्ताने सही तरीके से पहनता/पहनती हूँ।', category: 'DISCIPLINE', level: 'SELF', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'I keep my work area and tools clean every day.', textHindi: 'मैं हर दिन अपने काम की जगह और औज़ार साफ रखता/रखती हूँ।', category: 'DISCIPLINE', level: 'SELF', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'I finish the work given to me within the time told.', textHindi: 'मुझे जो काम दिया जाता है उसे मैं बताए गए समय में पूरा करता/करती हूँ।', category: 'PRODUCTIVITY', level: 'SELF', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'I avoid wasting food, water, and raw material during work.', textHindi: 'काम के दौरान मैं खाना, पानी और कच्चा माल बर्बाद होने से बचाता/बचाती हूँ।', category: 'PRODUCTIVITY', level: 'SELF', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'I help my co-workers when there is heavy work.', textHindi: 'जब ज़्यादा काम होता है तो मैं अपने साथी कर्मचारियों की मदद करता/करती हूँ।', category: 'TEAMWORK', level: 'SELF', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'I listen to my supervisor and follow the instructions given.', textHindi: 'मैं अपने सुपरवाइज़र की बात सुनता/सुनती हूँ और दिए गए निर्देशों का पालन करता/करती हूँ।', category: 'TEAMWORK', level: 'SELF', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'If I see a problem like a leak, spillage, or breakdown, I report it immediately.', textHindi: 'अगर मुझे रिसाव, सामान गिरना या मशीन खराबी जैसी कोई समस्या दिखती है तो मैं तुरंत बताता/बताती हूँ।', category: 'INITIATIVE', level: 'SELF', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'I am ready to learn new work when I am asked to.', textHindi: 'जब मुझे कहा जाता है तो मैं नया काम सीखने के लिए तैयार रहता/रहती हूँ।', category: 'INITIATIVE', level: 'SELF', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'I follow safety rules while using machines, gas, and equipment.', textHindi: 'मशीन, गैस और उपकरण का उपयोग करते समय मैं सुरक्षा नियमों का पालन करता/करती हूँ।', category: 'INTEGRITY', level: 'SELF', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: "I do not take the organization's items for personal use.", textHindi: 'मैं संगठन का सामान अपने निजी उपयोग के लिए नहीं लेता/लेती।', category: 'INTEGRITY', level: 'SELF', collarType: 'BLUE_COLLAR', isActive: true },
+
+  // ───────── STAGE 1 · SELF · WHITE-COLLAR (role / knowledge / decision) ─────────
+  { text: 'I plan my tasks and prioritise them based on importance and deadlines.', textHindi: 'मैं अपने कार्यों की योजना बनाता/बनाती हूँ और महत्व व समय-सीमा के आधार पर उन्हें प्राथमिकता देता/देती हूँ।', category: 'PRODUCTIVITY', level: 'SELF', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'I take ownership of my work and complete it without needing reminders.', textHindi: 'मैं अपने काम की जिम्मेदारी लेता/लेती हूँ और बिना याद दिलाए उसे पूरा करता/करती हूँ।', category: 'PRODUCTIVITY', level: 'SELF', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'I communicate clearly with my team and other departments.', textHindi: 'मैं अपनी टीम और अन्य विभागों के साथ स्पष्ट रूप से संवाद करता/करती हूँ।', category: 'COMMUNICATION', level: 'SELF', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'I document and share information so that others can act on it.', textHindi: 'मैं जानकारी को दस्तावेज़ करता/करती हूँ और साझा करता/करती हूँ ताकि दूसरे उस पर कार्य कर सकें।', category: 'COMMUNICATION', level: 'SELF', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'I suggest improvements to make processes more efficient.', textHindi: 'मैं प्रक्रियाओं को अधिक कुशल बनाने के लिए सुधार के सुझाव देता/देती हूँ।', category: 'INITIATIVE', level: 'SELF', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'I take decisions within my role without always waiting for instructions.', textHindi: 'मैं हमेशा निर्देशों की प्रतीक्षा किए बिना अपनी भूमिका के भीतर निर्णय लेता/लेती हूँ।', category: 'INITIATIVE', level: 'SELF', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'I coordinate with colleagues to achieve shared goals.', textHindi: 'मैं साझा लक्ष्यों को प्राप्त करने के लिए सहकर्मियों के साथ समन्वय करता/करती हूँ।', category: 'TEAMWORK', level: 'SELF', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'I support and guide junior team members.', textHindi: 'मैं कनिष्ठ टीम सदस्यों का समर्थन और मार्गदर्शन करता/करती हूँ।', category: 'TEAMWORK', level: 'SELF', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'I follow organisational policies and meet reporting requirements on time.', textHindi: 'मैं संगठनात्मक नीतियों का पालन करता/करती हूँ और रिपोर्टिंग आवश्यकताओं को समय पर पूरा करता/करती हूँ।', category: 'DISCIPLINE', level: 'SELF', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'I handle data and information responsibly and keep it confidential.', textHindi: 'मैं डेटा और जानकारी को जिम्मेदारी से संभालता/संभालती हूँ और उसे गोपनीय रखता/रखती हूँ।', category: 'INTEGRITY', level: 'SELF', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'I am honest about progress, risks, and mistakes in my work.', textHindi: 'मैं अपने काम की प्रगति, जोखिमों और गलतियों के बारे में ईमानदार रहता/रहती हूँ।', category: 'INTEGRITY', level: 'SELF', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'I use the available tools and systems effectively to do my work.', textHindi: 'मैं अपना काम करने के लिए उपलब्ध साधनों और प्रणालियों का प्रभावी उपयोग करता/करती हूँ।', category: 'PRODUCTIVITY', level: 'SELF', collarType: 'WHITE_COLLAR', isActive: true },
+
+  // ───────── STAGE 2 · BRANCH MANAGER · BLUE-COLLAR (practical) ─────────
+  { text: 'This employee is regular and punctual for their shift.', textHindi: 'यह कर्मचारी अपनी शिफ्ट के लिए नियमित और समयनिष्ठ है।', category: 'ATTENDANCE', level: 'BRANCH_MANAGER', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'This employee follows hygiene and safety rules at work.', textHindi: 'यह कर्मचारी काम पर स्वच्छता और सुरक्षा नियमों का पालन करता/करती है।', category: 'DISCIPLINE', level: 'BRANCH_MANAGER', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'This employee follows the instructions given by supervisors.', textHindi: 'यह कर्मचारी सुपरवाइज़र द्वारा दिए गए निर्देशों का पालन करता/करती है।', category: 'DISCIPLINE', level: 'BRANCH_MANAGER', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'This employee completes assigned work properly and on time.', textHindi: 'यह कर्मचारी सौंपा गया काम सही तरीके से और समय पर पूरा करता/करती है।', category: 'PRODUCTIVITY', level: 'BRANCH_MANAGER', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'This employee maintains work quality and avoids wastage.', textHindi: 'यह कर्मचारी काम की गुणवत्ता बनाए रखता/रखती है और बर्बादी से बचता/बचती है।', category: 'PRODUCTIVITY', level: 'BRANCH_MANAGER', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'This employee cooperates well with co-workers.', textHindi: 'यह कर्मचारी साथी कर्मचारियों के साथ अच्छे से सहयोग करता/करती है।', category: 'TEAMWORK', level: 'BRANCH_MANAGER', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'This employee reports problems and is willing to learn new tasks.', textHindi: 'यह कर्मचारी समस्याओं की जानकारी देता/देती है और नए काम सीखने के लिए तैयार रहता/रहती है।', category: 'INITIATIVE', level: 'BRANCH_MANAGER', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'This employee is honest and takes care of organizational property.', textHindi: 'यह कर्मचारी ईमानदार है और संगठन की संपत्ति का ध्यान रखता/रखती है।', category: 'INTEGRITY', level: 'BRANCH_MANAGER', collarType: 'BLUE_COLLAR', isActive: true },
+
+  // ───────── STAGE 2 · BRANCH MANAGER · WHITE-COLLAR (role / decision) ─────────
+  { text: 'This employee takes ownership and delivers work reliably.', textHindi: 'यह कर्मचारी जिम्मेदारी लेता/लेती है और भरोसेमंद ढंग से काम पूरा करता/करती है।', category: 'PRODUCTIVITY', level: 'BRANCH_MANAGER', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'This employee plans and prioritises work effectively.', textHindi: 'यह कर्मचारी काम की योजना बनाता/बनाती है और प्रभावी ढंग से प्राथमिकता तय करता/करती है।', category: 'PRODUCTIVITY', level: 'BRANCH_MANAGER', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'This employee solves problems and proposes practical improvements.', textHindi: 'यह कर्मचारी समस्याओं का समाधान करता/करती है और व्यावहारिक सुधार सुझाता/सुझाती है।', category: 'INITIATIVE', level: 'BRANCH_MANAGER', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'This employee makes sound decisions within their area of responsibility.', textHindi: 'यह कर्मचारी अपनी जिम्मेदारी के क्षेत्र में सही निर्णय लेता/लेती है।', category: 'INITIATIVE', level: 'BRANCH_MANAGER', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'This employee communicates clearly with the team and stakeholders.', textHindi: 'यह कर्मचारी टीम और संबंधित पक्षों के साथ स्पष्ट रूप से संवाद करता/करती है।', category: 'COMMUNICATION', level: 'BRANCH_MANAGER', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'This employee collaborates across functions and supports juniors.', textHindi: 'यह कर्मचारी विभिन्न कार्यक्षेत्रों में सहयोग करता/करती है और कनिष्ठों का समर्थन करता/करती है।', category: 'TEAMWORK', level: 'BRANCH_MANAGER', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'This employee follows policies and meets reporting standards.', textHindi: 'यह कर्मचारी नीतियों का पालन करता/करती है और रिपोर्टिंग मानकों को पूरा करता/करती है।', category: 'DISCIPLINE', level: 'BRANCH_MANAGER', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'This employee handles information and responsibilities with integrity.', textHindi: 'यह कर्मचारी जानकारी और जिम्मेदारियों को ईमानदारी के साथ संभालता/संभालती है।', category: 'INTEGRITY', level: 'BRANCH_MANAGER', collarType: 'WHITE_COLLAR', isActive: true },
+
+  // ───────── STAGE 3 · CLUSTER MANAGER · BLUE-COLLAR (consistency) ─────────
+  { text: 'This employee shows consistent attendance and reliability over the quarter.', textHindi: 'यह कर्मचारी पूरी तिमाही में निरंतर उपस्थिति और विश्वसनीयता दिखाता/दिखाती है।', category: 'ATTENDANCE', level: 'CLUSTER_MANAGER', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'This employee consistently meets work targets with good quality.', textHindi: 'यह कर्मचारी अच्छी गुणवत्ता के साथ लगातार काम के लक्ष्य पूरे करता/करती है।', category: 'PRODUCTIVITY', level: 'CLUSTER_MANAGER', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'This employee maintains discipline, hygiene, and safety standards.', textHindi: 'यह कर्मचारी अनुशासन, स्वच्छता और सुरक्षा मानकों को बनाए रखता/रखती है।', category: 'DISCIPLINE', level: 'CLUSTER_MANAGER', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'This employee works well within the team and supports daily operations.', textHindi: 'यह कर्मचारी टीम के साथ अच्छे से काम करता/करती है और रोज़मर्रा के कामकाज में सहयोग देता/देती है।', category: 'TEAMWORK', level: 'CLUSTER_MANAGER', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'This employee is willing to take responsibility and learn new tasks.', textHindi: 'यह कर्मचारी जिम्मेदारी लेने और नए काम सीखने के लिए तैयार रहता/रहती है।', category: 'INITIATIVE', level: 'CLUSTER_MANAGER', collarType: 'BLUE_COLLAR', isActive: true },
+  { text: 'This employee demonstrates honesty and a positive work attitude.', textHindi: 'यह कर्मचारी ईमानदारी और सकारात्मक कार्य दृष्टिकोण प्रदर्शित करता/करती है।', category: 'INTEGRITY', level: 'CLUSTER_MANAGER', collarType: 'BLUE_COLLAR', isActive: true },
+
+  // ───────── STAGE 3 · CLUSTER MANAGER · WHITE-COLLAR (leadership / decision) ─────────
+  { text: 'This employee consistently delivers high-quality results with full ownership.', textHindi: 'यह कर्मचारी पूरी जिम्मेदारी के साथ लगातार उच्च गुणवत्ता वाले परिणाम देता/देती है।', category: 'PRODUCTIVITY', level: 'CLUSTER_MANAGER', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'This employee shows leadership potential and drives improvements.', textHindi: 'यह कर्मचारी नेतृत्व क्षमता दिखाता/दिखाती है और सुधार लाता/लाती है।', category: 'INITIATIVE', level: 'CLUSTER_MANAGER', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'This employee makes sound, well-reasoned decisions.', textHindi: 'यह कर्मचारी सोच-समझकर सही निर्णय लेता/लेती है।', category: 'INITIATIVE', level: 'CLUSTER_MANAGER', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'This employee communicates effectively across teams and levels.', textHindi: 'यह कर्मचारी विभिन्न टीमों और स्तरों के बीच प्रभावी ढंग से संवाद करता/करती है।', category: 'COMMUNICATION', level: 'CLUSTER_MANAGER', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'This employee contributes beyond their role and mentors others.', textHindi: 'यह कर्मचारी अपनी भूमिका से आगे बढ़कर योगदान देता/देती है और दूसरों का मार्गदर्शन करता/करती है।', category: 'TEAMWORK', level: 'CLUSTER_MANAGER', collarType: 'WHITE_COLLAR', isActive: true },
+  { text: 'This employee upholds integrity and represents organizational values.', textHindi: 'यह कर्मचारी ईमानदारी बनाए रखता/रखती है और संगठनात्मक मूल्यों का प्रतिनिधित्व करता/करती है।', category: 'INTEGRITY', level: 'CLUSTER_MANAGER', collarType: 'WHITE_COLLAR', isActive: true },
 ];

@@ -45,6 +45,7 @@ async function main() {
                 data: {
                     textHindi: q.textHindi || "",
                     category: q.category,
+                    collarType: q.collarType || null,
                     isActive: true,
                 },
             });
@@ -55,6 +56,7 @@ async function main() {
                     textHindi: q.textHindi || "",
                     category: q.category,
                     level: q.level,
+                    collarType: q.collarType || null,
                     isActive: true,
                 },
             });
