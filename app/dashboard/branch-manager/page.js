@@ -6,6 +6,7 @@ import DashboardShell from "../../../components/DashboardShell";
 import EvaluationForm from "../../../components/EvaluationForm";
 import UserProfileCard from "../../../components/UserProfileCard";
 import { Tabs } from "../../../components/ui";
+import { filterQuestionsByCollar, effectiveCollar } from "../../../lib/questionCollar";
 
 async function api(url, opts) {
     const res = await fetch(url, opts);
@@ -344,11 +345,13 @@ export default function BranchManagerDashboard() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    // Re-shuffle the question order whenever the evaluator opens a different
-    // employee — so the sequence is random per employee, not fixed for all.
+    // Show only the questions applicable to the selected employee's category
+    // (shared + own-collar), then re-shuffle whenever the evaluator opens a
+    // different employee — so the sequence is random per employee, not fixed
+    // for all. The evaluate route re-applies the same collar filter.
     const shuffledQuestions = useMemo(
-        () => shuffle(questions),
-        [questions, selectedEmployee?.userId]
+        () => shuffle(filterQuestionsByCollar(questions, effectiveCollar(selectedEmployee?.collarType))),
+        [questions, selectedEmployee?.userId, selectedEmployee?.collarType]
     );
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");

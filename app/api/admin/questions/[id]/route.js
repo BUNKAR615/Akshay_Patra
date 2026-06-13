@@ -51,6 +51,9 @@ export const PUT = withRole(["ADMIN"], async (request, { params, user }) => {
         if (data.textHindi !== undefined) updateData.textHindi = data.textHindi.trim();
         if (data.category !== undefined) updateData.category = data.category;
         if (data.level !== undefined) updateData.level = data.level;
+        // collarType is intentionally settable to null ("Both") — only skip it
+        // when the key was omitted entirely (e.g. an isActive/include toggle).
+        if (data.collarType !== undefined) updateData.collarType = data.collarType;
         if (data.isActive !== undefined) updateData.isActive = data.isActive;
         if (data.includedInQuarter !== undefined) updateData.includedInQuarter = data.includedInQuarter;
 

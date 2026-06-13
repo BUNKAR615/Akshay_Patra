@@ -172,6 +172,11 @@ model Question {
   text                String
   category            QuestionCategory
   level               EvaluationLevel
+  // Which employee category this question targets:
+  //   null          → applies to BOTH collars (shared / default)
+  //   WHITE_COLLAR  → white-collar employees only
+  //   BLUE_COLLAR   → blue-collar employees only
+  collarType          CollarType?
   isActive            Boolean                    @default(true)
   includedInQuarter   Boolean                    @default(true)
   createdAt           DateTime                   @default(now())
@@ -183,6 +188,7 @@ model Question {
   @@index([category])
   @@index([level])
   @@index([level, isActive])
+  @@index([level, collarType, isActive])
   @@map("questions")
 }
 

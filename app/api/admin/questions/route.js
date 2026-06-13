@@ -31,11 +31,11 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         if (error) return error;
 
         const question = await prisma.question.create({
-            data: { text: data.text.trim(), textHindi: (data.textHindi || "").trim(), category: data.category, level: data.level, isActive: true },
+            data: { text: data.text.trim(), textHindi: (data.textHindi || "").trim(), category: data.category, level: data.level, collarType: data.collarType ?? null, isActive: true },
         });
 
         await prisma.auditLog.create({
-            data: { userId: user.userId, action: "QUESTION_CREATED", details: { questionId: question.id, text: question.text, category: question.category, level: question.level } },
+            data: { userId: user.userId, action: "QUESTION_CREATED", details: { questionId: question.id, text: question.text, category: question.category, level: question.level, collarType: question.collarType } },
         });
 
         return created({ message: "Question created", question });

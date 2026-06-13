@@ -9,6 +9,7 @@ import { evaluateSchema } from "../../../../lib/validators";
 import { createNotification } from "../../../../lib/notifications";
 import { normalizeScore, calculateBranchStage2Score } from "../../../../lib/scoreCalculator";
 import { regenerateBranchStage2 } from "../../../../lib/branchPromotion";
+import { collarPrismaFilter, effectiveCollar } from "../../../../lib/questionCollar";
 
 /**
  * POST /api/branch-manager/evaluate
@@ -90,9 +91,14 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         });
         if (existing) return conflict("Already evaluated this employee");
 
-        // Validate answers against this quarter's BM question set
+        // Validate answers against this quarter's BM question set, restricted
+        // to the questions applicable to THIS employee's category (shared +
+        // own-collar) — the same filter the BM dashboard applies before
+        // showing them. `effectiveCollar(employee.collarType)` resolves to the
+        // live collar, defaulting to BLUE_COLLAR, matching the client.
+        const empCollar = effectiveCollar(employee.collarType);
         const locked = await prisma.quarterQuestion.findMany({
-            where: { quarterId: activeQuarter.id, question: { level: "BRANCH_MANAGER" } },
+            where: { quarterId: activeQuarter.id, question: { level: "BRANCH_MANAGER", ...collarPrismaFilter(empCollar) } },
             select: { questionId: true },
         });
         const lockedIds = new Set(locked.map((q) => q.questionId));

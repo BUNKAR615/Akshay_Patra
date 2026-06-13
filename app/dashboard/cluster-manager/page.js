@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import DashboardShell from "../../../components/DashboardShell";
 import EvaluationForm from "../../../components/EvaluationForm";
 import UserProfileCard from "../../../components/UserProfileCard";
+import { filterQuestionsByCollar, effectiveCollar } from "../../../lib/questionCollar";
 
 async function api(url, opts) {
     const res = await fetch(url, opts);
@@ -60,11 +61,13 @@ export default function ClusterManagerDashboard() {
         [departmentsData]
     );
 
-    // Re-shuffle the question order whenever the CM opens a different
+    // Show only the questions applicable to the selected employee's category
+    // (shared + own-collar), then re-shuffle whenever the CM opens a different
     // employee — so the sequence is random per employee, not fixed for all.
+    // The evaluate route re-applies the same collar filter.
     const shuffledQuestions = useMemo(
-        () => shuffle(questions),
-        [questions, selectedEmployee?.userId]
+        () => shuffle(filterQuestionsByCollar(questions, effectiveCollar(selectedEmployee?.collarType))),
+        [questions, selectedEmployee?.userId, selectedEmployee?.collarType]
     );
 
     // selectedBranchId is always a real assigned-branch id once loaded.

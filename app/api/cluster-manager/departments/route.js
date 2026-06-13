@@ -76,6 +76,7 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
             select: {
                 userId: true,
                 branchId: true,
+                collarType: true,
                 user: {
                     select: {
                         id: true,
@@ -83,6 +84,7 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
                         empCode: true,
                         designation: true,
                         departmentId: true,
+                        collarType: true,
                         department: { select: { id: true, name: true, branchId: true } },
                     },
                 },
@@ -132,6 +134,10 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
                     name: s.user.name,
                     empCode: s.user.empCode,
                     designation: s.user.designation || "",
+                    // Live user collar wins; Stage-2 snapshot is the fallback
+                    // (mirrors the BM shortlist). Drives the WC/BC badge and the
+                    // per-employee collar question filter on the CM dashboard.
+                    collarType: s.user.collarType || s.collarType || null,
                     // Branch tag — enables the dashboard's "Branch: X" badge
                     // in Total mode without an extra round-trip.
                     branchId: s.branchId,

@@ -9,6 +9,7 @@ import { createNotification } from "../../../../lib/notifications";
 import { normalizeScore, calculateFinalScore, calculateBranchStage3Score } from "../../../../lib/scoreCalculator";
 import { getEvaluatorPool } from "../../../../lib/evaluatorPool";
 import { regenerateBranchStage3 } from "../../../../lib/branchPromotion";
+import { collarPrismaFilter, effectiveCollar } from "../../../../lib/questionCollar";
 
 /**
  * POST /api/cluster-manager/evaluate
@@ -60,9 +61,12 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         });
         if (existing) return conflict(`Already evaluated this employee on ${existing.submittedAt.toISOString()}`);
 
-        // Validate answers
+        // Validate answers against the CM question set, restricted to the
+        // questions applicable to THIS employee's category (shared + own-collar)
+        // — the same filter the CM dashboard applies before showing them.
+        const empCollar = effectiveCollar(employee.collarType);
         const locked = await prisma.quarterQuestion.findMany({
-            where: { quarterId: activeQuarter.id, question: { level: "CLUSTER_MANAGER" } },
+            where: { quarterId: activeQuarter.id, question: { level: "CLUSTER_MANAGER", ...collarPrismaFilter(empCollar) } },
             select: { questionId: true },
         });
         const lockedIds = new Set(locked.map((q) => q.questionId));
