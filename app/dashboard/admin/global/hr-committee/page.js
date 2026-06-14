@@ -16,7 +16,11 @@ export default function GlobalHrCommitteePage() {
                     fetch("/api/auth/me").then(r => r.json()),
                     fetch("/api/admin/branches").then(r => r.json()),
                 ]);
-                if (me.success) setUser(me.user);
+                // /api/auth/me wraps its payload as { success, data: { user } }
+                // (same envelope as every other endpoint). Reading me.user here
+                // left the DashboardShell without a role, so the sidebar rendered
+                // empty on this page only — hence "no sidebar on Org Structure".
+                if (me.success) setUser(me.data.user);
                 if (br.success) setBranches(br.data.branches || []);
             } catch { }
             setLoading(false);

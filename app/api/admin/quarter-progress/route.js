@@ -201,7 +201,6 @@ export const GET = withRole(["ADMIN"], async (request) => {
             bStage1,
             bStage2,
             bStage3,
-            bStage4,
             hodEvals,
             bmEvalsAll,
             cmEvalsAll,
@@ -212,7 +211,6 @@ export const GET = withRole(["ADMIN"], async (request) => {
             prisma.branchShortlistStage1.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true, userId: true } }),
             prisma.branchShortlistStage2.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true, userId: true } }),
             prisma.branchShortlistStage3.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true, userId: true } }),
-            prisma.branchShortlistStage4.findMany({ where: { quarterId: qId }, select: { branchId: true, collarType: true, userId: true } }),
             prisma.hodEvaluation.findMany({ where: { quarterId: qId }, select: { employeeId: true, employee: { select: { department: { select: { branchId: true } } } } } }),
             prisma.branchManagerEvaluation.findMany({ where: { quarterId: qId }, select: { employeeId: true, employee: { select: { department: { select: { branchId: true } } } } } }),
             prisma.clusterManagerEvaluation.findMany({ where: { quarterId: qId }, select: { employeeId: true, employee: { select: { department: { select: { branchId: true } } } } } }),
@@ -234,7 +232,12 @@ export const GET = withRole(["ADMIN"], async (request) => {
         const s1Bc = countBy(bStage1.filter(r => r.collarType === "BLUE_COLLAR"), "branchId");
         const s2Map = countBy(bStage2, "branchId");
         const s3Map = countBy(bStage3, "branchId");
-        const s4Map = countBy(bStage4, "branchId");
+        // Stage-4 "passed" = the branch's Best Employees. The live HR round
+        // writes its results to branchBestEmployee (see regenerateBranchStage4),
+        // NOT the legacy branchShortlistStage4 table — which is never populated.
+        // Counting that dead table made Stage 4 always show 0 passed, so derive
+        // it from the same rows that feed `winners` below.
+        const s4Map = countBy(branchBest, "branchId");
         // Raw, branch-wide evaluation-row counts (kept for backward compatibility).
         const hodMap = countBy(hodEvals, "branchId");
         const bmMap = countBy(bmEvalsAll, "branchId");

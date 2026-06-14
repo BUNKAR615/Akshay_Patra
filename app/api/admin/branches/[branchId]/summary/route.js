@@ -82,7 +82,11 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
                 prisma.branchShortlistStage1.count({ where: { branchId, quarterId: quarter.id } }),
                 prisma.branchShortlistStage2.count({ where: { branchId, quarterId: quarter.id } }),
                 prisma.branchShortlistStage3.count({ where: { branchId, quarterId: quarter.id } }),
-                prisma.branchShortlistStage4.count({ where: { branchId, quarterId: quarter.id } }),
+                // Stage-4 "passed" = branch Best Employees. The HR round writes
+                // its output to branchBestEmployee (not the legacy, never-populated
+                // branchShortlistStage4), so count that — otherwise Stage 4 always
+                // reported 0 passed while only the participated count showed.
+                prisma.branchBestEmployee.count({ where: { branchId, quarterId: quarter.id } }),
                 prisma.branchBestEmployee.count({ where: { branchId, quarterId: quarter.id } }),
             ]);
 
