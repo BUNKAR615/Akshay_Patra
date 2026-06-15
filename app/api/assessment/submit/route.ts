@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import prisma from "../../../../lib/prisma"
 import { updateStage1Shortlist, updateBranchStage1Shortlist } from "../../../../lib/shortlistManager"
+import { isStageOpen } from "../../../../lib/stageControl"
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -50,6 +51,14 @@ export async function POST(request: Request) {
       success: false,
       message: 'No active quarter found.'
     }, { status: 404 })
+
+    // Stage 1 must be the active stage. A paused Stage 1 stops accepting new
+    // submissions. Quarters that predate stage control have no recorded state,
+    // so isStageOpen returns true and they are unaffected.
+    if (!(await isStageOpen(quarter.id, 1))) return NextResponse.json({
+      success: false,
+      message: 'Stage 1 (Self Assessment) is paused. Submissions are currently closed.'
+    }, { status: 403 })
 
     // Check duplicate submission
     const existing = await prisma.selfAssessment.findFirst({

@@ -10,6 +10,7 @@ import { createNotification } from "../../../../lib/notifications";
 import { normalizeScore, calculateBranchStage2Score } from "../../../../lib/scoreCalculator";
 import { regenerateBranchStage2 } from "../../../../lib/branchPromotion";
 import { collarPrismaFilter, effectiveCollar } from "../../../../lib/questionCollar";
+import { isStageOpen } from "../../../../lib/stageControl";
 
 /**
  * POST /api/branch-manager/evaluate
@@ -31,6 +32,11 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
 
         const activeQuarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
         if (!activeQuarter) return notFound("No active quarter. Evaluations are closed.");
+
+        // Stage 2 must be the active stage (paused → submissions closed).
+        if (!(await isStageOpen(activeQuarter.id, 2))) {
+            return fail("Stage 2 (BM / HOD evaluation) is paused. Submissions are currently closed.", 403);
+        }
 
         // Resolve BM's branch (source of truth for the ownership check) —
         // honors User.branchId from the JWT first, then BranchManagerAssignment.

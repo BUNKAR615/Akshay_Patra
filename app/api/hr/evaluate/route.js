@@ -8,6 +8,7 @@ import { hrEvaluateSchema } from "../../../../lib/validators";
 import { normalizeScore, calculateBranchFinalScore, hrBandMarks } from "../../../../lib/scoreCalculator";
 import { regenerateBranchStage4 } from "../../../../lib/branchPromotion";
 import { createNotification } from "../../../../lib/notifications";
+import { isStageOpen } from "../../../../lib/stageControl";
 
 /**
  * POST /api/hr/evaluate
@@ -29,6 +30,11 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
 
         const quarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
         if (!quarter) return fail("No active quarter");
+
+        // Stage 4 must be the active stage (paused → submissions closed).
+        if (!(await isStageOpen(quarter.id, 4))) {
+            return fail("Stage 4 (HR evaluation) is paused. Submissions are currently closed.", 403);
+        }
 
         // Verify employee is in Stage 3 shortlist
         const stage3Entry = await prisma.branchShortlistStage3.findUnique({

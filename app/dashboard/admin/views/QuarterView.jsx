@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import QuarterCountdown from "../../../../components/QuarterCountdown";
+import StageControlPanel from "../../../../components/admin/StageControlPanel";
 
 /**
  * Quarter management tab. Form state lives here; the confirmed start/close
@@ -46,6 +47,7 @@ export default function QuarterView({ quarterProgress, quarterMsg, quarterLoadin
                     <span className="font-bold text-ap-blue">{quarterProgress.quarter.questionSelectionMode === "MANUAL" ? "Manual" : "Automatic"}</span>
                 </div>
             )}
+            <StageControlPanel quarter={quarterProgress?.quarter} />
             <div className="bg-white border border-ap-border shadow-card rounded-card p-6">
                 <h3 className="text-lg font-semibold text-ap-blue mb-4">Start New Quarter</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">

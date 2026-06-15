@@ -11,6 +11,7 @@ import { notifyAllEmployees, createNotification } from "../../../../../lib/notif
 import { getDepartmentSize, logSmallDepartmentRule } from "../../../../../lib/department-rules";
 import { assignQuestionsToEmployees } from "../../../../../lib/questionAssigner";
 import { resetHodStateForQuarters } from "../../../../../lib/auth/quarterReset";
+import { writeStageState, initialStageState } from "../../../../../lib/stageControl";
 
 // ── Fisher-Yates (Knuth) shuffle — true O(n) randomness ──
 function fisherYatesShuffle(arr) {
@@ -215,6 +216,18 @@ export const POST = withRole(["ADMIN"], async (request, { user }) => {
         await prisma.auditLog.create({
             data: { userId: user.userId, action: "QUARTER_STARTED", details: { quarterId: quarter.id, name: quarter.name, questionSelectionMode: mode, questionCount: selectedSelf.length, totalLocked: allSelectedIds.length, selfCount: selectedSelf.length, bmCount: selectedBm.length, cmCount: selectedCm.length, priorHodReset } },
         }).catch((e) => { console.error("[QUARTER-START] Audit log failed:", e); });
+
+        // ── Initialize sequential stage control ──
+        // Stage 1 opens immediately; Stages 2-4 stay locked until the admin
+        // pauses their way forward from the Quarter page. Best-effort: if this
+        // write fails, submission gating falls back to permissive (readStageState
+        // returns null), so the quarter is never left in a broken state.
+        try {
+            await writeStageState(quarter.id, user.userId, initialStageState(), { event: "START" });
+        } catch (e) {
+            console.error("[QUARTER-START] Stage-state init failed:", e);
+            warnings.push("Stage control could not be initialized; enable it from the Quarter page.");
+        }
 
         // Notify all employees
         try {
