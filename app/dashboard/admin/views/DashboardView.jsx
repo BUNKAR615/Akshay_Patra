@@ -247,7 +247,7 @@ export default function DashboardView({
                             <Stat label="Pending" value={kpis.pending} sub="self-assessment" color={SEMANTIC.warning.DEFAULT} />
                             <Stat
                                 label="Winners"
-                                value={kpis.winnerCount > 0 && kpis.deptCount > 0 ? `${kpis.winnerCount} / ${kpis.deptCount}` : kpis.winnerCount || "—"}
+                                value={kpis.winnerCount || "—"}
                                 sub={kpis.winnerCount > 0 ? "declared" : "in progress"}
                                 color={AP.orange}
                             />
