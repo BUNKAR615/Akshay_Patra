@@ -308,6 +308,11 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
         { key: "empCode", header: "Emp Code", sortable: true, render: (e) => <span className="font-mono text-gray-700">{e.empCode || "—"}</span> },
         { key: "name", header: "Name", sortable: true, render: (e) => <span className="font-bold text-ap-blue">{e.name}</span> },
         {
+            key: "branch", header: "Branch", sortable: true,
+            sortAccessor: (e) => e.departmentObj?.branch?.name || "",
+            render: (e) => <span className="text-gray-700">{e.departmentObj?.branch?.name || "—"}</span>,
+        },
+        {
             key: "department", header: "Department", sortable: true,
             render: (e) => (
                 <>
@@ -546,7 +551,7 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
                             <span className="text-sm font-bold text-ap-blue">{e.name}</span>
                             <span className="font-mono text-xs text-gray-500">{e.empCode || "—"}</span>
                         </div>
-                        <p className="text-xs text-gray-500 m-0">{e.department}{e.designation ? ` · ${e.designation}` : ""}</p>
+                        <p className="text-xs text-gray-500 m-0">{e.departmentObj?.branch?.name ? `${e.departmentObj.branch.name} · ` : ""}{e.department}{e.designation ? ` · ${e.designation}` : ""}</p>
                         <div className="flex flex-wrap gap-1">
                             {(e.roles || [e.role]).map(r => (
                                 <span key={r} className={`text-[9px] px-1.5 py-0.5 rounded-full border font-bold uppercase ${ROLE_BADGE(r)}`}>{r.replace("_", " ")}</span>
