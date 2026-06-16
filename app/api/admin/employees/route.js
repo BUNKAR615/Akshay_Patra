@@ -182,6 +182,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
         const [departmentsData, branchesData, roleStatsRaw, evaluatorStats] = await Promise.all([
             prisma.department.findMany({
                 select: {
+                    id: true,
                     name: true,
                     branch: { select: { name: true } },
                     _count: { select: { users: true } },
@@ -227,6 +228,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
                 totalPages: Math.ceil(total / limit),
                 departments: departmentsData.map((d) => d.name),
                 departmentStats: departmentsData.map((d) => ({
+                    id: d.id,
                     name: d.name,
                     branch: d.branch?.name || null,
                     count: d._count.users,

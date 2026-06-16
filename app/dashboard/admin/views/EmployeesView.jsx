@@ -233,9 +233,12 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
     const openEditModal = (emp) => {
         setEditEmp(emp);
         setEditForm({
-            department: emp.departmentObj?.name || "",
+            branchId: emp.departmentObj?.branchId || "",
+            departmentId: emp.departmentObj?.id || "",
             role: emp.role || "EMPLOYEE",
             designation: emp.designation === "—" ? "" : emp.designation || "",
+            mobile: emp.mobile || "",
+            collarType: emp.collarType || "",
             password: "",
         });
         setEditConfirm(false);
@@ -243,14 +246,34 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
         setEditMsg({ type: "", text: "" });
     };
 
+    const collarLbl = (c) => c === "WHITE_COLLAR" ? "White Collar" : c === "BLUE_COLLAR" ? "Blue Collar" : "—";
+
     const buildChanges = () => {
         const changes = [];
-        if (editForm.department && editForm.department !== (editEmp.departmentObj?.name || ""))
-            changes.push(`Department: "${editEmp.departmentObj?.name || "—"}" → "${editForm.department}"`);
+        const origDeptId = editEmp.departmentObj?.id || "";
+        const origDeptName = editEmp.departmentObj?.name || "—";
+        const origBranchId = editEmp.departmentObj?.branchId || "";
+        const origBranchName = editEmp.departmentObj?.branch?.name || "—";
+        const selDept = empDepartmentStats.find((d) => d.id === editForm.departmentId);
+        const selBranchName = empBranches.find((b) => b.id === editForm.branchId)?.name;
+
+        if (editForm.departmentId && editForm.departmentId !== origDeptId) {
+            changes.push(`Department: "${origDeptName}" → "${selDept?.name || "—"}"`);
+            const newBranch = selDept?.branch || selBranchName;
+            if (newBranch && newBranch !== origBranchName)
+                changes.push(`Branch: "${origBranchName}" → "${newBranch}"`);
+        } else if (!editEmp.departmentObj && editForm.branchId && editForm.branchId !== origBranchId) {
+            changes.push(`Branch: "${origBranchName}" → "${selBranchName || "—"}"`);
+        }
         if (editForm.role && editForm.role !== editEmp.role)
             changes.push(`Role: "${editEmp.role}" → "${editForm.role}"`);
-        if (editForm.designation !== (editEmp.designation === "—" ? "" : editEmp.designation || ""))
-            changes.push(`Designation: "${editEmp.designation === "—" ? "" : editEmp.designation || ""}" → "${editForm.designation}"`);
+        const origDesig = editEmp.designation === "—" ? "" : editEmp.designation || "";
+        if (editForm.designation !== origDesig)
+            changes.push(`Designation: "${origDesig || "—"}" → "${editForm.designation || "—"}"`);
+        if ((editForm.mobile || "") !== (editEmp.mobile || ""))
+            changes.push(`Mobile: "${editEmp.mobile || "—"}" → "${editForm.mobile || "—"}"`);
+        if ((editForm.collarType || "") !== (editEmp.collarType || ""))
+            changes.push(`Category: "${collarLbl(editEmp.collarType)}" → "${collarLbl(editForm.collarType)}"`);
         if (editForm.password && editForm.password.trim().length >= 6)
             changes.push("Password will be updated");
         return changes;
@@ -272,10 +295,21 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
         setEditMsg({ type: "", text: "" });
         try {
             const body = {};
-            if (editForm.department && editForm.department !== (editEmp.departmentObj?.name || "")) body.department = editForm.department;
+            const origDeptId = editEmp.departmentObj?.id || "";
+            const origBranchId = editEmp.departmentObj?.branchId || "";
+            // Branch follows the department: moving to a department in another
+            // branch carries the branch with it. For branch-scoped role holders
+            // who have no department, set the scoped branch directly instead.
+            if (editForm.departmentId && editForm.departmentId !== origDeptId) {
+                body.departmentId = editForm.departmentId;
+            } else if (!editEmp.departmentObj && editForm.branchId && editForm.branchId !== origBranchId) {
+                body.branchId = editForm.branchId;
+            }
             if (editForm.role && editForm.role !== editEmp.role) body.role = editForm.role;
             const origDesig = editEmp.designation === "—" ? "" : editEmp.designation || "";
             if (editForm.designation !== origDesig) body.designation = editForm.designation;
+            if ((editForm.mobile || "") !== (editEmp.mobile || "")) body.mobile = editForm.mobile;
+            if ((editForm.collarType || "") !== (editEmp.collarType || "")) body.collarType = editForm.collarType;
             if (editForm.password && editForm.password.trim().length >= 6) body.password = editForm.password.trim();
 
             const res = await fetch(`/api/admin/employees/${editEmp.id}`, {
@@ -303,6 +337,12 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
     ).filter((n, i, a) => a.indexOf(n) === i);
 
     const isAdmin = user?.role === "ADMIN";
+
+    // Edit modal: branch → department linkage. Picking a branch narrows the
+    // department list to that branch (department names repeat across branches,
+    // so we key off the id to move the employee unambiguously).
+    const editBranchName = empBranches.find((b) => b.id === editForm.branchId)?.name || "";
+    const editDeptOptions = empDepartmentStats.filter((d) => d.id && (!editBranchName || d.branch === editBranchName));
 
     const columns = [
         { key: "empCode", header: "Emp Code", sortable: true, render: (e) => <span className="font-mono text-gray-700">{e.empCode || "—"}</span> },
@@ -611,13 +651,40 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
                 ) : (
                     <div className="space-y-4">
                         {editMsg.text && <p className={`text-sm font-medium m-0 ${editMsg.type === "error" ? "text-[#D32F2F]" : "text-ap-green"}`}>{editMsg.text}</p>}
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-1">Department</label>
-                            <select value={editForm.department} onChange={e => setEditForm({ ...editForm, department: e.target.value })}
-                                className="w-full h-10 px-3 bg-gray-50 border border-gray-300 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-ap-blue">
-                                <option value="">— Select Department —</option>
-                                {empDepartments.map(d => <option key={d} value={d}>{d}</option>)}
-                            </select>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-1">Branch</label>
+                                <select value={editForm.branchId} onChange={e => setEditForm({ ...editForm, branchId: e.target.value, departmentId: "" })}
+                                    className="w-full h-10 px-3 bg-gray-50 border border-gray-300 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-ap-blue">
+                                    <option value="">— Select Branch —</option>
+                                    {empBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-1">Department</label>
+                                <select value={editForm.departmentId} onChange={e => setEditForm({ ...editForm, departmentId: e.target.value })}
+                                    className="w-full h-10 px-3 bg-gray-50 border border-gray-300 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-ap-blue">
+                                    <option value="">— Select Department —</option>
+                                    {editDeptOptions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-1">Mobile Number</label>
+                                <input type="tel" value={editForm.mobile} onChange={e => setEditForm({ ...editForm, mobile: e.target.value })}
+                                    placeholder="e.g. 9876543210"
+                                    className="w-full h-10 px-3 bg-gray-50 border border-gray-300 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-ap-blue" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-1">Collar / Category</label>
+                                <select value={editForm.collarType} onChange={e => setEditForm({ ...editForm, collarType: e.target.value })}
+                                    className="w-full h-10 px-3 bg-gray-50 border border-gray-300 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-ap-blue">
+                                    <option value="">— Not set —</option>
+                                    <option value="BLUE_COLLAR">Blue Collar</option>
+                                    <option value="WHITE_COLLAR">White Collar</option>
+                                </select>
+                            </div>
                         </div>
                         <div>
                             <label className="block text-xs font-semibold text-gray-700 mb-1">Role</label>
