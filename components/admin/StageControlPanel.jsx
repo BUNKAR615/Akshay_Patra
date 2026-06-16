@@ -30,12 +30,11 @@ const STAGES = [
     { stage: 4, label: "HR Evaluation", who: "HR completes the final round" },
 ];
 
-// "ACTIVE" | "PAUSED" | "LOCKED" for a stage given the live state.
+// "ACTIVE" | "PAUSED" for a stage given the live state. No stage is ever
+// locked — every stage can be paused/resumed in any order (mirrors
+// stageStatus in lib/stageControl.js).
 function statusOf(state, stage) {
-    if (!state) return "LOCKED";
-    if (state.activeStage === stage) return "ACTIVE";
-    if (stage <= state.unlockedStage) return "PAUSED";
-    return "LOCKED";
+    return state?.activeStage === stage ? "ACTIVE" : "PAUSED";
 }
 
 function StatusChip({ status }) {
@@ -116,7 +115,7 @@ export default function StageControlPanel({ quarter: quarterProp, onChanged }) {
                 )}
             </div>
             <p className="text-sm text-gray-500 mb-4">
-                Run the four evaluation stages one at a time. Pause the active stage to unlock the next; a stage stops accepting submissions while it is paused.
+                Pause or resume any stage at any time. Only the active stage accepts submissions — resuming a stage makes it the active one and pauses the others.
             </p>
 
             {msg.text && (
@@ -168,10 +167,11 @@ function StageList({ state, closed = false, busy, onAct }) {
             {STAGES.map((s) => {
                 const status = closed ? "CLOSED" : statusOf(state, s.stage);
                 const isActive = status === "ACTIVE";
-                const isLocked = status === "LOCKED";
                 const rowBusy = busy === s.stage;
                 // Single toggle per stage: Pause when active, otherwise Resume.
-                const canToggle = !closed && !rowBusy && (isActive || !isLocked);
+                // Every stage is always controllable unless the quarter is
+                // closed or this row's request is in flight.
+                const canToggle = !closed && !rowBusy;
                 const badgeColor = isActive
                     ? "bg-[#00843D] text-white"
                     : status === "PAUSED"
@@ -186,9 +186,7 @@ function StageList({ state, closed = false, busy, onAct }) {
                             </span>
                             <div className="min-w-0">
                                 <p className="font-semibold text-gray-900 text-sm">Stage {s.stage} — {s.label}</p>
-                                <p className="text-[12px] text-gray-500 truncate">
-                                    {isLocked ? `Locked — pause Stage ${s.stage - 1} to unlock.` : s.who}
-                                </p>
+                                <p className="text-[12px] text-gray-500 truncate">{s.who}</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-2.5 shrink-0">
@@ -196,7 +194,6 @@ function StageList({ state, closed = false, busy, onAct }) {
                             <button
                                 onClick={() => onAct(isActive ? "PAUSE" : "RESUME", s.stage)}
                                 disabled={!canToggle}
-                                title={isLocked ? `Pause Stage ${s.stage - 1} first` : undefined}
                                 className={`min-h-[36px] min-w-[112px] px-4 py-1.5 text-[13px] font-bold rounded-lg cursor-pointer disabled:cursor-not-allowed transition-colors ${
                                     isActive
                                         ? "bg-white border border-[#F57C00] text-[#F57C00] hover:bg-[#FFF8E1] disabled:opacity-50"
