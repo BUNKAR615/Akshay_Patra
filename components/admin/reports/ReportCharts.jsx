@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
     PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid,
     Tooltip, Legend, ResponsiveContainer,
@@ -9,6 +9,7 @@ import {
     CHART_COLORS, STAGE_COLORS, evaluatedAtStage,
     reachedStage, completedStage, passedStage,
 } from "./helpers.js";
+import { makeFileBase, exportChartPNG } from "./exporters.js";
 
 const PIE_STAGES = [
     { key: 1, label: "Stage 1 · Self" },
@@ -19,9 +20,25 @@ const PIE_STAGES = [
 ];
 
 // ── Charts overview: status pie per stage + branch bar + department analytics ──
-export default function ReportCharts({ employees }) {
+export default function ReportCharts({ employees, quarter }) {
     const [pieStage, setPieStage] = useState(1);
     const [pieMode, setPieMode] = useState("status"); // "status" | "branch"
+
+    // Refs to each chart wrapper so we can rasterize its SVG to a PNG download.
+    const pieRef = useRef(null);
+    const branchRef = useRef(null);
+    const deptRef = useRef(null);
+    const [busy, setBusy] = useState("");
+    const [error, setError] = useState("");
+
+    const downloadPng = async (ref, name, key, opts) => {
+        setBusy(key); setError("");
+        try {
+            const svg = ref.current?.querySelector("svg");
+            await exportChartPNG(svg, makeFileBase(name, quarter?.name || ""), opts);
+        } catch (e) { setError(e.message || "Chart download failed"); }
+        setBusy("");
+    };
 
     const curStage = PIE_STAGES.find(s => s.key === pieStage) || PIE_STAGES[0];
 
@@ -83,6 +100,10 @@ export default function ReportCharts({ employees }) {
 
     return (
         <div className="space-y-5">
+            {error && (
+                <div className="bg-[#FDECEA] border border-[#F5C6C0] text-[#C0392B] text-sm font-medium rounded-lg px-4 py-2">{error}</div>
+            )}
+
             {/* Pie: status by stage */}
             <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 sm:p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -102,12 +123,17 @@ export default function ReportCharts({ employees }) {
                             <button type="button" onClick={() => setPieMode("branch")}
                                 className={`px-3 h-9 text-xs font-bold ${pieMode === "branch" ? "bg-[#00843D] text-white" : "bg-white text-[#666] hover:bg-[#F5F5F5]"}`}>By Branch</button>
                         </div>
+                        <ChartPngBtn busy={busy === "pie"} disabled={!pieData.length}
+                            onClick={() => downloadPng(pieRef, `Stage Breakdown ${curStage.label}`, "pie", {
+                                title: `Stage Breakdown · ${curStage.label}`,
+                                legend: pieMode === "status" ? pieData.map(d => ({ label: d.name, color: d.color })) : null,
+                            })} />
                     </div>
                 </div>
                 {!pieData.length ? (
                     <div className="py-16 text-center text-[#888] text-sm">No employees have reached {curStage.label} for the current filters.</div>
                 ) : (
-                    <div className="h-[320px]">
+                    <div ref={pieRef} className="h-[320px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={110}
@@ -126,11 +152,23 @@ export default function ReportCharts({ employees }) {
 
             {/* Bar: all stages by branch & total (branch + combined progress) */}
             <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 sm:p-5">
-                <h3 className="text-[14px] font-black text-[#003087] mb-3">Branch & Overall Progress · employees evaluated per stage</h3>
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                    <h3 className="text-[14px] font-black text-[#003087]">Branch & Overall Progress · employees evaluated per stage</h3>
+                    <ChartPngBtn busy={busy === "branch"} disabled={!barData.length}
+                        onClick={() => downloadPng(branchRef, "Branch & Overall Progress", "branch", {
+                            title: "Branch & Overall Progress · employees evaluated per stage",
+                            legend: [
+                                { label: "Stage 1", color: STAGE_COLORS[1] },
+                                { label: "Stage 2", color: STAGE_COLORS[2] },
+                                { label: "Stage 3", color: STAGE_COLORS[3] },
+                                { label: "Stage 4", color: STAGE_COLORS[4] },
+                            ],
+                        })} />
+                </div>
                 {!barData.length ? (
                     <div className="py-16 text-center text-[#888] text-sm">No data for the current filters.</div>
                 ) : (
-                    <div className="h-[380px]">
+                    <div ref={branchRef} className="h-[380px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={barData} margin={{ top: 8, right: 16, left: 0, bottom: 40 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#EEE" />
@@ -150,12 +188,25 @@ export default function ReportCharts({ employees }) {
 
             {/* Department analytics */}
             <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 sm:p-5">
-                <h3 className="text-[14px] font-black text-[#003087] mb-1">Department Analytics · participation & progress</h3>
-                <p className="text-[11px] text-[#888] mb-3">Top {deptData.length} departments by size. Participated = self-assessed · Passed = cleared Stage 1.</p>
+                <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                    <div>
+                        <h3 className="text-[14px] font-black text-[#003087] mb-1">Department Analytics · participation & progress</h3>
+                        <p className="text-[11px] text-[#888]">Top {deptData.length} departments by size. Participated = self-assessed · Passed = cleared Stage 1.</p>
+                    </div>
+                    <ChartPngBtn busy={busy === "dept"} disabled={!deptData.length}
+                        onClick={() => downloadPng(deptRef, "Department Analytics", "dept", {
+                            title: "Department Analytics · participation & progress",
+                            legend: [
+                                { label: "Employees", color: "#003087" },
+                                { label: "Participated", color: "#00843D" },
+                                { label: "Passed S1", color: "#F7941D" },
+                            ],
+                        })} />
+                </div>
                 {!deptData.length ? (
                     <div className="py-16 text-center text-[#888] text-sm">No data for the current filters.</div>
                 ) : (
-                    <div className="h-[380px]">
+                    <div ref={deptRef} className="h-[380px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={deptData} margin={{ top: 8, right: 16, left: 0, bottom: 60 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#EEE" />
@@ -172,5 +223,17 @@ export default function ReportCharts({ employees }) {
                 )}
             </div>
         </div>
+    );
+}
+
+// Download-as-image button for a chart card (rasterizes its SVG to PNG).
+function ChartPngBtn({ onClick, busy, disabled }) {
+    return (
+        <button type="button" onClick={onClick} disabled={disabled || busy}
+            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg text-xs font-bold text-white disabled:opacity-50 transition-opacity"
+            style={{ backgroundColor: "#6C3FB0" }} title="Download this chart as a PNG image">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            {busy ? "…" : "PNG"}
+        </button>
     );
 }

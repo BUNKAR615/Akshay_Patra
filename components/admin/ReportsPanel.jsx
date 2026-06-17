@@ -189,7 +189,7 @@ export default function ReportsPanel() {
                 <div className="bg-white border border-[#E0E0E0] rounded-xl p-10 text-center text-[#C0392B] text-sm font-medium">{error}</div>
             ) : (
                 <>
-                    {section === "charts" && <ReportCharts employees={filtered} />}
+                    {section === "charts" && <ReportCharts employees={filtered} quarter={data?.quarter} />}
                     {section === "answersheet" && <AnswerSheet employees={filtered} quarter={data?.quarter} />}
                     {section === "evaluator" && <EvaluatorReport employees={filtered} quarter={data?.quarter} filters={filters} onSelect={setSheetEmp} />}
                     {section === "stage" && <StageReport employees={filtered} quarter={data?.quarter} filters={filters} onSelect={setSheetEmp} />}

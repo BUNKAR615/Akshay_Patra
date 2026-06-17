@@ -53,6 +53,79 @@ export async function exportCSV({ fileBase, columns, rows }) {
     URL.revokeObjectURL(url);
 }
 
+// ── Chart image export (SVG → PNG) ──
+// Recharts renders inline-styled SVG, so we can clone it, rasterize through a
+// canvas and download — no extra dependencies. Recharts draws its legend as
+// HTML (outside the SVG), so the caller can pass `title` + `legend` swatches to
+// bake them onto the image, keeping the PNG self-explanatory.
+export async function exportChartPNG(svgEl, fileBase, { scale = 2, background = "#ffffff", title = "", legend = null } = {}) {
+    if (!svgEl) throw new Error("No chart available to download");
+
+    const rect = svgEl.getBoundingClientRect();
+    const width = Math.ceil(rect.width) || Number(svgEl.getAttribute("width")) || 800;
+    const chartHeight = Math.ceil(rect.height) || Number(svgEl.getAttribute("height")) || 400;
+
+    const clone = svgEl.cloneNode(true);
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    clone.setAttribute("width", String(width));
+    clone.setAttribute("height", String(chartHeight));
+
+    const xml = new XMLSerializer().serializeToString(clone);
+    const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`;
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error("Failed to render chart image"));
+        img.src = svgUrl;
+    });
+
+    const titleH = title ? 30 : 0;
+    const legendH = legend?.length ? 30 : 0;
+    const height = chartHeight + titleH + legendH;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width * scale;
+    canvas.height = height * scale;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(scale, scale);
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, width, height);
+
+    if (title) {
+        ctx.fillStyle = "#003087";
+        ctx.font = "bold 14px Arial, Helvetica, sans-serif";
+        ctx.textBaseline = "middle";
+        ctx.fillText(title, 14, titleH / 2);
+    }
+    ctx.drawImage(img, 0, titleH, width, chartHeight);
+
+    if (legend?.length) {
+        let x = 14;
+        const y = titleH + chartHeight + legendH / 2;
+        ctx.font = "12px Arial, Helvetica, sans-serif";
+        ctx.textBaseline = "middle";
+        for (const item of legend) {
+            ctx.fillStyle = item.color || "#888888";
+            ctx.fillRect(x, y - 6, 12, 12);
+            x += 18;
+            ctx.fillStyle = "#444444";
+            ctx.fillText(item.label, x, y);
+            x += ctx.measureText(item.label).width + 18;
+        }
+    }
+
+    await new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+            if (!blob) return reject(new Error("PNG encoding failed"));
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url; link.download = `${fileBase}.png`; link.click();
+            URL.revokeObjectURL(url);
+            resolve();
+        }, "image/png");
+    });
+}
+
 export async function exportPDF({ fileBase, title, subtitle, filterLine, columns, rows }) {
     const { jsPDF } = await import("jspdf");
     const autoTable = (await import("jspdf-autotable")).default;
