@@ -53,64 +53,93 @@ export async function exportCSV({ fileBase, columns, rows }) {
     URL.revokeObjectURL(url);
 }
 
+// Recharts renders the chart surface AND each legend item as its own <svg>
+// (legend icons are tiny 14×14 svgs). Grabbing the first svg can therefore
+// capture a tiny legend icon instead of the graph — so pick the LARGEST svg.
+function pickChartSvg(root) {
+    if (!root) return null;
+    if (typeof root.tagName === "string" && root.tagName.toLowerCase() === "svg") return root;
+    const svgs = Array.from(root.querySelectorAll("svg"));
+    if (!svgs.length) return null;
+    return svgs.reduce((best, s) => {
+        const a = s.getBoundingClientRect();
+        const b = best.getBoundingClientRect();
+        return (a.width * a.height) > (b.width * b.height) ? s : best;
+    });
+}
+
 // ── Chart image export (SVG → PNG) ──
-// Recharts renders inline-styled SVG, so we can clone it, rasterize through a
-// canvas and download — no extra dependencies. Recharts draws its legend as
-// HTML (outside the SVG), so the caller can pass `title` + `legend` swatches to
-// bake them onto the image, keeping the PNG self-explanatory.
-export async function exportChartPNG(svgEl, fileBase, { scale = 2, background = "#ffffff", title = "", legend = null } = {}) {
+// Pass the chart's wrapper element (or an svg). Recharts uses inline-styled
+// SVG, so we clone the full surface, rasterize through a hi-res canvas and
+// download — no extra dependencies. Recharts draws its legend as HTML outside
+// the surface, so the caller can pass `title` + `legend` swatches to bake them
+// onto the image, keeping the PNG self-explanatory.
+export async function exportChartPNG(root, fileBase, { scale = 2, background = "#ffffff", title = "", legend = null } = {}) {
+    const svgEl = pickChartSvg(root);
     if (!svgEl) throw new Error("No chart available to download");
 
+    // Recharts sets pixel width/height attributes on the surface; trust those,
+    // falling back to the live box / viewBox so the full graph is captured.
     const rect = svgEl.getBoundingClientRect();
-    const width = Math.ceil(rect.width) || Number(svgEl.getAttribute("width")) || 800;
-    const chartHeight = Math.ceil(rect.height) || Number(svgEl.getAttribute("height")) || 400;
+    const vb = (svgEl.getAttribute("viewBox") || "").split(/[\s,]+/).map(Number);
+    const width = Math.round(Number(svgEl.getAttribute("width")) || rect.width || vb[2] || 800);
+    const chartHeight = Math.round(Number(svgEl.getAttribute("height")) || rect.height || vb[3] || 400);
 
     const clone = svgEl.cloneNode(true);
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
     clone.setAttribute("width", String(width));
     clone.setAttribute("height", String(chartHeight));
+    clone.setAttribute("viewBox", `0 0 ${width} ${chartHeight}`);
+    // Bake an opaque background into the SVG itself so nothing renders transparent.
+    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bg.setAttribute("x", "0"); bg.setAttribute("y", "0");
+    bg.setAttribute("width", String(width)); bg.setAttribute("height", String(chartHeight));
+    bg.setAttribute("fill", background);
+    clone.insertBefore(bg, clone.firstChild);
 
     const xml = new XMLSerializer().serializeToString(clone);
     const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`;
     const img = new Image();
-    await new Promise((resolve, reject) => {
+    img.width = width; img.height = chartHeight;
+    img.src = svgUrl;
+    await (img.decode ? img.decode() : new Promise((resolve, reject) => {
         img.onload = resolve;
         img.onerror = () => reject(new Error("Failed to render chart image"));
-        img.src = svgUrl;
-    });
+    }));
 
     const titleH = title ? 30 : 0;
     const legendH = legend?.length ? 30 : 0;
-    const height = chartHeight + titleH + legendH;
+    const totalH = chartHeight + titleH + legendH;
 
+    // Draw everything at device scale directly (no ctx.scale) for predictable,
+    // full-size output.
     const canvas = document.createElement("canvas");
-    canvas.width = width * scale;
-    canvas.height = height * scale;
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(totalH * scale);
     const ctx = canvas.getContext("2d");
-    ctx.scale(scale, scale);
     ctx.fillStyle = background;
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textBaseline = "middle";
 
     if (title) {
         ctx.fillStyle = "#003087";
-        ctx.font = "bold 14px Arial, Helvetica, sans-serif";
-        ctx.textBaseline = "middle";
-        ctx.fillText(title, 14, titleH / 2);
+        ctx.font = `bold ${14 * scale}px Arial, Helvetica, sans-serif`;
+        ctx.fillText(title, 14 * scale, (titleH / 2) * scale);
     }
-    ctx.drawImage(img, 0, titleH, width, chartHeight);
+
+    ctx.drawImage(img, 0, titleH * scale, width * scale, chartHeight * scale);
 
     if (legend?.length) {
-        let x = 14;
-        const y = titleH + chartHeight + legendH / 2;
-        ctx.font = "12px Arial, Helvetica, sans-serif";
-        ctx.textBaseline = "middle";
+        let x = 14 * scale;
+        const y = (titleH + chartHeight + legendH / 2) * scale;
+        ctx.font = `${12 * scale}px Arial, Helvetica, sans-serif`;
         for (const item of legend) {
             ctx.fillStyle = item.color || "#888888";
-            ctx.fillRect(x, y - 6, 12, 12);
-            x += 18;
+            ctx.fillRect(x, y - 6 * scale, 12 * scale, 12 * scale);
+            x += 18 * scale;
             ctx.fillStyle = "#444444";
             ctx.fillText(item.label, x, y);
-            x += ctx.measureText(item.label).width + 18;
+            x += ctx.measureText(item.label).width + 18 * scale;
         }
     }
 

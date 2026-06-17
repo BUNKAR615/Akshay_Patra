@@ -34,8 +34,7 @@ export default function ReportCharts({ employees, quarter }) {
     const downloadPng = async (ref, name, key, opts) => {
         setBusy(key); setError("");
         try {
-            const svg = ref.current?.querySelector("svg");
-            await exportChartPNG(svg, makeFileBase(name, quarter?.name || ""), opts);
+            await exportChartPNG(ref.current, makeFileBase(name, quarter?.name || ""), opts);
         } catch (e) { setError(e.message || "Chart download failed"); }
         setBusy("");
     };
