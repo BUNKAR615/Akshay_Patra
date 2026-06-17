@@ -348,6 +348,15 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
         { key: "empCode", header: "Emp Code", sortable: true, render: (e) => <span className="font-mono text-gray-700">{e.empCode || "—"}</span> },
         { key: "name", header: "Name", sortable: true, render: (e) => <span className="font-bold text-ap-blue">{e.name}</span> },
         {
+            key: "email", header: "Email", sortable: true, hideBelow: "lg",
+            sortAccessor: (e) => e.email || "",
+            // Emails aren't captured yet — show a placeholder until they're
+            // uploaded. The column is toggleable via the "Columns" menu.
+            render: (e) => e.email
+                ? <a href={`mailto:${e.email}`} onClick={(ev) => ev.stopPropagation()} className="text-ap-blue hover:underline">{e.email}</a>
+                : <span className="text-gray-300 italic text-xs">Not provided</span>,
+        },
+        {
             key: "branch", header: "Branch", sortable: true,
             sortAccessor: (e) => e.departmentObj?.branch?.name || "",
             render: (e) => <span className="text-gray-700">{e.departmentObj?.branch?.name || "—"}</span>,
@@ -762,6 +771,7 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
                             <DetailField label="Branch" value={detailEmp.departmentObj?.branch?.name} />
                             <DetailField label="Designation" value={detailEmp.designation && detailEmp.designation !== "—" ? detailEmp.designation : null} />
                             <DetailField label="Mobile" value={detailEmp.mobile} />
+                            <DetailField label="Email" value={detailEmp.email} />
                             <DetailField label="Collar / Category" value={detailEmp.collarType === "WHITE_COLLAR" ? "White Collar" : detailEmp.collarType === "BLUE_COLLAR" ? "Blue Collar" : null} />
                         </div>
 
