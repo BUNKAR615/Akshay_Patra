@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import {
-    fmtScore, fmtDate, collarLabel, stageLabel, rowScore, rowLatestDate, activeFilterSummary,
+    fmtScore, fmtDate, collarLabel, stageLabel, rowScore, rowLatestDate,
     reachedStage, completedStage, passedStage, evalStatus,
 } from "./helpers.js";
+import ExportButtons from "./ExportButtons.jsx";
 
 const REPORT_TYPES = [
     { id: "employees", label: "Employee List" },
@@ -19,116 +20,8 @@ const REPORT_TYPES = [
 // ── Detailed tabular reports + Excel/PDF/CSV export (fixed blue theme) ──
 export default function DetailedTables({ employees, filters, quarter, onSelect }) {
     const [reportType, setReportType] = useState("employees");
-    const [busy, setBusy] = useState("");
-    const [error, setError] = useState("");
-
-    const quarterName = quarter?.name || "—";
-    const quarterStatus = quarter?.status || "";
 
     const report = useMemo(() => buildReport(reportType, employees), [reportType, employees]);
-
-    const fileBase = () => {
-        const t = REPORT_TYPES.find(r => r.id === reportType)?.label.replace(/\s+/g, "") || "Report";
-        const q = (quarterName || "quarter").replace(/[^A-Za-z0-9_-]+/g, "_");
-        return `Report_${t}_${q}_${new Date().toISOString().slice(0, 10)}`;
-    };
-
-    const exportExcel = async () => {
-        setBusy("excel");
-        try {
-            const XLSX = await import("xlsx");
-            const aoaRows = report.rows.map((r, i) => {
-                const o = { "S.No": i + 1 };
-                report.columns.forEach(c => { o[c.label] = r[c.key] ?? ""; });
-                return o;
-            });
-            const ws = XLSX.utils.json_to_sheet(aoaRows);
-            if (aoaRows.length) {
-                ws["!cols"] = Object.keys(aoaRows[0]).map(k => ({
-                    wch: Math.max(k.length, ...aoaRows.map(r => String(r[k] ?? "").length)) + 2,
-                }));
-            }
-            const wsMeta = XLSX.utils.json_to_sheet([
-                { Field: "Report", Value: report.title },
-                { Field: "Quarter", Value: quarterName },
-                { Field: "Quarter Status", Value: quarterStatus },
-                { Field: "Filters", Value: activeFilterSummary(filters) || "None" },
-                { Field: "Rows", Value: report.rows.length },
-                { Field: "Exported At", Value: new Date().toISOString() },
-            ]);
-            wsMeta["!cols"] = [{ wch: 18 }, { wch: 50 }];
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, wsMeta, "Info");
-            XLSX.utils.book_append_sheet(wb, ws, "Report");
-            XLSX.writeFile(wb, `${fileBase()}.xlsx`);
-        } catch (e) { setError(e.message || "Excel export failed"); }
-        setBusy("");
-    };
-
-    const exportCSV = async () => {
-        setBusy("csv");
-        try {
-            const Papa = (await import("papaparse")).default;
-            const rows = report.rows.map((r, i) => {
-                const o = { "S.No": i + 1 };
-                report.columns.forEach(c => { o[c.label] = r[c.key] ?? ""; });
-                return o;
-            });
-            const csv = Papa.unparse(rows);
-            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.href = url; link.download = `${fileBase()}.csv`; link.click();
-            URL.revokeObjectURL(url);
-        } catch (e) { setError(e.message || "CSV export failed"); }
-        setBusy("");
-    };
-
-    const exportPDF = async () => {
-        setBusy("pdf");
-        try {
-            const { jsPDF } = await import("jspdf");
-            const autoTable = (await import("jspdf-autotable")).default;
-            const doc = new jsPDF({ orientation: report.columns.length > 6 ? "landscape" : "portrait", unit: "pt", format: "a4" });
-            const pageW = doc.internal.pageSize.getWidth();
-
-            // Header band (blue theme)
-            doc.setFillColor(0, 48, 135); doc.rect(0, 0, pageW, 54, "F"); doc.setTextColor(255, 255, 255);
-            doc.setFontSize(15); doc.setFont(undefined, "bold");
-            doc.text("Akshaya Patra — " + report.title, 36, 26);
-            doc.setFontSize(9); doc.setFont(undefined, "normal");
-            doc.text(`Quarter: ${quarterName} (${quarterStatus})   •   Generated: ${new Date().toLocaleString()}`, 36, 42);
-
-            const filterLine = activeFilterSummary(filters);
-            let startY = 66;
-            if (filterLine) {
-                doc.setTextColor(90, 90, 90); doc.setFontSize(8);
-                doc.text(`Filters: ${filterLine}`, 36, startY);
-                startY += 12;
-            }
-
-            const head = [["#", ...report.columns.map(c => c.label)]];
-            const body = report.rows.map((r, i) => [i + 1, ...report.columns.map(c => String(r[c.key] ?? ""))]);
-
-            autoTable(doc, {
-                head, body, startY,
-                styles: { fontSize: 7.5, cellPadding: 3, textColor: [33, 37, 41], lineColor: [200, 200, 200], lineWidth: 0.4 },
-                headStyles: { fillColor: [0, 48, 135], textColor: [255, 255, 255], fontStyle: "bold" },
-                alternateRowStyles: { fillColor: [240, 244, 250] },
-                theme: "grid",
-                margin: { left: 36, right: 36 },
-                didDrawPage: () => {
-                    const ph = doc.internal.pageSize.getHeight();
-                    const page = doc.internal.getNumberOfPages();
-                    doc.setFontSize(8); doc.setTextColor(120, 120, 120);
-                    doc.text(`Page ${page}`, pageW - 60, ph - 18);
-                    doc.text(`${report.rows.length} rows`, 36, ph - 18);
-                },
-            });
-            doc.save(`${fileBase()}.pdf`);
-        } catch (e) { setError(e.message || "PDF export failed"); }
-        setBusy("");
-    };
 
     // Rows that map 1:1 to an employee are clickable → score sheet.
     const rowEmp = (r) => (reportType === "employees" || reportType === "fullsheet") ? r._emp : null;
@@ -153,16 +46,8 @@ export default function DetailedTables({ employees, filters, quarter, onSelect }
             <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl overflow-hidden">
                 <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-[#EEE]">
                     <h3 className="text-[14px] font-black text-[#003087]">{report.title} <span className="text-[#999] font-bold">· {report.rows.length} rows</span></h3>
-                    <div className="flex items-center gap-2">
-                        <DownloadBtn label="Excel" onClick={exportExcel} busy={busy === "excel"} disabled={!report.rows.length} color="#00843D" />
-                        <DownloadBtn label="PDF" onClick={exportPDF} busy={busy === "pdf"} disabled={!report.rows.length} color="#C0392B" />
-                        <DownloadBtn label="CSV" onClick={exportCSV} busy={busy === "csv"} disabled={!report.rows.length} color="#003087" />
-                    </div>
+                    <ExportButtons title={report.title} columns={report.columns} rows={report.rows} quarter={quarter} filters={filters} />
                 </div>
-
-                {error ? (
-                    <div className="p-4 text-center text-[#C0392B] text-sm font-medium">{error}</div>
-                ) : null}
 
                 {!report.rows.length ? (
                     <div className="p-10 text-center text-[#888] text-sm">No records match the selected filters.</div>
@@ -198,17 +83,6 @@ export default function DetailedTables({ employees, filters, quarter, onSelect }
                 )}
             </div>
         </div>
-    );
-}
-
-function DownloadBtn({ label, onClick, busy, disabled, color }) {
-    return (
-        <button type="button" onClick={onClick} disabled={disabled || busy}
-            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg text-xs font-bold text-white disabled:opacity-50 transition-opacity"
-            style={{ backgroundColor: color }}>
-            <svg width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            {busy ? "…" : label}
-        </button>
     );
 }
 

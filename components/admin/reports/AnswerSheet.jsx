@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, fmtScore, fmtDate, collarLabel, LIKERT_OPTIONS, likertOption } from "./helpers.js";
+import ExportButtons from "./ExportButtons.jsx";
 
 const STAGES = [
     { n: 1, label: "Stage 1 · Self" },
@@ -104,10 +105,48 @@ export default function AnswerSheet({ employees, quarter }) {
     );
 }
 
+// Flatten a loaded answer sheet (every question + attendance) into export rows.
+const ANSWER_COLS = [
+    { key: "section", label: "Section" },
+    { key: "number", label: "Q#" },
+    { key: "question", label: "Question" },
+    { key: "questionHindi", label: "Question (Hindi)" },
+    { key: "answer", label: "Answer" },
+    { key: "score", label: "Marks" },
+];
+function answerSheetRows(sheet) {
+    const out = [];
+    (sheet?.sheets || []).forEach(s => {
+        (s.questions || []).forEach(q => {
+            const opt = likertOption(q.score);
+            out.push({
+                section: `${s.role}${s.evaluatorName ? ` · ${s.evaluatorName}` : ""}`,
+                number: q.number,
+                question: q.text,
+                questionHindi: q.textHindi || "",
+                answer: opt ? `${opt.label} (${q.score > 0 ? `+${q.score}` : q.score})` : "",
+                score: q.score === null || q.score === undefined ? "" : q.score,
+            });
+        });
+    });
+    if (sheet?.attendance) {
+        const a = sheet.attendance;
+        const add = (label, value) => out.push({ section: "HR · Attendance", number: "", question: label, questionHindi: "", answer: "", score: value === null || value === undefined ? "" : value });
+        add("Attendance %", fmtScore(a.attendancePct));
+        add("Punctuality %", fmtScore(a.punctualityPct));
+        add("Present Days", a.presentDays);
+        add("Punctual Days", a.punctualDays);
+        add("Working Days", a.workingDays);
+        add("HR Marks", fmtScore(a.hrScore));
+    }
+    return out;
+}
+
 function SheetView({ sheet, stage, emp, quarter }) {
     const e = sheet?.employee || emp;
     const stageLabel = STAGES.find(s => s.n === stage)?.label || `Stage ${stage}`;
     const hasContent = (sheet?.sheets?.length || 0) > 0 || !!sheet?.attendance;
+    const exportRows = useMemo(() => answerSheetRows(sheet), [sheet]);
 
     return (
         <div className="space-y-4">
@@ -119,9 +158,15 @@ function SheetView({ sheet, stage, emp, quarter }) {
                         <div className="text-[12px] text-[#666] mt-0.5">{e?.empCode ? `${e.empCode} · ` : ""}{e?.branchName} · {e?.department}</div>
                         <div className="text-[12px] text-[#666]">{e?.designation || "—"} · {collarLabel(e?.collarType)}</div>
                     </div>
-                    <div className="text-right">
-                        <span className="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#E8EEF9] text-[#003087]">{stageLabel}</span>
-                        {quarter?.name && <div className="text-[11px] text-[#999] mt-1">Quarter: {quarter.name}</div>}
+                    <div className="flex flex-col items-end gap-2">
+                        <div className="text-right">
+                            <span className="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#E8EEF9] text-[#003087]">{stageLabel}</span>
+                            {quarter?.name && <div className="text-[11px] text-[#999] mt-1">Quarter: {quarter.name}</div>}
+                        </div>
+                        {hasContent && (
+                            <ExportButtons title={`Answer Sheet — ${e?.name || "Employee"} — ${stageLabel}`}
+                                columns={ANSWER_COLS} rows={exportRows} quarter={quarter} />
+                        )}
                     </div>
                 </div>
             </div>

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { fmtScore, fmtDate, stageScore, evaluatedAtStage } from "./helpers.js";
+import ExportButtons from "./ExportButtons.jsx";
 
 const STAGES = [
     { n: 1, label: "Stage 1 · Self", evaluator: null },
@@ -26,7 +27,7 @@ const stageShortlisted = (e, n) => {
 };
 
 // ── By Stage: who was evaluated at the selected stage ──
-export default function StageReport({ employees, onSelect }) {
+export default function StageReport({ employees, quarter, filters, onSelect }) {
     const [stage, setStage] = useState(1);
     const def = STAGES.find(s => s.n === stage);
 
@@ -34,6 +35,35 @@ export default function StageReport({ employees, onSelect }) {
         () => employees.filter(e => evaluatedAtStage(e, stage)),
         [employees, stage]
     );
+
+    // Export payload mirrors the on-screen table for the selected stage.
+    const exportCols = useMemo(() => {
+        const cols = [
+            { key: "name", label: "Employee" },
+            { key: "branchName", label: "Branch" },
+            { key: "department", label: "Department" },
+        ];
+        if (stage > 1) cols.push({ key: "evaluatedBy", label: "Evaluated By" });
+        cols.push(
+            { key: "score", label: "Score" },
+            { key: "shortlisted", label: "Shortlisted" },
+            { key: "date", label: "Date" },
+        );
+        return cols;
+    }, [stage]);
+
+    const exportRows = useMemo(() => rows.map(e => {
+        const ev = def.evaluator ? def.evaluator(e) : null;
+        return {
+            name: e.name,
+            branchName: e.branchName,
+            department: e.department,
+            evaluatedBy: ev ? `${ev.evaluatorName || "—"}${ev.evaluatorEmpCode ? ` (${ev.evaluatorEmpCode})` : ""}` : "—",
+            score: fmtScore(stageScore(e, stage)) || "—",
+            shortlisted: stageShortlisted(e, stage) ? "Yes" : "No",
+            date: fmtDate(stageDate(e, stage)) || "—",
+        };
+    }), [rows, stage, def]);
 
     return (
         <div className="space-y-4">
@@ -51,8 +81,9 @@ export default function StageReport({ employees, onSelect }) {
             </div>
 
             <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl overflow-hidden">
-                <div className="px-4 py-3 border-b border-[#EEE]">
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-[#EEE]">
                     <h3 className="text-[14px] font-black text-[#003087]">{def.label} <span className="text-[#999] font-bold">· {rows.length} employees evaluated</span></h3>
+                    <ExportButtons title={`By Stage — ${def.label}`} columns={exportCols} rows={exportRows} quarter={quarter} filters={filters} />
                 </div>
                 {!rows.length ? (
                     <div className="p-10 text-center text-[#888] text-sm">No employees evaluated at this stage for the current filters.</div>

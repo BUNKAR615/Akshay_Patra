@@ -191,8 +191,8 @@ export default function ReportsPanel() {
                 <>
                     {section === "charts" && <ReportCharts employees={filtered} />}
                     {section === "answersheet" && <AnswerSheet employees={filtered} quarter={data?.quarter} />}
-                    {section === "evaluator" && <EvaluatorReport employees={filtered} onSelect={setSheetEmp} />}
-                    {section === "stage" && <StageReport employees={filtered} onSelect={setSheetEmp} />}
+                    {section === "evaluator" && <EvaluatorReport employees={filtered} quarter={data?.quarter} filters={filters} onSelect={setSheetEmp} />}
+                    {section === "stage" && <StageReport employees={filtered} quarter={data?.quarter} filters={filters} onSelect={setSheetEmp} />}
                     {section === "tables" && <DetailedTables employees={filtered} filters={filters} quarter={data?.quarter} onSelect={setSheetEmp} />}
                 </>
             )}

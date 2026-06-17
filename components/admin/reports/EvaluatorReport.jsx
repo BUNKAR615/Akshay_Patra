@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { fmtScore, fmtDate, stageScore, reachedStage } from "./helpers.js";
+import ExportButtons from "./ExportButtons.jsx";
 
 // Maps each evaluator role to the stage + the eval object + score accessor.
 // `pendingFor` marks an employee in this evaluator's branch who reached the
@@ -14,7 +15,7 @@ const ROLE_DEFS = [
 ];
 
 // ── By Evaluator: which BM/HOD/CM/HR evaluated which employees ──
-export default function EvaluatorReport({ employees, onSelect }) {
+export default function EvaluatorReport({ employees, quarter, filters, onSelect }) {
     const groups = useMemo(() => buildEvaluatorGroups(employees), [employees]);
     const [open, setOpen] = useState(() => new Set());
 
@@ -24,12 +25,51 @@ export default function EvaluatorReport({ employees, onSelect }) {
         return next;
     });
 
+    // Flatten every evaluator → their evaluated employees (matches the
+    // expanded on-screen rows) for a single downloadable table.
+    const exportCols = [
+        { key: "role", label: "Role" },
+        { key: "evaluator", label: "Evaluator" },
+        { key: "evaluatorCode", label: "Evaluator Code" },
+        { key: "stage", label: "Stage" },
+        { key: "employee", label: "Employee" },
+        { key: "branchName", label: "Branch" },
+        { key: "department", label: "Department" },
+        { key: "score", label: "Score" },
+        { key: "date", label: "Date" },
+    ];
+    const exportRows = useMemo(() => {
+        const out = [];
+        for (const def of ROLE_DEFS) {
+            for (const g of groups.filter(x => x.short === def.short)) {
+                for (const e of g.employees) {
+                    out.push({
+                        role: def.role,
+                        evaluator: g.name,
+                        evaluatorCode: g.empCode || "—",
+                        stage: `Stage ${def.stage}`,
+                        employee: e.name,
+                        branchName: e.branchName,
+                        department: e.department,
+                        score: fmtScore(stageScore(e, def.stage)) || "—",
+                        date: fmtDate(def.evalOf(e)?.submittedAt) || "—",
+                    });
+                }
+            }
+        }
+        return out;
+    }, [groups]);
+
     if (!groups.length) {
         return <div className="bg-white border border-[#E0E0E0] rounded-xl p-10 text-center text-[#888] text-sm">No evaluations recorded yet for the current filters.</div>;
     }
 
     return (
         <div className="space-y-5">
+            <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-[14px] font-black text-[#003087]">By Evaluator <span className="text-[#999] font-bold">· {exportRows.length} evaluations</span></h3>
+                <ExportButtons title="By Evaluator" columns={exportCols} rows={exportRows} quarter={quarter} filters={filters} />
+            </div>
             {ROLE_DEFS.map(def => {
                 const list = groups.filter(g => g.short === def.short);
                 if (!list.length) return null;
