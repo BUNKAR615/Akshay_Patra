@@ -40,8 +40,8 @@ export async function GET(request, { params }) {
         });
 
         const questions = exam.questions.map((q) => ({
-            id: q.id, type: q.type, text: q.text, hint: q.hint, required: q.required,
-            choices: q.choices.map((c) => ({ id: c.id, label: c.label })),
+            id: q.id, type: q.type, text: q.text, hint: q.hint, imageUrl: q.imageUrl, required: q.required,
+            choices: q.choices.map((c) => ({ id: c.id, label: c.label, imageUrl: c.imageUrl })),
         }));
         const savedAnswers = Object.fromEntries(
             response.answers.map((a) => [a.questionId, { choiceIds: a.choiceIds, textValue: a.textValue, ratingValue: a.ratingValue }])

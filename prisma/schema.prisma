@@ -963,6 +963,7 @@ model ExamQuestion {
   type     ExamQuestionType
   text     String
   hint     String?
+  imageUrl String? // optional question image (picture-based questions)
   required Boolean          @default(true)
   points   Int              @default(0)
   exam     Exam             @relation(fields: [examId], references: [id], onDelete: Cascade)
@@ -978,6 +979,7 @@ model ExamChoice {
   questionId String
   order      Int
   label      String
+  imageUrl   String? // optional option image (picture-based questions)
   isCorrect  Boolean      @default(false)
   question   ExamQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
@@ -1095,6 +1097,12 @@ enum ExamQuestionType {
   SHORT
   LONG
   RATING
+  TRUE_FALSE
+  LIKERT
+  RANKING
+  POLL
+  WORD_CLOUD
+  PICTURE
 }
 
 enum ExamAudienceMode {

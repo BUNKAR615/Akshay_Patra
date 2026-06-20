@@ -19,11 +19,20 @@ const STEPS = [
 const Q_TYPES = [
     { type: "SINGLE", label: "Single choice", icon: "check", tint: "#EEF3FB", accent: "#003087" },
     { type: "MULTIPLE", label: "Multiple choice", icon: "grid", tint: "#EBF7F1", accent: "#00843D" },
+    { type: "TRUE_FALSE", label: "True / False", icon: "check", tint: "#EFF6FF", accent: "#0369A1" },
+    { type: "POLL", label: "Poll", icon: "slider", tint: "#F0FDF4", accent: "#15803D" },
+    { type: "PICTURE", label: "Picture choice", icon: "grid", tint: "#FDF2F8", accent: "#BE185D" },
+    { type: "RANKING", label: "Ranking", icon: "list", tint: "#FEF3C7", accent: "#B45309" },
+    { type: "RATING", label: "Rating / scale", icon: "slider", tint: "#FFFBEB", accent: "#B45309" },
+    { type: "LIKERT", label: "Likert scale", icon: "slider", tint: "#F5F3FF", accent: "#6D28D9" },
     { type: "SHORT", label: "Short answer", icon: "type", tint: "#FEF4E8", accent: "#C2410C" },
     { type: "LONG", label: "Long answer", icon: "doc", tint: "#F3EFFE", accent: "#7C3AED" },
-    { type: "RATING", label: "Rating / scale", icon: "slider", tint: "#FFFBEB", accent: "#B45309" },
+    { type: "WORD_CLOUD", label: "Word cloud", icon: "chat", tint: "#ECFEFF", accent: "#0E7490" },
 ];
 const Q_META = Object.fromEntries(Q_TYPES.map((t) => [t.type, t]));
+const CHOICE_TYPES = ["SINGLE", "MULTIPLE", "TRUE_FALSE", "POLL", "PICTURE", "RANKING"];
+const GRADABLE_TYPES = ["SINGLE", "MULTIPLE", "TRUE_FALSE", "PICTURE"];
+const LIKERT_LABELS = ["Strongly disagree", "Disagree", "Neutral", "Agree", "Strongly agree"];
 
 const SEG_COLORS = ["#F7B968", "#7DD3A8", "#7FA8E8", "#C4B5FD", "#93C5FD"];
 const DEPT_TAG = { "Human Resources": "HR", "Information Technology": "IT" };
@@ -143,8 +152,8 @@ export default function ExamBuilderPage() {
                     externalApprovalMode: e.externalApprovalMode ?? "MANUAL",
                 });
                 setQuestions((e.questions || []).map((q) => ({
-                    _id: q.id, type: q.type, text: q.text, hint: q.hint || "", required: q.required, points: q.points,
-                    choices: (q.choices || []).map((c) => ({ _id: c.id, label: c.label, isCorrect: c.isCorrect })),
+                    _id: q.id, type: q.type, text: q.text, hint: q.hint || "", imageUrl: q.imageUrl || "", required: q.required, points: q.points,
+                    choices: (q.choices || []).map((c) => ({ _id: c.id, label: c.label, imageUrl: c.imageUrl || "", isCorrect: c.isCorrect })),
                 })));
                 if (e.participationMode) setParticipationMode(e.participationMode);
                 const ids = e.audience?.customRules?.employeeIds;
@@ -194,13 +203,16 @@ export default function ExamBuilderPage() {
 
     // ── Question helpers ──
     const addQuestion = (type) => {
-        const base = { _id: newId(), type, text: "", hint: "", required: true, points: 0, choices: [] };
-        if (type === "SINGLE" || type === "MULTIPLE") base.choices = [{ _id: newId(), label: "", isCorrect: false }, { _id: newId(), label: "", isCorrect: false }];
+        const ch = (label = "", isCorrect = false) => ({ _id: newId(), label, imageUrl: "", isCorrect });
+        const base = { _id: newId(), type, text: "", hint: "", imageUrl: "", required: true, points: 0, choices: [] };
+        if (type === "SINGLE" || type === "MULTIPLE" || type === "POLL" || type === "PICTURE") base.choices = [ch(), ch()];
+        else if (type === "TRUE_FALSE") base.choices = [ch("True"), ch("False")];
+        else if (type === "RANKING") base.choices = [ch(), ch(), ch()];
         setQuestions((qs) => [...qs, base]);
     };
     const updateQ = (id, patch) => setQuestions((qs) => qs.map((q) => (q._id === id ? { ...q, ...patch } : q)));
     const removeQ = (id) => setQuestions((qs) => qs.filter((q) => q._id !== id));
-    const addChoice = (qid) => setQuestions((qs) => qs.map((q) => (q._id === qid ? { ...q, choices: [...q.choices, { _id: newId(), label: "", isCorrect: false }] } : q)));
+    const addChoice = (qid) => setQuestions((qs) => qs.map((q) => (q._id === qid ? { ...q, choices: [...q.choices, { _id: newId(), label: "", imageUrl: "", isCorrect: false }] } : q)));
     const updateChoice = (qid, cid, patch) => setQuestions((qs) => qs.map((q) => q._id !== qid ? q : { ...q, choices: q.choices.map((c) => (c._id === cid ? { ...c, ...patch } : c)) }));
     const removeChoice = (qid, cid) => setQuestions((qs) => qs.map((q) => q._id !== qid ? q : { ...q, choices: q.choices.filter((c) => c._id !== cid) }));
     const toggleCorrect = (qid, cid, single) => setQuestions((qs) => qs.map((q) => {
@@ -236,8 +248,10 @@ export default function ExamBuilderPage() {
     });
     const questionsPayload = () => ({
         questions: questions.map((q) => ({
-            type: q.type, text: q.text || "Untitled question", hint: q.hint || null, required: q.required, points: q.points || 0,
-            choices: (q.type === "SINGLE" || q.type === "MULTIPLE") ? q.choices.filter((c) => c.label.trim()).map((c) => ({ label: c.label, isCorrect: c.isCorrect })) : [],
+            type: q.type, text: q.text || "Untitled question", hint: q.hint || null, imageUrl: q.imageUrl || null, required: q.required, points: q.points || 0,
+            choices: CHOICE_TYPES.includes(q.type)
+                ? q.choices.filter((c) => c.label.trim()).map((c) => ({ label: c.label, imageUrl: c.imageUrl || null, isCorrect: GRADABLE_TYPES.includes(q.type) ? c.isCorrect : false }))
+                : [],
         })),
     });
     const audiencePayload = () => ({
@@ -409,7 +423,11 @@ function QuestionsStep({ questions, totalPoints, onAdd, updateQ, removeQ, addCho
                 )}
                 {questions.map((q, i) => {
                     const meta = Q_META[q.type];
-                    const isChoice = q.type === "SINGLE" || q.type === "MULTIPLE";
+                    const hasChoices = CHOICE_TYPES.includes(q.type);
+                    const gradable = GRADABLE_TYPES.includes(q.type);
+                    const singleCorrect = q.type !== "MULTIPLE";
+                    const lockedLabels = q.type === "TRUE_FALSE";
+                    const isPicture = q.type === "PICTURE";
                     return (
                         <div key={q._id} className="bg-white rounded-[14px] p-4" style={{ borderLeft: `4px solid ${meta.accent}` }}>
                             <div className="flex items-center justify-between mb-2.5">
@@ -420,30 +438,45 @@ function QuestionsStep({ questions, totalPoints, onAdd, updateQ, removeQ, addCho
                                 <button onClick={() => removeQ(q._id)} className="text-ap-text-faint hover:text-red-500 cursor-pointer text-[12px] font-bold">Remove</button>
                             </div>
                             <input value={q.text} onChange={(e) => updateQ(q._id, { text: e.target.value })} placeholder="Question text" className="w-full border-[1.5px] border-gray-200 focus:border-ap-orange rounded-lg px-3 py-2 text-[14px] font-semibold outline-none mb-2" />
+                            {isPicture && (
+                                <input value={q.imageUrl} onChange={(e) => updateQ(q._id, { imageUrl: e.target.value })} placeholder="Question image URL (optional)" className="w-full border-[1.5px] border-gray-200 focus:border-ap-orange rounded-lg px-3 py-1.5 text-[12.5px] outline-none mb-2" />
+                            )}
                             <div className="flex flex-wrap items-center gap-3 mb-2.5">
                                 <input value={q.hint} onChange={(e) => updateQ(q._id, { hint: e.target.value })} placeholder="Hint (optional)" className="flex-1 min-w-[160px] border-[1.5px] border-gray-200 focus:border-ap-orange rounded-lg px-3 py-1.5 text-[12.5px] outline-none" />
-                                {isChoice && <label className="flex items-center gap-1.5 text-[12px] text-ap-text-muted">Points <input type="number" min="0" value={q.points} onChange={(e) => updateQ(q._id, { points: Number(e.target.value) })} className="w-16 border-[1.5px] border-gray-200 rounded-lg px-2 py-1 text-[12.5px]" /></label>}
+                                {gradable && <label className="flex items-center gap-1.5 text-[12px] text-ap-text-muted">Points <input type="number" min="0" value={q.points} onChange={(e) => updateQ(q._id, { points: Number(e.target.value) })} className="w-16 border-[1.5px] border-gray-200 rounded-lg px-2 py-1 text-[12.5px]" /></label>}
                                 <label className="flex items-center gap-1.5 text-[12px] text-ap-text-muted"><input type="checkbox" checked={q.required} onChange={(e) => updateQ(q._id, { required: e.target.checked })} /> Required</label>
                             </div>
 
-                            {isChoice && (
+                            {hasChoices && (
                                 <div className="space-y-1.5">
-                                    {q.choices.map((c) => (
-                                        <div key={c._id} className="flex items-center gap-2" style={{ background: c.isCorrect ? "#F4FBF7" : "transparent", borderRadius: 8, padding: c.isCorrect ? "2px 6px" : "0 6px" }}>
-                                            <button onClick={() => toggleCorrect(q._id, c._id, q.type === "SINGLE")} title="Mark correct" style={{ borderColor: c.isCorrect ? "#00843D" : "#CBD5E1", background: c.isCorrect ? "#00843D" : "#fff", borderRadius: q.type === "MULTIPLE" ? 5 : "50%" }} className="w-[18px] h-[18px] border-2 flex items-center justify-center shrink-0 cursor-pointer">
-                                                {c.isCorrect && <svg width="11" height="11" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-                                            </button>
-                                            <input value={c.label} onChange={(e) => updateChoice(q._id, c._id, { label: e.target.value })} placeholder="Option" className="flex-1 border-[1.5px] border-gray-200 focus:border-ap-orange rounded-lg px-2.5 py-1.5 text-[13px] outline-none" />
-                                            {c.isCorrect && <span className="text-[10.5px] font-bold text-ap-green">Correct</span>}
-                                            {q.choices.length > 2 && <button onClick={() => removeChoice(q._id, c._id)} className="text-ap-text-faint hover:text-red-500 cursor-pointer text-[16px] leading-none px-1">×</button>}
+                                    {q.type === "RANKING" && <p className="text-[11.5px] text-ap-text-faint mb-1">Respondents arrange these items into their preferred order.</p>}
+                                    {q.choices.map((c, ci) => (
+                                        <div key={c._id}>
+                                            <div className="flex items-center gap-2" style={{ background: c.isCorrect ? "#F4FBF7" : "transparent", borderRadius: 8, padding: c.isCorrect ? "2px 6px" : "0 6px" }}>
+                                                {gradable ? (
+                                                    <button onClick={() => toggleCorrect(q._id, c._id, singleCorrect)} title="Mark correct" style={{ borderColor: c.isCorrect ? "#00843D" : "#CBD5E1", background: c.isCorrect ? "#00843D" : "#fff", borderRadius: singleCorrect ? "50%" : 5 }} className="w-[18px] h-[18px] border-2 flex items-center justify-center shrink-0 cursor-pointer">
+                                                        {c.isCorrect && <svg width="11" height="11" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                                                    </button>
+                                                ) : (
+                                                    <span className="w-[18px] text-center text-[11px] font-bold text-ap-text-faint shrink-0">{q.type === "RANKING" ? ci + 1 : "•"}</span>
+                                                )}
+                                                <input value={c.label} disabled={lockedLabels} onChange={(e) => updateChoice(q._id, c._id, { label: e.target.value })} placeholder="Option" className="flex-1 border-[1.5px] border-gray-200 focus:border-ap-orange rounded-lg px-2.5 py-1.5 text-[13px] outline-none disabled:bg-gray-50 disabled:text-ap-text-muted" />
+                                                {c.isCorrect && <span className="text-[10.5px] font-bold text-ap-green">Correct</span>}
+                                                {!lockedLabels && q.choices.length > 2 && <button onClick={() => removeChoice(q._id, c._id)} className="text-ap-text-faint hover:text-red-500 cursor-pointer text-[16px] leading-none px-1">×</button>}
+                                            </div>
+                                            {isPicture && (
+                                                <input value={c.imageUrl} onChange={(e) => updateChoice(q._id, c._id, { imageUrl: e.target.value })} placeholder="Image URL for this option" className="w-full mt-1 ml-6 border-[1.5px] border-gray-200 focus:border-ap-orange rounded-lg px-2.5 py-1 text-[12px] outline-none" style={{ width: "calc(100% - 1.5rem)" }} />
+                                            )}
                                         </div>
                                     ))}
-                                    <button onClick={() => addChoice(q._id)} className="text-[12.5px] font-bold text-ap-orange-700 hover:underline cursor-pointer mt-1">+ Add option</button>
+                                    {!lockedLabels && <button onClick={() => addChoice(q._id)} className="text-[12.5px] font-bold text-ap-orange-700 hover:underline cursor-pointer mt-1">+ Add {isPicture ? "image" : "option"}</button>}
                                 </div>
                             )}
                             {q.type === "SHORT" && <div className="border border-dashed border-ap-border rounded-lg px-3 py-2 text-[12.5px] text-ap-text-faint">Single line response</div>}
+                            {q.type === "WORD_CLOUD" && <div className="border border-dashed border-ap-border rounded-lg px-3 py-2 text-[12.5px] text-ap-text-faint">Short word/phrase — answers form a live word cloud</div>}
                             {q.type === "LONG" && <div className="border border-dashed border-ap-border rounded-lg px-3 py-5 text-[12.5px] text-ap-text-faint">Paragraph response</div>}
                             {q.type === "RATING" && <div className="flex gap-1.5">{[1, 2, 3, 4, 5].map((n) => <span key={n} className="w-10 h-10 border border-ap-border rounded-lg flex items-center justify-center text-[14px] font-bold text-ap-text-muted">{n}</span>)}</div>}
+                            {q.type === "LIKERT" && <div className="flex flex-wrap gap-1.5">{LIKERT_LABELS.map((l) => <span key={l} className="border border-ap-border rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold text-ap-text-muted">{l}</span>)}</div>}
                         </div>
                     );
                 })}

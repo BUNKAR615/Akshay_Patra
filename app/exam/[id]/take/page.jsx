@@ -6,7 +6,8 @@ import { api } from "../../../../lib/clientApi";
 
 const ACCENT = "#F7941D";
 const GREEN = "#00843D";
-const TYPE_LABEL = { SINGLE: "Single choice", MULTIPLE: "Multiple choice", SHORT: "Short answer", LONG: "Long answer", RATING: "Rating" };
+const TYPE_LABEL = { SINGLE: "Single choice", MULTIPLE: "Multiple choice", SHORT: "Short answer", LONG: "Long answer", RATING: "Rating", TRUE_FALSE: "True / False", LIKERT: "Likert scale", RANKING: "Ranking", POLL: "Poll", WORD_CLOUD: "Word cloud", PICTURE: "Picture choice" };
+const LIKERT_LABELS = ["Strongly disagree", "Disagree", "Neutral", "Agree", "Strongly agree"];
 
 function isAnswered(q, a) {
     if (a == null) return false;
@@ -153,6 +154,7 @@ export default function TakeExamPage() {
     };
     const setText = (qid, v) => { markDirty(); setAnswers((p) => ({ ...p, [qid]: { textValue: v } })); };
     const setRating = (qid, n) => { markDirty(); setAnswers((p) => ({ ...p, [qid]: { ratingValue: n } })); };
+    const setRanking = (qid, orderedIds) => { markDirty(); setAnswers((p) => ({ ...p, [qid]: { choiceIds: orderedIds } })); };
 
     const toggleBookmark = (qid) => {
         setBookmarks((prev) => {
@@ -185,7 +187,7 @@ export default function TakeExamPage() {
                     exam={exam} questions={questions} index={index} total={total}
                     answers={answers} bookmarks={bookmarks} answeredCount={answeredCount}
                     remaining={remaining} saveState={saveState} anim={anim} navOpen={navOpen}
-                    setChoice={setChoice} setText={setText} setRating={setRating}
+                    setChoice={setChoice} setText={setText} setRating={setRating} setRanking={setRanking}
                     toggleBookmark={toggleBookmark} goTo={goTo} onPrev={prev} onNext={next}
                     setNavOpen={setNavOpen} onExit={() => router.back()} onReview={() => setStage("review")}
                 />
@@ -299,7 +301,7 @@ function WelcomeScreen({ exam, total, hasProgress, onStart, onExit }) {
 }
 
 // ─────────────────────────── Runner ───────────────────────────
-function ExamRunner({ exam, questions, index, total, answers, bookmarks, answeredCount, remaining, saveState, anim, navOpen, setChoice, setText, setRating, toggleBookmark, goTo, onPrev, onNext, setNavOpen, onExit, onReview }) {
+function ExamRunner({ exam, questions, index, total, answers, bookmarks, answeredCount, remaining, saveState, anim, navOpen, setChoice, setText, setRating, setRanking, toggleBookmark, goTo, onPrev, onNext, setNavOpen, onExit, onReview }) {
     const cur = questions[index];
     const isLast = index === total - 1;
     const progress = total ? Math.round(((index + 1) / total) * 100) : 0;
@@ -350,7 +352,11 @@ function ExamRunner({ exam, questions, index, total, answers, bookmarks, answere
                             </div>
                             <h2 className="text-[19px] sm:text-[21px] font-bold text-ap-text leading-snug">{cur.text}</h2>
                             {cur.hint && <p className="text-[13.5px] text-ap-text-muted mt-1.5">{cur.hint}</p>}
-                            <div className="mt-6"><QuestionInput cur={cur} answer={answers[cur.id]} setChoice={setChoice} setText={setText} setRating={setRating} /></div>
+                            {cur.imageUrl && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={cur.imageUrl} alt="" className="mt-4 max-h-64 w-auto rounded-xl border border-ap-border" />
+                            )}
+                            <div className="mt-6"><QuestionInput cur={cur} answer={answers[cur.id]} setChoice={setChoice} setText={setText} setRating={setRating} setRanking={setRanking} /></div>
                         </div>
 
                         <div className="flex items-center justify-between mt-7 gap-3">
@@ -429,8 +435,8 @@ function Navigator({ questions, answers, bookmarks, index, goTo, onReview, answe
     );
 }
 
-function QuestionInput({ cur, answer, setChoice, setText, setRating }) {
-    if (cur.type === "SINGLE" || cur.type === "MULTIPLE") {
+function QuestionInput({ cur, answer, setChoice, setText, setRating, setRanking }) {
+    if (cur.type === "SINGLE" || cur.type === "MULTIPLE" || cur.type === "TRUE_FALSE" || cur.type === "POLL") {
         const multiple = cur.type === "MULTIPLE";
         const picked = answer?.choiceIds || [];
         return (
@@ -449,7 +455,64 @@ function QuestionInput({ cur, answer, setChoice, setText, setRating }) {
             </div>
         );
     }
-    if (cur.type === "SHORT") return <input value={answer?.textValue || ""} onChange={(e) => setText(cur.id, e.target.value)} placeholder="Type your answer…" className="w-full border-[1.5px] border-gray-300 focus:border-ap-orange rounded-xl px-4 py-3 text-[14.5px] outline-none transition" />;
+    if (cur.type === "PICTURE") {
+        const picked = answer?.choiceIds || [];
+        return (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {cur.choices.map((c) => {
+                    const sel = picked.includes(c.id);
+                    return (
+                        <button key={c.id} onClick={() => setChoice(cur.id, c.id, false)} style={{ borderColor: sel ? ACCENT : "#E4E7ED", background: sel ? "#FEF7EE" : "#fff" }} className="border-2 rounded-xl overflow-hidden text-left cursor-pointer transition hover:-translate-y-0.5">
+                            {c.imageUrl
+                                // eslint-disable-next-line @next/next/no-img-element
+                                ? <img src={c.imageUrl} alt={c.label} className="w-full h-28 object-cover" />
+                                : <div className="w-full h-28 bg-gray-100 flex items-center justify-center text-ap-text-faint text-[12px]">No image</div>}
+                            <div className="flex items-center gap-2 px-3 py-2.5">
+                                <span style={{ borderColor: sel ? ACCENT : "#CBD5E1", background: sel ? ACCENT : "#fff" }} className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0">
+                                    {sel && <svg width="10" height="10" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.6" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                                </span>
+                                <span className="text-[13px] text-ap-text truncate">{c.label}</span>
+                            </div>
+                        </button>
+                    );
+                })}
+            </div>
+        );
+    }
+    if (cur.type === "RANKING") {
+        const byId = Object.fromEntries(cur.choices.map((c) => [c.id, c]));
+        const order = (answer?.choiceIds || []).filter((id) => byId[id]);
+        cur.choices.forEach((c) => { if (!order.includes(c.id)) order.push(c.id); });
+        const move = (idx, dir) => {
+            const ni = idx + dir; if (ni < 0 || ni >= order.length) return;
+            const next = [...order]; [next[idx], next[ni]] = [next[ni], next[idx]]; setRanking(cur.id, next);
+        };
+        return (
+            <div className="space-y-2">
+                {order.map((id, idx) => (
+                    <div key={id} className="flex items-center gap-3 border-[1.5px] border-ap-border rounded-xl px-4 py-3 bg-white">
+                        <span style={{ background: ACCENT }} className="w-7 h-7 rounded-lg text-white text-[13px] font-extrabold flex items-center justify-center shrink-0">{idx + 1}</span>
+                        <span className="flex-1 text-[14.5px] text-ap-text">{byId[id].label}</span>
+                        <div className="flex flex-col gap-1 shrink-0">
+                            <button onClick={() => move(idx, -1)} disabled={idx === 0} className="w-7 h-6 rounded border border-ap-border text-ap-text-muted disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed flex items-center justify-center" aria-label="Move up"><svg width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
+                            <button onClick={() => move(idx, 1)} disabled={idx === order.length - 1} className="w-7 h-6 rounded border border-ap-border text-ap-text-muted disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed flex items-center justify-center" aria-label="Move down"><svg width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+    if (cur.type === "LIKERT") {
+        return (
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                {LIKERT_LABELS.map((l, i) => {
+                    const n = i + 1; const sel = answer?.ratingValue === n;
+                    return <button key={n} onClick={() => setRating(cur.id, n)} style={{ background: sel ? ACCENT : "#fff", borderColor: sel ? ACCENT : "#E4E7ED", color: sel ? "#fff" : "#64748B" }} className="border-[1.5px] rounded-xl px-2 py-3 text-[12.5px] font-bold cursor-pointer transition text-center">{l}</button>;
+                })}
+            </div>
+        );
+    }
+    if (cur.type === "SHORT" || cur.type === "WORD_CLOUD") return <input value={answer?.textValue || ""} onChange={(e) => setText(cur.id, e.target.value)} placeholder={cur.type === "WORD_CLOUD" ? "Type a word or short phrase…" : "Type your answer…"} className="w-full border-[1.5px] border-gray-300 focus:border-ap-orange rounded-xl px-4 py-3 text-[14.5px] outline-none transition" />;
     if (cur.type === "LONG") return <textarea value={answer?.textValue || ""} onChange={(e) => setText(cur.id, e.target.value)} rows={5} placeholder="Write a few sentences…" className="w-full border-[1.5px] border-gray-300 focus:border-ap-orange rounded-xl px-4 py-3 text-[14.5px] outline-none transition resize-y" />;
     if (cur.type === "RATING") {
         return (

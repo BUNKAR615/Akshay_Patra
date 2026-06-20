@@ -41,8 +41,9 @@ export const GET = withRole(ALL_ROLES, async (request, { params, user }) => {
             type: q.type,
             text: q.text,
             hint: q.hint,
+            imageUrl: q.imageUrl,
             required: q.required,
-            choices: q.choices.map((c) => ({ id: c.id, label: c.label })),
+            choices: q.choices.map((c) => ({ id: c.id, label: c.label, imageUrl: c.imageUrl })),
         }));
 
         const savedAnswers = Object.fromEntries(

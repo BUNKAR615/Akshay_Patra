@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 import prisma from "../../../../../lib/prisma";
 import { withRole } from "../../../../../lib/withRole";
 import { ok, notFound, serverError, validateBody } from "../../../../../lib/api-response";
-import { questionsSchema } from "../../../../../lib/examValidators";
+import { questionsSchema, CHOICE_TYPES, GRADABLE_TYPES } from "../../../../../lib/examValidators";
 
 /**
  * PUT /api/exam/:id/questions — replace the whole question set for an exam.
@@ -21,7 +21,7 @@ export const PUT = withRole(["ADMIN"], async (request, { params, user }) => {
         if (error) return error;
 
         const incoming = data.questions;
-        const gradableIdx = incoming.map((q, i) => ({ q, i })).filter(({ q }) => q.type === "SINGLE" || q.type === "MULTIPLE");
+        const gradableIdx = incoming.map((q, i) => ({ q, i })).filter(({ q }) => GRADABLE_TYPES.includes(q.type));
         const anyPoints = gradableIdx.some(({ q }) => (q.points || 0) > 0);
         let evenEach = 0;
         let remainder = 0;
@@ -36,7 +36,8 @@ export const PUT = withRole(["ADMIN"], async (request, { params, user }) => {
 
             for (let i = 0; i < incoming.length; i++) {
                 const q = incoming[i];
-                const gradable = q.type === "SINGLE" || q.type === "MULTIPLE";
+                const gradable = GRADABLE_TYPES.includes(q.type);
+                const hasChoices = CHOICE_TYPES.includes(q.type);
                 let points = q.points || 0;
                 if (gradable && !anyPoints) {
                     const isFirstGradable = gradableIdx[0]?.i === i;
@@ -49,10 +50,11 @@ export const PUT = withRole(["ADMIN"], async (request, { params, user }) => {
                         type: q.type,
                         text: q.text,
                         hint: q.hint || null,
+                        imageUrl: q.imageUrl || null,
                         required: q.required ?? true,
                         points: gradable ? points : 0,
-                        choices: gradable && q.choices?.length
-                            ? { create: q.choices.map((c, ci) => ({ order: ci, label: c.label, isCorrect: !!c.isCorrect })) }
+                        choices: hasChoices && q.choices?.length
+                            ? { create: q.choices.map((c, ci) => ({ order: ci, label: c.label, imageUrl: c.imageUrl || null, isCorrect: gradable ? !!c.isCorrect : false })) }
                             : undefined,
                     },
                 });
