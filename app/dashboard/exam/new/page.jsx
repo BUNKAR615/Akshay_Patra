@@ -94,7 +94,9 @@ export default function ExamBuilderPage() {
     // Details
     const [details, setDetails] = useState({
         title: "", description: "", timeLimitMin: 45, passMark: 70, dueDate: "",
-        shuffle: true, showResults: false, requireCompletion: true,
+        shuffle: true, showResults: false, requireCompletion: true, allowReattempts: false,
+        externalEmailRequired: true, externalMobileRequired: true, externalEmpCodeRequired: true,
+        externalApprovalMode: "MANUAL",
     });
     // Questions
     const [questions, setQuestions] = useState([]);
@@ -134,6 +136,11 @@ export default function ExamBuilderPage() {
                     timeLimitMin: e.timeLimitMin ?? 45, passMark: e.passMark ?? 70,
                     dueDate: e.dueDate ? e.dueDate.slice(0, 10) : "",
                     shuffle: e.shuffle, showResults: e.showResults, requireCompletion: e.requireCompletion,
+                    allowReattempts: e.allowReattempts ?? false,
+                    externalEmailRequired: e.externalEmailRequired ?? true,
+                    externalMobileRequired: e.externalMobileRequired ?? true,
+                    externalEmpCodeRequired: e.externalEmpCodeRequired ?? true,
+                    externalApprovalMode: e.externalApprovalMode ?? "MANUAL",
                 });
                 setQuestions((e.questions || []).map((q) => ({
                     _id: q.id, type: q.type, text: q.text, hint: q.hint || "", required: q.required, points: q.points,
@@ -221,6 +228,11 @@ export default function ExamBuilderPage() {
         dueDate: details.dueDate ? new Date(details.dueDate).toISOString() : null,
         shuffle: details.shuffle, showResults: details.showResults, requireCompletion: details.requireCompletion,
         participationMode,
+        allowReattempts: details.allowReattempts,
+        externalEmailRequired: details.externalEmailRequired,
+        externalMobileRequired: details.externalMobileRequired,
+        externalEmpCodeRequired: details.externalEmpCodeRequired,
+        externalApprovalMode: details.externalApprovalMode,
     });
     const questionsPayload = () => ({
         questions: questions.map((q) => ({
@@ -325,6 +337,8 @@ export default function ExamBuilderPage() {
                     filters={filters} setFilters={setFilters}
                     audOpen={audOpen} setAudOpen={setAudOpen}
                     templates={templates} onSaveTemplate={saveTemplate} onApplyTemplate={applyTemplate} onDeleteTemplate={deleteTemplate}
+                    access={details} onAccess={(patch) => setDetails((d) => ({ ...d, ...patch }))}
+                    registerUrl={examId ? `/exam/${examId}/register` : null}
                     summary={audienceSummary} labelBase={labelBase}
                     onNext={() => setStep(3)}
                 />
@@ -355,7 +369,7 @@ function DetailsStep({ details, setDetails, onNext }) {
                     <Field label="Due date"><input type="date" value={details.dueDate} onChange={(e) => set("dueDate", e.target.value)} className={inputCls} /></Field>
                 </div>
                 <div className="flex flex-wrap gap-2.5 pt-1">
-                    {[["shuffle", "Shuffle questions"], ["showResults", "Show results on submit"], ["requireCompletion", "Require completion"]].map(([k, l]) => (
+                    {[["shuffle", "Shuffle questions"], ["showResults", "Show results on submit"], ["requireCompletion", "Require completion"], ["allowReattempts", "Allow reattempts"]].map(([k, l]) => (
                         <div key={k} className="flex items-center gap-2.5 border border-ap-border rounded-[10px] px-3 py-2">
                             <Toggle on={details[k]} onChange={(v) => set(k, v)} label={l} />
                             <span className="text-[13px] font-semibold text-ap-text">{l}</span>
@@ -504,6 +518,58 @@ function ModeSelector({ value, onChange }) {
     );
 }
 
+function ExternalSettings({ access, onAccess, registerUrl }) {
+    const [copied, setCopied] = useState(false);
+    const fullUrl = registerUrl ? (typeof window !== "undefined" ? window.location.origin + registerUrl : registerUrl) : "";
+    const copy = async () => {
+        try { await navigator.clipboard.writeText(fullUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* ignore */ }
+    };
+    const reviewUrl = registerUrl ? registerUrl.replace(/^\/exam\//, "/dashboard/exam/").replace(/\/register$/, "/registrants") : null;
+    const reqs = [
+        ["externalEmpCodeRequired", "Employee code required"],
+        ["externalMobileRequired", "Mobile required"],
+        ["externalEmailRequired", "Email required"],
+    ];
+    return (
+        <div className="border border-ap-border rounded-[14px] p-4 mb-4" style={{ background: "#F8FAFC" }}>
+            <p className="text-[12px] font-bold uppercase tracking-wider text-ap-text-faint mb-3">External registration settings</p>
+            <div className="flex flex-wrap gap-2.5 mb-3">
+                {reqs.map(([k, l]) => (
+                    <div key={k} className="flex items-center gap-2.5 bg-white border border-ap-border rounded-[10px] px-3 py-2">
+                        <Toggle on={!!access[k]} onChange={(v) => onAccess({ [k]: v })} label={l} />
+                        <span className="text-[12.5px] font-semibold text-ap-text">{l}</span>
+                    </div>
+                ))}
+            </div>
+            <div className="flex items-center gap-3 flex-wrap mb-3.5">
+                <span className="text-[12.5px] font-bold text-ap-text-muted">Approval</span>
+                <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: "#F1F5F9" }}>
+                    {[["MANUAL", "Manual review"], ["AUTO", "Auto-approve"]].map(([m, l]) => (
+                        <button key={m} onClick={() => onAccess({ externalApprovalMode: m })} style={{ background: access.externalApprovalMode === m ? "#fff" : "transparent", color: access.externalApprovalMode === m ? "#003087" : "#64748B", boxShadow: access.externalApprovalMode === m ? "0 1px 2px rgba(0,0,0,.08)" : "none" }} className="text-[12px] font-bold px-3 py-1.5 rounded-md cursor-pointer transition">{l}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-ap-text-faint mb-1.5">Shareable registration link</p>
+                {registerUrl ? (
+                    <div className="flex items-center gap-2">
+                        <input readOnly value={fullUrl} onFocus={(e) => e.target.select()} className="flex-1 border-[1.5px] border-gray-300 rounded-[10px] px-3 py-2 text-[12.5px] text-ap-text-muted outline-none bg-white" />
+                        <button onClick={copy} style={{ background: copied ? "#00843D" : "#003087" }} className="text-white text-[12.5px] font-bold rounded-[10px] px-3.5 py-2 cursor-pointer shrink-0">{copied ? "Copied" : "Copy"}</button>
+                    </div>
+                ) : (
+                    <p className="text-[12.5px] text-ap-text-faint">Use “Save draft” to generate a shareable registration link.</p>
+                )}
+                {reviewUrl && (
+                    <a href={reviewUrl} className="inline-flex items-center gap-1.5 mt-3 text-[12.5px] font-bold text-[#003087] hover:underline">
+                        Review registrants
+                        <svg width="15" height="15" fill="none" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    </a>
+                )}
+            </div>
+        </div>
+    );
+}
+
 function EmployeePickerStep({
     employees, empLoading,
     participationMode, setParticipationMode,
@@ -512,10 +578,12 @@ function EmployeePickerStep({
     filters, setFilters,
     audOpen, setAudOpen,
     templates, onSaveTemplate, onApplyTemplate, onDeleteTemplate,
+    access, onAccess, registerUrl,
     summary, labelBase, onNext,
 }) {
     const [tplName, setTplName] = useState("");
     const [namingTpl, setNamingTpl] = useState(false);
+    const showExternal = participationMode === "INTERNAL_EXTERNAL" || participationMode === "OPEN";
 
     const aq = audSearch.trim().toLowerCase();
     const filtered = useMemo(() => employees.filter((e) => matchEmployee(e, filters, aq)), [employees, filters, aq]);
@@ -596,6 +664,7 @@ function EmployeePickerStep({
                 {externalNote && (
                     <div style={{ background: "#EFF6FF", borderColor: "#BFDBFE" }} className="border rounded-[11px] px-3.5 py-2.5 mb-4 text-[12.5px] text-[#1D4ED8] leading-relaxed">{externalNote}</div>
                 )}
+                {showExternal && <ExternalSettings access={access} onAccess={onAccess} registerUrl={registerUrl} />}
 
                 {/* search */}
                 <div className="relative mb-3">

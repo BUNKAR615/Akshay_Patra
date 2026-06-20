@@ -909,17 +909,47 @@ model Exam {
   // employees; INTERNAL = filter-defined internal set; INTERNAL_EXTERNAL / OPEN
   // additionally allow external/open registrants (Phase B).
   participationMode ExamParticipationMode @default(CUSTOM)
+  // Phase B — external registration & access control.
+  externalEmailRequired   Boolean          @default(true)
+  externalMobileRequired  Boolean          @default(true)
+  externalEmpCodeRequired Boolean          @default(true)
+  externalApprovalMode    ExamApprovalMode @default(MANUAL)
+  allowReattempts         Boolean          @default(false)
   createdById       String // scalar ref → users.id (no relation)
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
-  questions         ExamQuestion[]
-  audience          ExamAudience?
-  invites           ExamInvite[]
-  responses         ExamResponse[]
+  questions           ExamQuestion[]
+  audience            ExamAudience?
+  invites             ExamInvite[]
+  responses           ExamResponse[]
+  externalRegistrants ExternalRegistrant[]
 
   @@index([status])
   @@index([createdById])
   @@map("exams")
+}
+
+/// ExternalRegistrant — an Akshaya Patra employee outside the live directory
+/// (e.g. non-Rajasthan branches) who registers to take an exam. Phase B.
+model ExternalRegistrant {
+  id           String           @id @default(cuid())
+  examId       String
+  name         String
+  empCode      String
+  email        String?
+  mobile       String?
+  department   String?
+  branch       String?
+  designation  String?
+  status       RegistrantStatus @default(PENDING)
+  reviewedById String? // scalar ref → users.id
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  exam         Exam             @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, empCode]) // one registration per employee code per exam
+  @@index([examId, status])
+  @@map("external_registrants")
 }
 
 /// ExamQuestion — one question within an exam.
@@ -1036,6 +1066,17 @@ enum ExamParticipationMode {
   INTERNAL_EXTERNAL
   OPEN
   CUSTOM
+}
+
+enum ExamApprovalMode {
+  AUTO
+  MANUAL
+}
+
+enum RegistrantStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum ExamStatus {

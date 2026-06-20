@@ -48,6 +48,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Public external-registration flow (Phase B): the registration page and its
+  // API are reachable without a session so non-Rajasthan staff can sign up. Only
+  // the `/register` leaf is opened — the exam take-flow stays authenticated.
+  if (/^\/(api\/)?exam\/[^/]+\/register\/?$/.test(pathname)) {
+    return NextResponse.next()
+  }
+
   // Allow static assets
   if (
     pathname.startsWith('/_next') ||
