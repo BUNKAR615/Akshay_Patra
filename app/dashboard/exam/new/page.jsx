@@ -26,10 +26,57 @@ const Q_TYPES = [
 const Q_META = Object.fromEntries(Q_TYPES.map((t) => [t.type, t]));
 
 const SEG_COLORS = ["#F7B968", "#7DD3A8", "#7FA8E8", "#C4B5FD", "#93C5FD"];
-const ALL_BRANCHES = "All branches";
-const ALL_DEPTS = "All departments";
-const ALL_ROLES = "All roles";
 const DEPT_TAG = { "Human Resources": "HR", "Information Technology": "IT" };
+
+// Audience filter dimensions. Each filter is multi-select and can be set to
+// INCLUDE (keep only matches) or EXCLUDE (drop matches).
+const DIMS = [
+    { key: "branch", label: "Branch" },
+    { key: "dept", label: "Department" },
+    { key: "role", label: "Role" },
+    { key: "desig", label: "Designation" },
+];
+const EMPTY_FILTERS = {
+    branch: { mode: "include", values: [] },
+    dept: { mode: "include", values: [] },
+    role: { mode: "include", values: [] },
+    desig: { mode: "include", values: [] },
+};
+function normalizeFilters(f) {
+    const out = {};
+    for (const { key } of DIMS) {
+        const cur = f && f[key];
+        out[key] = { mode: cur?.mode === "exclude" ? "exclude" : "include", values: Array.isArray(cur?.values) ? cur.values : [] };
+    }
+    return out;
+}
+function matchEmployee(e, filters, q) {
+    if (q) {
+        const s = q.toLowerCase();
+        if (!e.name.toLowerCase().includes(s) && !e.code.includes(s)) return false;
+    }
+    for (const { key } of DIMS) {
+        const f = filters[key];
+        if (!f || !f.values.length) continue;
+        const inSet = f.values.includes(e[key]);
+        if (f.mode === "include" && !inSet) return false;
+        if (f.mode === "exclude" && inSet) return false;
+    }
+    return true;
+}
+function anyFilters(filters) {
+    return DIMS.some(({ key }) => filters[key]?.values.length);
+}
+
+// Participation modes (Phase A). CUSTOM = hand-pick; INTERNAL = filter-defined
+// internal set; INTERNAL_EXTERNAL / OPEN additionally allow external/open
+// registrants (the external flow itself is Phase B).
+const MODE_DEFS = [
+    { id: "INTERNAL", label: "Internal only", desc: "Employees in the live directory.", icon: "users" },
+    { id: "INTERNAL_EXTERNAL", label: "Internal + External", desc: "Plus Akshaya Patra staff outside Rajasthan.", icon: "building" },
+    { id: "OPEN", label: "Open participation", desc: "Anyone the admin allows.", icon: "grid" },
+    { id: "CUSTOM", label: "Custom audience", desc: "Hand-pick specific employees.", icon: "star" },
+];
 
 let tmpId = 0;
 const newId = () => `tmp-${++tmpId}`;
@@ -55,20 +102,23 @@ export default function ExamBuilderPage() {
     // selected employee ids, persisted as a CUSTOM audience.
     const [employees, setEmployees] = useState([]);
     const [empLoading, setEmpLoading] = useState(true);
+    const [participationMode, setParticipationMode] = useState("CUSTOM");
     const [audSel, setAudSel] = useState({}); // { [employeeId]: true }
     const [audSearch, setAudSearch] = useState("");
-    const [audBranch, setAudBranch] = useState(ALL_BRANCHES);
-    const [audDept, setAudDept] = useState(ALL_DEPTS);
-    const [audRole, setAudRole] = useState(ALL_ROLES);
-    const [audOpen, setAudOpen] = useState(null); // "branch" | "dept" | "role" | null
-    const [audSaved, setAudSaved] = useState([]);
+    const [filters, setFilters] = useState(EMPTY_FILTERS);
+    const [audOpen, setAudOpen] = useState(null); // open filter dropdown key | null
+    const [templates, setTemplates] = useState([]);
 
-    // Load the live employee directory once for the picker.
+    // Load the live employee directory + saved audience templates once.
     useEffect(() => {
         (async () => {
             try { const d = await api("/api/exam/employees"); setEmployees(d.employees || []); }
             catch (e) { console.error("[Builder] employees load failed:", e); }
             finally { setEmpLoading(false); }
+        })();
+        (async () => {
+            try { const d = await api("/api/exam/audience-templates"); setTemplates(d.templates || []); }
+            catch (e) { console.error("[Builder] templates load failed:", e); }
         })();
     }, []);
 
@@ -89,8 +139,10 @@ export default function ExamBuilderPage() {
                     _id: q.id, type: q.type, text: q.text, hint: q.hint || "", required: q.required, points: q.points,
                     choices: (q.choices || []).map((c) => ({ _id: c.id, label: c.label, isCorrect: c.isCorrect })),
                 })));
+                if (e.participationMode) setParticipationMode(e.participationMode);
                 const ids = e.audience?.customRules?.employeeIds;
                 if (Array.isArray(ids)) setAudSel(Object.fromEntries(ids.map((id) => [id, true])));
+                if (e.audience?.customRules?.filters) setFilters(normalizeFilters(e.audience.customRules.filters));
             } catch (err) { console.error("[Builder] load failed:", err); }
         })();
     }, [editId]);
@@ -102,11 +154,12 @@ export default function ExamBuilderPage() {
     // Label built from whichever filters are active when the audience is saved.
     const labelBase = useMemo(() => {
         const p = [];
-        if (audBranch !== ALL_BRANCHES) p.push(audBranch.split(" — ")[0]);
-        if (audDept !== ALL_DEPTS) p.push(audDept);
-        if (audRole !== ALL_ROLES) p.push(audRole + "s");
-        return p.length ? p.join(" · ") : "Custom selection";
-    }, [audBranch, audDept, audRole]);
+        if (filters.branch.values.length) p.push(filters.branch.values.map((b) => b.split(" — ")[0]).join("/"));
+        if (filters.dept.values.length) p.push(filters.dept.values.join("/"));
+        if (filters.role.values.length) p.push(filters.role.values.join("/"));
+        if (filters.desig.values.length) p.push(filters.desig.values.join("/"));
+        return p.length ? p.join(" · ") : (participationMode === "CUSTOM" ? "Custom selection" : "Filtered audience");
+    }, [filters, participationMode]);
 
     const audienceSummary = useMemo(() => {
         const sel = selectedIds.map((id) => empById[id]).filter(Boolean);
@@ -167,6 +220,7 @@ export default function ExamBuilderPage() {
         passMark: Number(details.passMark) || 0,
         dueDate: details.dueDate ? new Date(details.dueDate).toISOString() : null,
         shuffle: details.shuffle, showResults: details.showResults, requireCompletion: details.requireCompletion,
+        participationMode,
     });
     const questionsPayload = () => ({
         questions: questions.map((q) => ({
@@ -179,8 +233,30 @@ export default function ExamBuilderPage() {
         branchId: null,
         departmentId: null,
         randomCount: null,
-        customRules: { employeeIds: selectedIds },
+        customRules: { employeeIds: selectedIds, filters, participationMode },
     });
+
+    // ── Audience template actions ──
+    const saveTemplate = async (name) => {
+        try {
+            const d = await api("/api/exam/audience-templates", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, mode: participationMode, filters, employeeIds: selectedIds, count: selectedIds.length }),
+            });
+            setTemplates((prev) => [d.template, ...prev]);
+        } catch (e) { console.error("[Builder] save template failed:", e); }
+    };
+    const applyTemplate = (t) => {
+        if (Array.isArray(t.employeeIds)) setAudSel(Object.fromEntries(t.employeeIds.map((id) => [id, true])));
+        if (t.filters) setFilters(normalizeFilters(t.filters));
+        if (t.mode) setParticipationMode(t.mode);
+    };
+    const deleteTemplate = async (id) => {
+        try {
+            await api(`/api/exam/audience-templates/${id}`, { method: "DELETE" });
+            setTemplates((prev) => prev.filter((t) => t.id !== id));
+        } catch (e) { console.error("[Builder] delete template failed:", e); }
+    };
 
     const persist = async ({ publish }) => {
         setError("");
@@ -243,13 +319,12 @@ export default function ExamBuilderPage() {
             {step === 2 && (
                 <EmployeePickerStep
                     employees={employees} empLoading={empLoading}
+                    participationMode={participationMode} setParticipationMode={setParticipationMode}
                     audSel={audSel} setAudSel={setAudSel}
                     audSearch={audSearch} setAudSearch={setAudSearch}
-                    audBranch={audBranch} setAudBranch={setAudBranch}
-                    audDept={audDept} setAudDept={setAudDept}
-                    audRole={audRole} setAudRole={setAudRole}
+                    filters={filters} setFilters={setFilters}
                     audOpen={audOpen} setAudOpen={setAudOpen}
-                    audSaved={audSaved} setAudSaved={setAudSaved}
+                    templates={templates} onSaveTemplate={saveTemplate} onApplyTemplate={applyTemplate} onDeleteTemplate={deleteTemplate}
                     summary={audienceSummary} labelBase={labelBase}
                     onNext={() => setStep(3)}
                 />
@@ -367,100 +442,148 @@ function QuestionsStep({ questions, totalPoints, onAdd, updateQ, removeQ, addCho
 }
 
 // ── Step 3: Audience — live employee picker ──
-function FilterDropdown({ dim, label, value, options, open, onToggle }) {
-    const active = value !== `All ${dim}s` && !value.startsWith("All ");
+function MultiFilter({ dimKey, label, options, filter, onToggleValue, onSetMode, onClear, open, onToggleOpen }) {
+    const n = filter.values.length;
+    const active = n > 0;
+    const exclude = filter.mode === "exclude";
+    const summaryText = n === 0 ? "Any" : n === 1 ? filter.values[0] : `${n} selected`;
     const style = active
-        ? { bg: "#FEF4E8", bd: ACCENT, tx: "#C2410C" }
+        ? { bg: exclude ? "#FEF2F2" : "#FEF4E8", bd: exclude ? "#FCA5A5" : ACCENT, tx: exclude ? "#DC2626" : "#C2410C" }
         : { bg: "#F8FAFC", bd: "#E4E7ED", tx: "#1E293B" };
     return (
-        <div className="relative flex-1 min-w-[150px]">
-            <button onClick={onToggle} style={{ background: style.bg, borderColor: style.bd }} className="w-full flex items-center justify-between gap-2 border-[1.5px] rounded-[10px] px-3 py-2.5 cursor-pointer">
+        <div className="relative flex-1 min-w-[160px]">
+            <button onClick={onToggleOpen} style={{ background: style.bg, borderColor: style.bd }} className="w-full flex items-center justify-between gap-2 border-[1.5px] rounded-[10px] px-3 py-2.5 cursor-pointer">
                 <span className="flex flex-col items-start min-w-0">
-                    <span className="text-[10px] font-bold text-ap-text-faint uppercase tracking-wide">{label}</span>
-                    <span style={{ color: style.tx }} className="text-[13px] font-bold truncate max-w-[130px]">{value}</span>
+                    <span className="text-[10px] font-bold text-ap-text-faint uppercase tracking-wide">{label}{active && exclude ? " · exclude" : ""}</span>
+                    <span style={{ color: style.tx }} className="text-[13px] font-bold truncate max-w-[140px]">{summaryText}</span>
                 </span>
                 <svg width="16" height="16" fill="none" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
             {open && (
-                <div className="absolute left-0 right-0 z-30 bg-white border border-ap-border rounded-[12px] p-1.5 max-h-[248px] overflow-y-auto" style={{ top: "calc(100% + 6px)", boxShadow: "0 8px 30px rgba(13,27,62,.16)" }}>
-                    {options.map((o) => (
-                        <button key={o.label} onClick={o.onSelect} style={{ background: o.bg, color: o.tx, fontWeight: o.weight }} className="w-full flex items-center justify-between gap-2 text-left rounded-lg px-2.5 py-2 text-[13px] cursor-pointer hover:bg-ap-bg">
-                            {o.label}<span className="text-[11px] text-ap-text-faint font-semibold">{o.count}</span>
-                        </button>
-                    ))}
+                <div className="absolute left-0 right-0 z-30 bg-white border border-ap-border rounded-[12px] p-2 max-h-[300px] overflow-y-auto" style={{ top: "calc(100% + 6px)", boxShadow: "0 8px 30px rgba(13,27,62,.16)" }}>
+                    <div className="flex items-center gap-1 p-1 mb-1.5 rounded-lg" style={{ background: "#F1F5F9" }}>
+                        {["include", "exclude"].map((m) => (
+                            <button key={m} onClick={() => onSetMode(m)} style={{ background: filter.mode === m ? "#fff" : "transparent", color: filter.mode === m ? (m === "exclude" ? "#DC2626" : "#C2410C") : "#64748B", boxShadow: filter.mode === m ? "0 1px 2px rgba(0,0,0,.08)" : "none" }} className="flex-1 text-[11.5px] font-bold py-1.5 rounded-md cursor-pointer capitalize transition">{m}</button>
+                        ))}
+                    </div>
+                    {options.map((o) => {
+                        const on = filter.values.includes(o.value);
+                        return (
+                            <button key={o.value} onClick={() => onToggleValue(o.value)} className="w-full flex items-center gap-2 text-left rounded-lg px-2 py-2 text-[13px] cursor-pointer hover:bg-ap-bg">
+                                <span style={{ borderColor: on ? ACCENT : "#CBD5E1", background: on ? ACCENT : "#fff" }} className="w-[17px] h-[17px] rounded border-2 flex items-center justify-center shrink-0">
+                                    {on && <svg width="11" height="11" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="#fff" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                                </span>
+                                <span className="flex-1 truncate" style={{ fontWeight: on ? 700 : 600, color: on ? "#1E293B" : "#475569" }}>{o.value}</span>
+                                <span className="text-[11px] text-ap-text-faint font-semibold shrink-0">{o.count}</span>
+                            </button>
+                        );
+                    })}
+                    {active && <button onClick={onClear} className="w-full text-[12px] font-bold text-ap-text-muted hover:bg-ap-bg rounded-lg py-2 mt-1 cursor-pointer">Clear {label}</button>}
                 </div>
             )}
         </div>
     );
 }
 
+function ModeSelector({ value, onChange }) {
+    return (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-5">
+            {MODE_DEFS.map((m) => {
+                const on = value === m.id;
+                return (
+                    <button key={m.id} onClick={() => onChange(m.id)} style={{ background: on ? "#FEF4E8" : "#fff", borderColor: on ? ACCENT : "#E4E7ED" }} className="flex flex-col gap-2 border-[1.5px] rounded-[14px] p-3.5 text-left cursor-pointer transition hover:border-ap-orange/50">
+                        <span style={{ background: on ? ACCENT : "#F1F5F9", color: on ? "#fff" : "#64748B" }} className="w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0"><Icon name={m.icon} size={18} sw={1.8} /></span>
+                        <span>
+                            <span style={{ color: on ? "#1E293B" : "#334155" }} className="block text-[13px] font-extrabold leading-tight">{m.label}</span>
+                            <span className="block text-[11px] text-ap-text-muted leading-snug mt-0.5">{m.desc}</span>
+                        </span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
 function EmployeePickerStep({
     employees, empLoading,
+    participationMode, setParticipationMode,
     audSel, setAudSel,
     audSearch, setAudSearch,
-    audBranch, setAudBranch,
-    audDept, setAudDept,
-    audRole, setAudRole,
+    filters, setFilters,
     audOpen, setAudOpen,
-    audSaved, setAudSaved,
+    templates, onSaveTemplate, onApplyTemplate, onDeleteTemplate,
     summary, labelBase, onNext,
 }) {
+    const [tplName, setTplName] = useState("");
+    const [namingTpl, setNamingTpl] = useState(false);
+
     const aq = audSearch.trim().toLowerCase();
-    const mSearch = (e) => !aq || e.name.toLowerCase().includes(aq) || e.code.includes(aq);
-    const mBranch = (e) => audBranch === ALL_BRANCHES || e.branch === audBranch;
-    const mDept = (e) => audDept === ALL_DEPTS || e.dept === audDept;
-    const mRole = (e) => audRole === ALL_ROLES || e.role === audRole;
-    const filtered = employees.filter((e) => mSearch(e) && mBranch(e) && mDept(e) && mRole(e));
+    const filtered = useMemo(() => employees.filter((e) => matchEmployee(e, filters, aq)), [employees, filters, aq]);
 
-    // Facet counts: count under all *other* active filters, skipping the one
-    // being faceted so each option shows how many it would yield.
-    const facet = (dim, val, skip) => employees.filter((e) => mSearch(e)
-        && (skip === "b" || mBranch(e)) && (skip === "d" || mDept(e)) && (skip === "r" || mRole(e))
-        && (val === "__all" || e[dim] === val)).length;
-    const uniq = (arr) => [...new Set(arr)].sort();
-    const mkOpts = (list, cur, setter, dim, skip) => list.map((v) => {
-        const on = cur === v;
-        return {
-            label: v, count: v.startsWith("All ") ? facet(dim, "__all", skip) : facet(dim, v, skip),
-            bg: on ? "#FEF4E8" : "#fff", tx: on ? "#C2410C" : "#1E293B", weight: on ? 800 : 600,
-            onSelect: () => { setter(v); setAudOpen(null); },
-        };
+    // Match against every filter EXCEPT one dimension — used for that
+    // dimension's facet counts so each option shows how many it would yield.
+    const matchExcept = (e, skipKey) => {
+        if (aq && !e.name.toLowerCase().includes(aq) && !e.code.includes(aq)) return false;
+        for (const { key } of DIMS) {
+            if (key === skipKey) continue;
+            const f = filters[key];
+            if (!f.values.length) continue;
+            const inSet = f.values.includes(e[key]);
+            if (f.mode === "include" && !inSet) return false;
+            if (f.mode === "exclude" && inSet) return false;
+        }
+        return true;
+    };
+    const optionsFor = (key) => {
+        const pool = employees.filter((e) => matchExcept(e, key));
+        const counts = {};
+        pool.forEach((e) => { counts[e[key]] = (counts[e[key]] || 0) + 1; });
+        return [...new Set(employees.map((e) => e[key]).filter(Boolean))].sort().map((v) => ({ value: v, count: counts[v] || 0 }));
+    };
+
+    const toggleValue = (key, value) => setFilters((f) => {
+        const cur = f[key]; const has = cur.values.includes(value);
+        return { ...f, [key]: { ...cur, values: has ? cur.values.filter((x) => x !== value) : [...cur.values, value] } };
     });
-    const branchOptions = mkOpts([ALL_BRANCHES, ...uniq(employees.map((e) => e.branch))], audBranch, setAudBranch, "branch", "b");
-    const deptOptions = mkOpts([ALL_DEPTS, ...uniq(employees.map((e) => e.dept))], audDept, setAudDept, "dept", "d");
-    const roleOptions = mkOpts([ALL_ROLES, ...uniq(employees.map((e) => e.role))], audRole, setAudRole, "role", "r");
+    const setMode = (key, mode) => setFilters((f) => ({ ...f, [key]: { ...f[key], mode } }));
+    const clearDim = (key) => setFilters((f) => ({ ...f, [key]: { mode: "include", values: [] } }));
+    const clearFilters = () => { setFilters(EMPTY_FILTERS); setAudSearch(""); setAudOpen(null); };
 
-    const bActive = audBranch !== ALL_BRANCHES, dActive = audDept !== ALL_DEPTS, rActive = audRole !== ALL_ROLES;
-    const hasActiveFilters = bActive || dActive || rActive;
     const chips = [];
-    if (bActive) chips.push({ label: "Branch · " + audBranch, onClear: () => setAudBranch(ALL_BRANCHES) });
-    if (dActive) chips.push({ label: "Dept · " + audDept, onClear: () => setAudDept(ALL_DEPTS) });
-    if (rActive) chips.push({ label: "Role · " + audRole, onClear: () => setAudRole(ALL_ROLES) });
-    const clearFilters = () => { setAudBranch(ALL_BRANCHES); setAudDept(ALL_DEPTS); setAudRole(ALL_ROLES); setAudSearch(""); setAudOpen(null); };
+    for (const { key, label } of DIMS) {
+        const f = filters[key];
+        for (const v of f.values) chips.push({ key: `${key}:${v}`, dim: label, value: v, exclude: f.mode === "exclude", onClear: () => toggleValue(key, v) });
+    }
+    const hasActiveFilters = chips.length > 0;
 
     const toggleOne = (id) => setAudSel((st) => { const n = { ...st }; if (n[id]) delete n[id]; else n[id] = true; return n; });
     const selectFiltered = () => setAudSel((st) => { const n = { ...st }; filtered.forEach((e) => { n[e.id] = true; }); return n; });
     const clearAll = () => setAudSel({});
-    const saveAudience = () => {
-        if (summary.count === 0) return;
-        const codes = Object.keys(audSel).filter((id) => audSel[id]);
-        setAudSaved((prev) => [...prev, { name: labelBase, count: codes.length, codes }].slice(-4));
+
+    const doSaveTemplate = () => {
+        const name = tplName.trim() || labelBase;
+        onSaveTemplate(name);
+        setTplName(""); setNamingTpl(false);
     };
-    const applySaved = (codes) => setAudSel(Object.fromEntries(codes.map((c) => [c, true])));
 
     const totalFmt = employees.length.toLocaleString() + " employees";
     const audLabelText = summary.count === 0
         ? "No recipients selected yet"
         : `${summary.branchesInSel} ${summary.branchesInSel === 1 ? "branch" : "branches"} · ${summary.deptsInSel} ${summary.deptsInSel === 1 ? "department" : "departments"}`;
+    const externalNote = participationMode === "INTERNAL_EXTERNAL"
+        ? "External Akshaya Patra staff (outside Rajasthan) will be able to register to take this exam. The internal employees you select below are pre-invited."
+        : participationMode === "OPEN"
+            ? "Anyone with the exam link can participate. Selecting internal employees below pre-invites them; others self-register."
+            : null;
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5 items-start">
             {/* Employee picker */}
             <div className="relative bg-white border border-ap-border rounded-[16px] p-6">
-                <div className="flex items-start justify-between gap-3.5 mb-[18px]">
+                <div className="flex items-start justify-between gap-3.5 mb-4">
                     <div>
                         <h3 className="text-[16px] font-extrabold text-ap-text mb-1">Who takes this exam?</h3>
-                        <p className="text-[13px] text-ap-text-faint">Filter and hand-pick employees from the live directory.</p>
+                        <p className="text-[13px] text-ap-text-faint">Choose a participation mode, then filter and pick from the live directory.</p>
                     </div>
                     <div style={{ background: "#EBF7F1", borderColor: "#A3D9BC" }} className="flex items-center gap-1.5 border px-2.5 py-1.5 rounded-full shrink-0">
                         <span style={{ background: "#00843D" }} className="w-1.5 h-1.5 rounded-full" />
@@ -468,26 +591,36 @@ function EmployeePickerStep({
                     </div>
                 </div>
 
+                {/* participation mode */}
+                <ModeSelector value={participationMode} onChange={setParticipationMode} />
+                {externalNote && (
+                    <div style={{ background: "#EFF6FF", borderColor: "#BFDBFE" }} className="border rounded-[11px] px-3.5 py-2.5 mb-4 text-[12.5px] text-[#1D4ED8] leading-relaxed">{externalNote}</div>
+                )}
+
                 {/* search */}
                 <div className="relative mb-3">
                     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ap-text-faint flex"><Icon name="search" size={18} sw={1.9} /></span>
                     <input value={audSearch} onChange={(e) => setAudSearch(e.target.value)} placeholder="Search by employee name or ID…" style={{ background: "#F8FAFC" }} className="w-full border-[1.5px] border-ap-border focus:border-ap-orange focus:bg-white rounded-[11px] pl-[42px] pr-3.5 py-3 text-[14px] text-ap-text outline-none transition" />
                 </div>
 
-                {/* filter dropdowns */}
+                {/* multi-select include/exclude filters */}
                 <div className="flex gap-2.5 flex-wrap mb-3.5">
-                    <FilterDropdown dim="branche" label="Branch" value={audBranch} options={branchOptions} open={audOpen === "branch"} onToggle={() => setAudOpen((o) => (o === "branch" ? null : "branch"))} />
-                    <FilterDropdown dim="department" label="Department" value={audDept} options={deptOptions} open={audOpen === "dept"} onToggle={() => setAudOpen((o) => (o === "dept" ? null : "dept"))} />
-                    <FilterDropdown dim="role" label="Role" value={audRole} options={roleOptions} open={audOpen === "role"} onToggle={() => setAudOpen((o) => (o === "role" ? null : "role"))} />
+                    {DIMS.map(({ key, label }) => (
+                        <MultiFilter
+                            key={key} dimKey={key} label={label} options={optionsFor(key)} filter={filters[key]}
+                            onToggleValue={(v) => toggleValue(key, v)} onSetMode={(m) => setMode(key, m)} onClear={() => clearDim(key)}
+                            open={audOpen === key} onToggleOpen={() => setAudOpen((o) => (o === key ? null : key))}
+                        />
+                    ))}
                 </div>
 
                 {/* active filter chips */}
                 {hasActiveFilters && (
                     <div className="flex flex-wrap gap-2 items-center mb-3.5">
                         {chips.map((c) => (
-                            <span key={c.label} style={{ background: "#FEF4E8", borderColor: "#FAD4A0" }} className="flex items-center gap-1.5 border text-[#C2410C] text-[12px] font-bold pl-[11px] pr-1.5 py-1 rounded-full">
-                                {c.label}
-                                <button onClick={c.onClear} style={{ background: "rgba(194,65,12,.12)" }} className="flex items-center justify-center w-[17px] h-[17px] rounded-full text-[#C2410C] cursor-pointer">
+                            <span key={c.key} style={{ background: c.exclude ? "#FEF2F2" : "#FEF4E8", borderColor: c.exclude ? "#FCA5A5" : "#FAD4A0", color: c.exclude ? "#DC2626" : "#C2410C" }} className="flex items-center gap-1.5 border text-[12px] font-bold pl-[11px] pr-1.5 py-1 rounded-full">
+                                {c.dim} {c.exclude ? "≠" : "="} {c.value}
+                                <button onClick={c.onClear} style={{ background: c.exclude ? "rgba(220,38,38,.12)" : "rgba(194,65,12,.12)" }} className="flex items-center justify-center w-[17px] h-[17px] rounded-full cursor-pointer" aria-label="Remove filter">
                                     <svg width="11" height="11" fill="none" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></svg>
                                 </button>
                             </span>
@@ -547,9 +680,17 @@ function EmployeePickerStep({
 
                 {/* footer */}
                 <div className="flex items-center justify-between gap-3 mt-[18px] pt-4 border-t border-gray-100 flex-wrap">
-                    <button onClick={saveAudience} style={{ color: summary.count > 0 ? "#003087" : "#CBD5E1", cursor: summary.count > 0 ? "pointer" : "not-allowed" }} className="flex items-center gap-2 bg-white border-[1.5px] border-ap-border font-bold text-[13px] px-3.5 py-2.5 rounded-[10px]">
-                        <Icon name="bookmark" size={17} sw={1.8} />Save as custom audience
-                    </button>
+                    {namingTpl ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <input autoFocus value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder={labelBase} onKeyDown={(e) => e.key === "Enter" && summary.count > 0 && doSaveTemplate()} className="border-[1.5px] border-gray-300 focus:border-ap-orange rounded-[10px] px-3 py-2 text-[13px] outline-none w-[200px]" />
+                            <button onClick={doSaveTemplate} disabled={summary.count === 0} style={{ background: "#003087" }} className="text-white font-bold text-[13px] px-3.5 py-2.5 rounded-[10px] cursor-pointer disabled:opacity-50">Save</button>
+                            <button onClick={() => { setNamingTpl(false); setTplName(""); }} className="text-ap-text-muted font-bold text-[13px] px-2 py-2.5 cursor-pointer">Cancel</button>
+                        </div>
+                    ) : (
+                        <button onClick={() => setNamingTpl(true)} disabled={summary.count === 0} style={{ color: summary.count > 0 ? "#003087" : "#CBD5E1", cursor: summary.count > 0 ? "pointer" : "not-allowed" }} className="flex items-center gap-2 bg-white border-[1.5px] border-ap-border font-bold text-[13px] px-3.5 py-2.5 rounded-[10px]">
+                            <Icon name="bookmark" size={17} sw={1.8} />Save as template
+                        </button>
+                    )}
                     <button onClick={onNext} style={{ background: ACCENT }} className="text-white font-bold text-[14px] px-5 py-3 rounded-[11px] cursor-pointer">Next: Review →</button>
                 </div>
 
@@ -602,15 +743,21 @@ function EmployeePickerStep({
                     </>
                 )}
 
-                {audSaved.length > 0 && (
+                {templates.length > 0 && (
                     <>
                         <div className="h-px bg-white/10 my-5" />
                         <div className="text-[11px] font-bold text-white/50 uppercase tracking-[0.1em] mb-3">Saved audiences</div>
-                        <div className="flex flex-wrap gap-2">
-                            {audSaved.map((a, i) => (
-                                <button key={i} onClick={() => applySaved(a.codes)} className="flex items-center gap-1.5 bg-white/[0.06] border border-white/15 text-white text-[12px] font-bold px-3 py-1.5 rounded-full cursor-pointer hover:bg-white/[0.12]">
-                                    {a.name}<span className="text-white/50 font-semibold">{a.count}</span>
-                                </button>
+                        <div className="flex flex-col gap-2">
+                            {templates.map((t) => (
+                                <div key={t.id} className="flex items-center gap-1.5 bg-white/[0.06] border border-white/15 rounded-[10px] pl-3 pr-1.5 py-1.5">
+                                    <button onClick={() => onApplyTemplate(t)} className="flex-1 min-w-0 flex items-center gap-2 text-left cursor-pointer">
+                                        <span className="text-[12.5px] font-bold text-white truncate">{t.name}</span>
+                                        <span className="text-white/45 font-semibold text-[11px] shrink-0">{t.count}</span>
+                                    </button>
+                                    <button onClick={() => onDeleteTemplate(t.id)} title="Delete template" className="w-6 h-6 flex items-center justify-center rounded-md text-white/40 hover:text-white hover:bg-white/10 cursor-pointer shrink-0">
+                                        <svg width="13" height="13" fill="none" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                                    </button>
+                                </div>
                             ))}
                         </div>
                     </>

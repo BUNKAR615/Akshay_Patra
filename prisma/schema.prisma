@@ -905,6 +905,10 @@ model Exam {
   shuffle           Boolean        @default(true)
   showResults       Boolean        @default(false)
   requireCompletion Boolean        @default(true)
+  // How the exam audience is composed (Phase A). CUSTOM = hand-picked internal
+  // employees; INTERNAL = filter-defined internal set; INTERNAL_EXTERNAL / OPEN
+  // additionally allow external/open registrants (Phase B).
+  participationMode ExamParticipationMode @default(CUSTOM)
   createdById       String // scalar ref → users.id (no relation)
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
@@ -1008,6 +1012,30 @@ model ExamAnswer {
 
   @@index([responseId])
   @@map("exam_answers")
+}
+
+/// AudienceTemplate — a saved, reusable audience definition (filters +/or an
+/// explicit employee set) that an admin can apply to any exam. Phase A.
+model AudienceTemplate {
+  id          String                @id @default(cuid())
+  name        String
+  createdById String // scalar ref → users.id (no relation)
+  mode        ExamParticipationMode @default(CUSTOM)
+  filters     Json? // { include: {...}, exclude: {...}, search } snapshot
+  employeeIds String[] // resolved / hand-picked employee ids
+  count       Int                   @default(0) // cached recipient count
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@index([createdById])
+  @@map("audience_templates")
+}
+
+enum ExamParticipationMode {
+  INTERNAL
+  INTERNAL_EXTERNAL
+  OPEN
+  CUSTOM
 }
 
 enum ExamStatus {
