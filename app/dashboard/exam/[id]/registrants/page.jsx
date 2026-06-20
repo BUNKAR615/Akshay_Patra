@@ -25,6 +25,12 @@ export default function RegistrantsPage() {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState("PENDING");
     const [busy, setBusy] = useState(null);
+    const [copiedId, setCopiedId] = useState(null);
+
+    const copyLink = async (r) => {
+        const url = `${window.location.origin}/exam/${id}/take?token=${r.accessToken}`;
+        try { await navigator.clipboard.writeText(url); setCopiedId(r.id); setTimeout(() => setCopiedId(null), 1500); } catch { /* ignore */ }
+    };
 
     const load = async () => {
         try { setData(await api(`/api/exam/${id}/registrants`)); }
@@ -108,6 +114,9 @@ export default function RegistrantsPage() {
                                 </div>
                                 <span style={{ background: s.bg, color: s.tx, borderColor: s.bd }} className="text-[11px] font-bold border px-2.5 py-0.5 rounded-full shrink-0">{s.label}</span>
                                 <div className="flex items-center gap-2 shrink-0">
+                                    {r.status === "APPROVED" && r.accessToken && (
+                                        <button onClick={() => copyLink(r)} style={{ background: copiedId === r.id ? "#00843D" : "#EEF3FB", color: copiedId === r.id ? "#fff" : "#003087", borderColor: copiedId === r.id ? "#00843D" : "#C7D9F5" }} className="text-[12.5px] font-bold border rounded-lg px-3 py-1.5 cursor-pointer">{copiedId === r.id ? "Copied" : "Copy exam link"}</button>
+                                    )}
                                     {r.status !== "APPROVED" && (
                                         <button onClick={() => review(r.id, "APPROVED")} disabled={busy === r.id} style={{ background: "#00843D" }} className="text-white text-[12.5px] font-bold rounded-lg px-3 py-1.5 cursor-pointer disabled:opacity-60">Approve</button>
                                     )}

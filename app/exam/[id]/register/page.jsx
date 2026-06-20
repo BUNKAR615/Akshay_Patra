@@ -48,7 +48,7 @@ export default function ExternalRegisterPage() {
             });
             const json = await res.json();
             if (!res.ok || !json.success) { setError(json.message || "Could not register. Please try again."); return; }
-            setDone({ autoApproved: json.data.autoApproved });
+            setDone({ autoApproved: json.data.autoApproved, takeUrl: json.data.takeUrl });
         } catch { setError("Network error. Please try again."); }
         finally { setSubmitting(false); }
     };
@@ -69,13 +69,24 @@ export default function ExternalRegisterPage() {
                     ) : !meta ? (
                         <StateCard tone="error" title="Exam not found" body="This registration link is invalid or has expired." />
                     ) : done ? (
-                        <StateCard
-                            tone="success"
-                            title={done.autoApproved ? "You're registered!" : "Registration received"}
-                            body={done.autoApproved
-                                ? "Your registration is confirmed. You'll receive exam access details shortly."
-                                : "Thanks for registering. An administrator will review and approve your request, after which you'll receive access details."}
-                        />
+                        done.autoApproved && done.takeUrl ? (
+                            <Card>
+                                <div className="text-center">
+                                    <div style={{ background: "#EBF7F1" }} className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-5">
+                                        <svg width="30" height="30" fill="none" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke={GREEN} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                                    </div>
+                                    <h1 className="text-[22px] font-extrabold text-ap-text tracking-tight">You&apos;re registered!</h1>
+                                    <p className="text-[14px] text-ap-text-muted mt-2 leading-relaxed">Your registration is confirmed. You can start the exam now — keep this window open.</p>
+                                    <a href={done.takeUrl} style={{ background: ACCENT, boxShadow: "0 8px 22px rgba(247,148,29,.3)" }} className="inline-block w-full mt-6 text-white font-extrabold text-[15px] rounded-[12px] py-3.5 no-underline cursor-pointer transition-transform hover:-translate-y-0.5">Start exam →</a>
+                                </div>
+                            </Card>
+                        ) : (
+                            <StateCard
+                                tone="success"
+                                title="Registration received"
+                                body="Thanks for registering. An administrator will review and approve your request, after which you'll receive your exam link."
+                            />
+                        )
                     ) : !open ? (
                         <StateCard tone="closed" title="Registration is closed" body={`"${meta.title}" is not open for external registration right now. Please check with your administrator.`} />
                     ) : (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { api } from "../../../../lib/clientApi";
 
 const ACCENT = "#F7941D";
@@ -23,6 +23,14 @@ function fmtTime(sec) {
 export default function TakeExamPage() {
     const { id } = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    // External (token) takers hit the public take-external endpoint; internal
+    // takers use the authenticated route. One URL drives all three calls.
+    const token = searchParams.get("token");
+    const external = !!token;
+    const takeUrl = external
+        ? `/api/exam/${id}/take-external?token=${encodeURIComponent(token)}`
+        : `/api/exam/${id}/take`;
 
     const [loading, setLoading] = useState(true);
     const [exam, setExam] = useState(null);
@@ -48,7 +56,7 @@ export default function TakeExamPage() {
     useEffect(() => {
         (async () => {
             try {
-                const d = await api(`/api/exam/${id}/take`);
+                const d = await api(takeUrl);
                 setExam(d.exam);
                 setQuestions(d.questions || []);
                 setAnswers(d.savedAnswers || {});
@@ -62,7 +70,7 @@ export default function TakeExamPage() {
                 console.error("[Take] load failed:", e);
             } finally { setLoading(false); }
         })();
-    }, [id]);
+    }, [id, takeUrl]);
 
     const total = questions.length;
     const answeredCount = useMemo(
@@ -86,12 +94,12 @@ export default function TakeExamPage() {
         setSaveState("saving");
         const t = setTimeout(async () => {
             try {
-                await api(`/api/exam/${id}/take`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers: serialize() }) });
+                await api(takeUrl, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers: serialize() }) });
                 setSaveState("saved");
             } catch { setSaveState("error"); }
         }, 900);
         return () => clearTimeout(t);
-    }, [answers, stage, id, serialize]);
+    }, [answers, stage, id, serialize, takeUrl]);
 
     // ── Timer ──
     const deadline = useMemo(
@@ -115,7 +123,7 @@ export default function TakeExamPage() {
                 timeTakenSec: startedAtMs ? Math.round((Date.now() - startedAtMs) / 1000) : undefined,
                 answers: serialize().filter((a) => a.choiceIds.length || a.textValue || a.ratingValue != null),
             };
-            const d = await api(`/api/exam/${id}/take`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+            const d = await api(takeUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
             setResult(d.showResults ? d : null);
             try { localStorage.removeItem(bmKey); } catch { /* ignore */ }
             setStage("done");
@@ -123,7 +131,7 @@ export default function TakeExamPage() {
             console.error("[Take] submit failed:", e);
             alert("Could not submit. Please try again.");
         } finally { setSubmitting(false); submittingRef.current = false; }
-    }, [id, serialize, startedAtMs, bmKey]);
+    }, [serialize, startedAtMs, bmKey, takeUrl]);
 
     // Auto-submit when the timer hits zero.
     useEffect(() => {
@@ -196,7 +204,7 @@ export default function TakeExamPage() {
             )}
 
             {stage === "done" && (
-                <ResultScreen exam={exam} result={result} answeredCount={answeredCount} total={total} onExit={() => router.push("/dashboard/exam")} />
+                <ResultScreen exam={exam} result={result} answeredCount={answeredCount} total={total} external={external} onExit={() => router.push("/dashboard/exam")} />
             )}
 
             <style jsx global>{`
@@ -510,7 +518,7 @@ function Stat({ value, label, color = "#1E293B" }) {
 }
 
 // ─────────────────────────── Result ───────────────────────────
-function ResultScreen({ exam, result, answeredCount, total, onExit }) {
+function ResultScreen({ exam, result, answeredCount, total, external, onExit }) {
     const showScore = !!result && result.marks != null;
     const passed = result?.passed;
     return (
@@ -546,7 +554,11 @@ function ResultScreen({ exam, result, answeredCount, total, onExit }) {
                     </div>
                 )}
 
-                <button onClick={onExit} style={{ background: ACCENT }} className="w-full mt-8 text-white font-extrabold text-[15px] rounded-[12px] py-3.5 cursor-pointer transition hover:-translate-y-0.5">Done</button>
+                {external ? (
+                    <p className="mt-8 text-[13.5px] text-ap-text-muted">You may now close this window.</p>
+                ) : (
+                    <button onClick={onExit} style={{ background: ACCENT }} className="w-full mt-8 text-white font-extrabold text-[15px] rounded-[12px] py-3.5 cursor-pointer transition hover:-translate-y-0.5">Done</button>
+                )}
             </div>
         </div>
     );

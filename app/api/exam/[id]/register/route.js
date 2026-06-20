@@ -1,9 +1,12 @@
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+import { randomBytes } from "crypto";
 import prisma from "../../../../../lib/prisma";
 import { ok, created, fail, notFound, serverError, validateBody } from "../../../../../lib/api-response";
 import { registrationSchema } from "../../../../../lib/examValidators";
+
+const newAccessToken = () => randomBytes(24).toString("hex");
 
 // Registration is only open for exams that allow external/open participation
 // and are currently live.
@@ -87,11 +90,17 @@ export async function POST(request, { params }) {
                 branch: data.branch || null,
                 designation: data.designation || null,
                 status,
+                accessToken: status === "APPROVED" ? newAccessToken() : null,
             },
-            select: { id: true, status: true },
+            select: { id: true, status: true, accessToken: true },
         });
 
-        return created({ registrant, status, autoApproved: status === "APPROVED" });
+        return created({
+            registrant: { id: registrant.id, status: registrant.status },
+            status,
+            autoApproved: status === "APPROVED",
+            takeUrl: registrant.accessToken ? `/exam/${id}/take?token=${registrant.accessToken}` : null,
+        });
     } catch (err) {
         if (err?.code === "P2002") return fail("This employee code is already registered for this exam.", 409);
         console.error("[POST /api/exam/:id/register] error:", err);

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+import { randomBytes } from "crypto";
 import prisma from "../../../../../lib/prisma";
 import { withRole } from "../../../../../lib/withRole";
 import { ok, notFound, serverError, validateBody } from "../../../../../lib/api-response";
@@ -44,9 +45,14 @@ export const PATCH = withRole(["ADMIN"], async (request, { params, user }) => {
         });
         if (!existing) return notFound("Registrant not found");
 
+        // Issue an access token on first approval so the registrant can open the
+        // exam via a tokenized link.
+        const data2 = { status: data.status, reviewedById: user.userId };
+        if (data.status === "APPROVED" && !existing.accessToken) data2.accessToken = randomBytes(24).toString("hex");
+
         const registrant = await prisma.externalRegistrant.update({
             where: { id: data.registrantId },
-            data: { status: data.status, reviewedById: user.userId },
+            data: data2,
         });
         return ok({ registrant });
     } catch (err) {

@@ -942,6 +942,9 @@ model ExternalRegistrant {
   branch       String?
   designation  String?
   status       RegistrantStatus @default(PENDING)
+  // Issued when the registrant is approved — lets them open the exam via a
+  // tokenized link without a full user account (B2).
+  accessToken  String?          @unique
   reviewedById String? // scalar ref → users.id
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt

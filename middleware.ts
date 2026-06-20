@@ -50,8 +50,18 @@ export async function middleware(request: NextRequest) {
 
   // Public external-registration flow (Phase B): the registration page and its
   // API are reachable without a session so non-Rajasthan staff can sign up. Only
-  // the `/register` leaf is opened — the exam take-flow stays authenticated.
+  // the `/register` leaf is opened — the internal exam take-flow stays authed.
   if (/^\/(api\/)?exam\/[^/]+\/register\/?$/.test(pathname)) {
+    return NextResponse.next()
+  }
+
+  // External take flow (B2): approved registrants open the exam via a tokenized
+  // link. The take-external API validates the token itself; the take page is
+  // allowed through only when a token is present (internal take stays authed).
+  if (/^\/api\/exam\/[^/]+\/take-external\/?$/.test(pathname)) {
+    return NextResponse.next()
+  }
+  if (/^\/exam\/[^/]+\/take\/?$/.test(pathname) && request.nextUrl.searchParams.get('token')) {
     return NextResponse.next()
   }
 
