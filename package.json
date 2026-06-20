@@ -12,6 +12,7 @@
     "test": "vitest run",
     "prepare": "husky",
     "seed": "ts-node -O \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/seed.ts",
+    "seed:exams": "ts-node -O \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/seed-exams.ts",
     "prisma:generate": "npx prisma generate",
     "prisma:migrate": "npx prisma migrate dev",
     "prisma:deploy": "npx prisma migrate deploy",

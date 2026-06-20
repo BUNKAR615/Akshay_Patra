@@ -157,3 +157,45 @@ export const Ic = {
         </svg>
     ),
 };
+
+// ── Online Exam / platform-module glyphs (ported from the design prototype) ──
+// Single-path icons. Rendered via <Icon> at any size so the rail/launcher can
+// show large tiles while the module sidebar reuses them at 17px through `Ic`.
+export const MODULE_ICON_PATHS = {
+    clipboard: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
+    chat: "M8 10h8M8 14h5M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z",
+    exam: "M22 10v6M2 10l10-5 10 5-10 5z M6 12v5c3 3 9 3 12 0v-5",
+    cap: "M22 10L12 5 2 10l10 5 10-5zM6 12v5c3 2 9 2 12 0v-5",
+    users: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
+    building: "M3 21h18M5 21V7l8-4v18M19 21V11l-6-3M9 9v.01M9 12v.01M9 15v.01M9 18v.01",
+    pin: "M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0118 0z M12 13a3 3 0 100-6 3 3 0 000 6z",
+    shuffle: "M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5",
+    grid: "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z",
+    check: "M20 6L9 17l-5-5",
+    clock: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 6v6l4 2",
+    hourglass: "M6 2h12M6 22h12M6 2c0 4 3 6 6 10 3-4 6-6 6-10M6 22c0-4 3-6 6-10 3 4 6 6 6 10",
+    doc: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
+    list: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
+    type: "M4 7V4h16v3M9 20h6M12 4v16",
+    slider: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
+    play: "M5 3l14 9-14 9V3z",
+    search: "M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z",
+    bookmark: "M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z",
+    star: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
+};
+
+export function Icon({ name, size = 18, sw = 1.8, className, style }) {
+    const d = MODULE_ICON_PATHS[name];
+    if (!d) return null;
+    return (
+        <svg width={size} height={size} fill="none" viewBox="0 0 24 24" className={className} style={style} aria-hidden="true">
+            <path d={d} stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    );
+}
+
+// Make the new glyphs available through the shared `Ic` map (17px) for the
+// module sidebar — without clobbering the curated icons already defined above.
+for (const k of Object.keys(MODULE_ICON_PATHS)) {
+    if (!(k in Ic)) Ic[k] = <Icon name={k} size={17} />;
+}

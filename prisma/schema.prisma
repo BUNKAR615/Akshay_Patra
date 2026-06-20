@@ -882,3 +882,161 @@ enum EvaluationLevel {
   CLUSTER_MANAGER
   HR
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  NEW MODELS — Online Exam Module (independent platform module)
+//
+//  Self-contained: internal relations (Exam→Question→Choice,
+//  Exam→Invite, Exam→Response→Answer) are real with cascade deletes,
+//  but references to existing entities (User / Branch / Department)
+//  are stored as SCALAR ids only — no relations / back-relations — so
+//  the heavily-related User/Branch/Department models are left untouched.
+// ═══════════════════════════════════════════════════════════════
+
+/// Exam — a single online assessment (Google-Forms style).
+model Exam {
+  id                String         @id @default(cuid())
+  title             String
+  description       String?
+  status            ExamStatus     @default(DRAFT)
+  timeLimitMin      Int? // null = untimed
+  passMark          Int            @default(70) // percentage
+  dueDate           DateTime?
+  shuffle           Boolean        @default(true)
+  showResults       Boolean        @default(false)
+  requireCompletion Boolean        @default(true)
+  createdById       String // scalar ref → users.id (no relation)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  questions         ExamQuestion[]
+  audience          ExamAudience?
+  invites           ExamInvite[]
+  responses         ExamResponse[]
+
+  @@index([status])
+  @@index([createdById])
+  @@map("exams")
+}
+
+/// ExamQuestion — one question within an exam.
+model ExamQuestion {
+  id       String           @id @default(cuid())
+  examId   String
+  order    Int
+  type     ExamQuestionType
+  text     String
+  hint     String?
+  required Boolean          @default(true)
+  points   Int              @default(0)
+  exam     Exam             @relation(fields: [examId], references: [id], onDelete: Cascade)
+  choices  ExamChoice[]
+
+  @@index([examId])
+  @@map("exam_questions")
+}
+
+/// ExamChoice — a selectable option for a SINGLE/MULTIPLE question.
+model ExamChoice {
+  id         String       @id @default(cuid())
+  questionId String
+  order      Int
+  label      String
+  isCorrect  Boolean      @default(false)
+  question   ExamQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@map("exam_choices")
+}
+
+/// ExamAudience — who an exam targets (drives the live recipient preview).
+model ExamAudience {
+  id           String           @id @default(cuid())
+  examId       String           @unique
+  mode         ExamAudienceMode
+  branchId     String? // scalar ref → branches.id
+  departmentId String? // scalar ref → departments.id
+  role         String? // scalar role filter (e.g. BRANCH_MANAGER)
+  randomCount  Int?
+  customRules  Json?
+  recipients   Int              @default(0) // cached computed count
+  exam         Exam             @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@map("exam_audiences")
+}
+
+/// ExamInvite — an employee invited to take an exam.
+model ExamInvite {
+  id         String           @id @default(cuid())
+  examId     String
+  employeeId String // scalar ref → users.id
+  status     ExamInviteStatus @default(INVITED)
+  invitedAt  DateTime         @default(now())
+  exam       Exam             @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, employeeId])
+  @@index([examId, status])
+  @@map("exam_invites")
+}
+
+/// ExamResponse — an employee's submission for an exam.
+model ExamResponse {
+  id           String       @id @default(cuid())
+  examId       String
+  employeeId   String // scalar ref → users.id
+  startedAt    DateTime     @default(now())
+  submittedAt  DateTime?
+  marks        Float? // 0–100
+  rank         Int?
+  timeTakenSec Int?
+  exam         Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  answers      ExamAnswer[]
+
+  @@unique([examId, employeeId])
+  @@index([examId])
+  @@map("exam_responses")
+}
+
+/// ExamAnswer — an employee's answer to one question.
+model ExamAnswer {
+  id          String       @id @default(cuid())
+  responseId  String
+  questionId  String // scalar ref → exam_questions.id
+  choiceIds   String[] // selected ExamChoice ids
+  textValue   String?
+  ratingValue Int?
+  response    ExamResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  @@index([responseId])
+  @@map("exam_answers")
+}
+
+enum ExamStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  COMPLETED
+}
+
+enum ExamQuestionType {
+  SINGLE
+  MULTIPLE
+  SHORT
+  LONG
+  RATING
+}
+
+enum ExamAudienceMode {
+  ALL
+  BRANCH
+  DEPT
+  BM
+  RM
+  RANDOM
+  CUSTOM
+}
+
+enum ExamInviteStatus {
+  INVITED
+  STARTED
+  COMPLETED
+}

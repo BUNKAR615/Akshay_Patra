@@ -10,7 +10,8 @@ const ROLE_REDIRECTS = {
     CLUSTER_MANAGER: "/dashboard/cluster-manager",
     HR: "/dashboard/hr",
     COMMITTEE: "/dashboard/committee",
-    ADMIN: "/dashboard/admin",
+    // Admins land on the platform launcher (module list) and pick a workspace.
+    ADMIN: "/dashboard/modules",
 };
 
 export default function LoginPage() {

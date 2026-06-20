@@ -25,6 +25,11 @@ const DASHBOARD_ROLE_BY_PREFIX: Record<string, string> = {
   hr: 'HR',
   committee: 'COMMITTEE',
   employee: 'EMPLOYEE',
+  // Platform modules — admin-only. (The employee exam take-flow lives outside
+  // /dashboard/ at /exam/[id]/take, so it stays reachable by any authenticated
+  // user and is not gated here.)
+  modules: 'ADMIN',
+  exam: 'ADMIN',
 }
 
 const getSecret = () => {
