@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 import prisma from "../../../../../lib/prisma";
 import { withRole } from "../../../../../lib/withRole";
 import { ok, notFound, serverError, validateBody } from "../../../../../lib/api-response";
-import { submitSchema } from "../../../../../lib/examValidators";
+import { submitSchema, draftSchema } from "../../../../../lib/examValidators";
 import { gradeExam } from "../../../../../lib/examScore";
 
 const ALL_ROLES = ["EMPLOYEE", "SUPERVISOR", "HOD", "BRANCH_MANAGER", "CLUSTER_MANAGER", "HR", "COMMITTEE", "ADMIN"];
@@ -49,14 +49,74 @@ export const GET = withRole(ALL_ROLES, async (request, { params, user }) => {
             response.answers.map((a) => [a.questionId, { choiceIds: a.choiceIds, textValue: a.textValue, ratingValue: a.ratingValue }])
         );
 
+        const submitted = response.submittedAt != null;
         return ok({
-            exam: { id: exam.id, title: exam.title, timeLimitMin: exam.timeLimitMin, passMark: exam.passMark },
+            exam: {
+                id: exam.id,
+                title: exam.title,
+                description: exam.description,
+                timeLimitMin: exam.timeLimitMin,
+                passMark: exam.passMark,
+                showResults: exam.showResults,
+                questionCount: questions.length,
+            },
             questions,
             savedAnswers,
-            submitted: response.submittedAt != null,
+            startedAt: response.startedAt,
+            submitted,
+            // Only reveal the score when the exam allows it.
+            result: submitted && exam.showResults
+                ? { marks: response.marks, rank: response.rank, passed: (response.marks ?? 0) >= exam.passMark, passMark: exam.passMark }
+                : null,
         });
     } catch (err) {
         console.error("[GET /api/exam/:id/take] error:", err);
+        return serverError();
+    }
+});
+
+/**
+ * PATCH /api/exam/:id/take — autosave in-progress answers (draft). Persists
+ * answers WITHOUT submitting or grading so the participant can resume later.
+ * No-ops once the response is already submitted.
+ */
+export const PATCH = withRole(ALL_ROLES, async (request, { params, user }) => {
+    try {
+        const { id } = await params;
+        const exam = await prisma.exam.findUnique({ where: { id }, select: { id: true } });
+        if (!exam) return notFound("Exam not found");
+
+        const { data, error } = await validateBody(request, draftSchema);
+        if (error) return error;
+
+        const response = await prisma.examResponse.upsert({
+            where: { examId_employeeId: { examId: id, employeeId: user.userId } },
+            update: {},
+            create: { examId: id, employeeId: user.userId },
+        });
+        if (response.submittedAt) return ok({ savedAt: null, locked: true });
+
+        await prisma.$transaction(async (tx) => {
+            await tx.examAnswer.deleteMany({ where: { responseId: response.id } });
+            const rows = (data.answers || []).filter(
+                (a) => (a.choiceIds && a.choiceIds.length) || a.textValue || a.ratingValue != null
+            );
+            if (rows.length) {
+                await tx.examAnswer.createMany({
+                    data: rows.map((a) => ({
+                        responseId: response.id,
+                        questionId: a.questionId,
+                        choiceIds: a.choiceIds || [],
+                        textValue: a.textValue || null,
+                        ratingValue: a.ratingValue ?? null,
+                    })),
+                });
+            }
+        });
+
+        return ok({ savedAt: new Date().toISOString() });
+    } catch (err) {
+        console.error("[PATCH /api/exam/:id/take] error:", err);
         return serverError();
     }
 });
@@ -107,7 +167,7 @@ export const POST = withRole(ALL_ROLES, async (request, { params, user }) => {
             });
         });
 
-        return ok({ marks, answered: data.answers.length, total: exam.questions.length, passed: marks >= exam.passMark });
+        return ok({ marks, answered: data.answers.length, total: exam.questions.length, passed: marks >= exam.passMark, passMark: exam.passMark, showResults: exam.showResults });
     } catch (err) {
         console.error("[POST /api/exam/:id/take] error:", err);
         return serverError();
