@@ -617,9 +617,15 @@ function EmployeePickerStep({
     const [tplName, setTplName] = useState("");
     const [namingTpl, setNamingTpl] = useState(false);
     const showExternal = participationMode === "INTERNAL_EXTERNAL" || participationMode === "OPEN";
+    const [selectedOnly, setSelectedOnly] = useState(false);
+    const [importOpen, setImportOpen] = useState(false);
+    const [importText, setImportText] = useState("");
+    const [importMsg, setImportMsg] = useState("");
+    const [eligQuery, setEligQuery] = useState("");
 
     const aq = audSearch.trim().toLowerCase();
-    const filtered = useMemo(() => employees.filter((e) => matchEmployee(e, filters, aq)), [employees, filters, aq]);
+    const baseFiltered = useMemo(() => employees.filter((e) => matchEmployee(e, filters, aq)), [employees, filters, aq]);
+    const filtered = selectedOnly ? baseFiltered.filter((e) => audSel[e.id]) : baseFiltered;
 
     // Match against every filter EXCEPT one dimension — used for that
     // dimension's facet counts so each option shows how many it would yield.
@@ -659,7 +665,32 @@ function EmployeePickerStep({
 
     const toggleOne = (id) => setAudSel((st) => { const n = { ...st }; if (n[id]) delete n[id]; else n[id] = true; return n; });
     const selectFiltered = () => setAudSel((st) => { const n = { ...st }; filtered.forEach((e) => { n[e.id] = true; }); return n; });
-    const clearAll = () => setAudSel({});
+    const clearAll = () => { setAudSel({}); setSelectedOnly(false); };
+
+    // ── Smart features (Phase F) ──
+    const codeMap = useMemo(() => Object.fromEntries(employees.map((e) => [e.code, e])), [employees]);
+    const selectedEmployees = useMemo(() => employees.filter((e) => audSel[e.id]), [employees, audSel]);
+
+    const exportCsv = () => {
+        const rows = [["Code", "Name", "Branch", "Department", "Role"], ...selectedEmployees.map((e) => [e.code, e.name, e.branch, e.dept, e.role])];
+        const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+        const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+        const a = document.createElement("a"); a.href = url; a.download = "audience.csv"; a.click(); URL.revokeObjectURL(url);
+    };
+    const doImport = () => {
+        const codes = [...new Set(importText.split(/[\s,;]+/).map((c) => c.trim()).filter(Boolean))];
+        if (!codes.length) { setImportMsg("Paste some employee codes first."); return; }
+        let matched = 0; const miss = [];
+        setAudSel((st) => { const n = { ...st }; codes.forEach((c) => { const e = codeMap[c]; if (e) { n[e.id] = true; matched++; } else miss.push(c); }); return n; });
+        setImportMsg(`${matched} matched${miss.length ? ` · ${miss.length} not found: ${miss.slice(0, 8).join(", ")}${miss.length > 8 ? "…" : ""}` : ""}.`);
+    };
+
+    const rolesInSel = new Set(selectedEmployees.map((e) => e.role)).size;
+    const coverage = employees.length ? Math.round((selectedEmployees.length / employees.length) * 100) : 0;
+
+    const eq = eligQuery.trim().toLowerCase();
+    const eligMatch = eq ? employees.find((e) => e.code.toLowerCase() === eq || e.name.toLowerCase().includes(eq)) : null;
+    const eligStatus = !eq ? null : !eligMatch ? "none" : audSel[eligMatch.id] ? "selected" : "eligible";
 
     const doSaveTemplate = () => {
         const name = tplName.trim() || labelBase;
@@ -736,7 +767,10 @@ function EmployeePickerStep({
                     <div className="text-[12.5px] text-ap-text-muted font-semibold">
                         Showing <b className="text-ap-text">{filtered.length.toLocaleString()}</b> of {totalFmt} · <b className="text-[#C2410C]">{summary.count.toLocaleString()} selected</b>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
+                        {summary.count > 0 && (
+                            <button onClick={() => setSelectedOnly((v) => !v)} style={{ background: selectedOnly ? "#0D1B3E" : "#fff", color: selectedOnly ? "#fff" : "#475569", borderColor: selectedOnly ? "#0D1B3E" : "#E4E7ED" }} className="text-[12px] font-bold border px-3 py-1.5 rounded-lg cursor-pointer">{selectedOnly ? "Showing selected" : "Selected only"}</button>
+                        )}
                         <button onClick={selectFiltered} style={{ background: "#EEF3FB", borderColor: "#C7D9F5" }} className="text-[12px] font-bold text-[#003087] border px-3 py-1.5 rounded-lg cursor-pointer">Select {filtered.length} shown</button>
                         <button onClick={clearAll} style={{ background: "#F4F6FA", borderColor: "#E4E7ED" }} className="text-[12px] font-bold text-ap-text-muted border px-3 py-1.5 rounded-lg cursor-pointer">Clear all</button>
                     </div>
@@ -780,19 +814,38 @@ function EmployeePickerStep({
                     </div>
                 )}
 
+                {/* import panel */}
+                {importOpen && (
+                    <div className="mt-3 border border-ap-border rounded-[12px] p-3.5" style={{ background: "#F8FAFC" }}>
+                        <p className="text-[12px] font-bold text-ap-text mb-2">Import by employee code</p>
+                        <textarea value={importText} onChange={(e) => { setImportText(e.target.value); setImportMsg(""); }} rows={3} placeholder="Paste codes separated by spaces, commas, or new lines…" className="w-full border-[1.5px] border-gray-300 focus:border-ap-orange rounded-[10px] px-3 py-2 text-[13px] outline-none resize-y bg-white" />
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            <button onClick={doImport} style={{ background: "#003087" }} className="text-white font-bold text-[12.5px] px-3.5 py-2 rounded-lg cursor-pointer">Match &amp; select</button>
+                            <button onClick={() => { setImportOpen(false); setImportText(""); setImportMsg(""); }} className="text-ap-text-muted font-bold text-[12.5px] px-2 py-2 cursor-pointer">Close</button>
+                            {importMsg && <span className="text-[12px] font-semibold text-ap-text-muted">{importMsg}</span>}
+                        </div>
+                    </div>
+                )}
+
                 {/* footer */}
                 <div className="flex items-center justify-between gap-3 mt-[18px] pt-4 border-t border-gray-100 flex-wrap">
-                    {namingTpl ? (
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <input autoFocus value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder={labelBase} onKeyDown={(e) => e.key === "Enter" && summary.count > 0 && doSaveTemplate()} className="border-[1.5px] border-gray-300 focus:border-ap-orange rounded-[10px] px-3 py-2 text-[13px] outline-none w-[200px]" />
-                            <button onClick={doSaveTemplate} disabled={summary.count === 0} style={{ background: "#003087" }} className="text-white font-bold text-[13px] px-3.5 py-2.5 rounded-[10px] cursor-pointer disabled:opacity-50">Save</button>
-                            <button onClick={() => { setNamingTpl(false); setTplName(""); }} className="text-ap-text-muted font-bold text-[13px] px-2 py-2.5 cursor-pointer">Cancel</button>
-                        </div>
-                    ) : (
-                        <button onClick={() => setNamingTpl(true)} disabled={summary.count === 0} style={{ color: summary.count > 0 ? "#003087" : "#CBD5E1", cursor: summary.count > 0 ? "pointer" : "not-allowed" }} className="flex items-center gap-2 bg-white border-[1.5px] border-ap-border font-bold text-[13px] px-3.5 py-2.5 rounded-[10px]">
-                            <Icon name="bookmark" size={17} sw={1.8} />Save as template
-                        </button>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {namingTpl ? (
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <input autoFocus value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder={labelBase} onKeyDown={(e) => e.key === "Enter" && summary.count > 0 && doSaveTemplate()} className="border-[1.5px] border-gray-300 focus:border-ap-orange rounded-[10px] px-3 py-2 text-[13px] outline-none w-[180px]" />
+                                <button onClick={doSaveTemplate} disabled={summary.count === 0} style={{ background: "#003087" }} className="text-white font-bold text-[13px] px-3.5 py-2.5 rounded-[10px] cursor-pointer disabled:opacity-50">Save</button>
+                                <button onClick={() => { setNamingTpl(false); setTplName(""); }} className="text-ap-text-muted font-bold text-[13px] px-2 py-2.5 cursor-pointer">Cancel</button>
+                            </div>
+                        ) : (
+                            <>
+                                <button onClick={() => setNamingTpl(true)} disabled={summary.count === 0} style={{ color: summary.count > 0 ? "#003087" : "#CBD5E1", cursor: summary.count > 0 ? "pointer" : "not-allowed" }} className="flex items-center gap-2 bg-white border-[1.5px] border-ap-border font-bold text-[13px] px-3 py-2.5 rounded-[10px]">
+                                    <Icon name="bookmark" size={16} sw={1.8} />Save
+                                </button>
+                                <button onClick={() => setImportOpen((v) => !v)} className="bg-white border-[1.5px] border-ap-border font-bold text-[13px] text-ap-text-muted px-3 py-2.5 rounded-[10px] cursor-pointer">Import</button>
+                                <button onClick={exportCsv} disabled={summary.count === 0} style={{ color: summary.count > 0 ? "#475569" : "#CBD5E1", cursor: summary.count > 0 ? "pointer" : "not-allowed" }} className="bg-white border-[1.5px] border-ap-border font-bold text-[13px] px-3 py-2.5 rounded-[10px]">Export</button>
+                            </>
+                        )}
+                    </div>
                     <button onClick={onNext} style={{ background: ACCENT }} className="text-white font-bold text-[14px] px-5 py-3 rounded-[11px] cursor-pointer">Next: Review →</button>
                 </div>
 
@@ -807,6 +860,30 @@ function EmployeePickerStep({
                     <div className="text-[13px] text-white/45 font-semibold">employees</div>
                 </div>
                 <div className="text-[13px] text-white/60 mt-1.5 font-semibold">{audLabelText}</div>
+
+                {summary.count > 0 && (
+                    <div className="grid grid-cols-3 gap-2 mt-4">
+                        {[["Coverage", `${coverage}%`], ["Branches", summary.branchesInSel], ["Roles", rolesInSel]].map(([l, v]) => (
+                            <div key={l} className="bg-white/[0.06] rounded-xl px-2 py-2.5 text-center">
+                                <div className="text-[17px] font-extrabold leading-none">{v}</div>
+                                <div className="text-[10px] text-white/45 font-semibold mt-1">{l}</div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* Eligibility checker */}
+                <div className="mt-4">
+                    <input value={eligQuery} onChange={(e) => setEligQuery(e.target.value)} placeholder="Check eligibility by code or name…" className="w-full bg-white/[0.08] border border-white/15 rounded-[10px] px-3 py-2 text-[12.5px] text-white placeholder-white/40 outline-none focus:border-white/40" />
+                    {eligStatus === "selected" && <p className="text-[12px] mt-2 text-[#7DD3A8] font-semibold">✓ {eligMatch.name} is in this audience.</p>}
+                    {eligStatus === "eligible" && (
+                        <p className="text-[12px] mt-2 text-white/70 font-semibold flex items-center gap-2">{eligMatch.name} — in directory, not selected.
+                            <button onClick={() => toggleOne(eligMatch.id)} className="text-[#F7B968] underline cursor-pointer">Add</button>
+                        </p>
+                    )}
+                    {eligStatus === "none" && <p className="text-[12px] mt-2 text-white/50 font-semibold">No internal match — they may need to register externally.</p>}
+                </div>
+
                 <div className="h-px bg-white/10 my-5" />
 
                 <div className="text-[11px] font-bold text-white/50 uppercase tracking-[0.1em] mb-3">Preview</div>
