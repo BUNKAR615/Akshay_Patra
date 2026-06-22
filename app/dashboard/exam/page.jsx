@@ -98,42 +98,44 @@ function ExamRow({ e, router }) {
     const created = fmtDateTime(e.createdAt);
     const ends = fmtDateTime(e.dueDate);
     return (
-        <div className="bg-white border border-ap-border rounded-[16px] p-[18px] transition-all hover:shadow-card-hover">
-            <div className="flex items-center gap-4 flex-wrap lg:flex-nowrap">
-                {/* Identity */}
-                <span style={{ background: badge.bg, color: badge.tx }} className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0">
-                    <Icon name="exam" size={20} sw={1.8} />
-                </span>
-                <div className="min-w-0 flex-1 lg:basis-[260px] lg:flex-none">
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-[15px] font-extrabold text-ap-text leading-tight truncate">{e.title}</h3>
-                        <span style={{ background: badge.bg, color: badge.tx, borderColor: badge.bd }} className="text-[10.5px] font-bold border px-2 py-0.5 rounded-full shrink-0">{badge.label}</span>
-                        {e.closed && <span style={{ background: "#FEF2F2", color: "#DC2626", borderColor: "#FCA5A5" }} className="text-[10.5px] font-bold border px-2 py-0.5 rounded-full shrink-0">Closed</span>}
-                        {e.hiddenFromEmployees && <span style={{ background: "#F1F5F9", color: "#475569", borderColor: "#CBD5E1" }} className="text-[10.5px] font-bold border px-2 py-0.5 rounded-full shrink-0">Hidden</span>}
+        <div className="bg-white border border-ap-border rounded-[16px] p-4 sm:p-[18px] transition-all hover:shadow-card-hover">
+            <div className="flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-5">
+                {/* Identity — shrinks first so the row never overflows */}
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                    <span style={{ background: badge.bg, color: badge.tx }} className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+                        <Icon name="exam" size={19} sw={1.8} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <h3 className="text-[15px] font-extrabold text-ap-text leading-tight truncate max-w-full">{e.title}</h3>
+                            <span style={{ background: badge.bg, color: badge.tx, borderColor: badge.bd }} className="text-[10.5px] font-bold border px-2 py-0.5 rounded-full shrink-0">{badge.label}</span>
+                            {e.closed && <span style={{ background: "#FEF2F2", color: "#DC2626", borderColor: "#FCA5A5" }} className="text-[10.5px] font-bold border px-2 py-0.5 rounded-full shrink-0">Closed</span>}
+                            {e.hiddenFromEmployees && <span style={{ background: "#F1F5F9", color: "#475569", borderColor: "#CBD5E1" }} className="text-[10.5px] font-bold border px-2 py-0.5 rounded-full shrink-0">Hidden</span>}
+                        </div>
+                        <p className="flex items-center gap-1.5 text-[12px] text-ap-text-muted mt-1 min-w-0">
+                            <span className="inline-flex shrink-0" style={{ color: "#94A3B8" }}><Icon name={AUD_ICON[e.audienceMode] || "grid"} size={13} /></span>
+                            <span className="truncate">{e.audienceLabel} · {e.questionCount} questions</span>
+                        </p>
                     </div>
-                    <p className="flex items-center gap-1.5 text-[12px] text-ap-text-muted mt-1">
-                        <span className="inline-flex" style={{ color: "#94A3B8" }}><Icon name={AUD_ICON[e.audienceMode] || "grid"} size={13} /></span>
-                        {e.audienceLabel} · {e.questionCount} questions
-                    </p>
                 </div>
 
                 {/* Dates */}
-                <div className="flex items-center gap-6 lg:gap-8 text-[12px] shrink-0">
+                <div className="flex items-center gap-6 text-[12px] shrink-0 pl-[52px] lg:pl-0">
                     <div>
                         <p className="text-[10.5px] font-bold uppercase tracking-wider text-ap-text-faint">Created</p>
-                        <p className="text-ap-text font-semibold mt-0.5">{created || "—"}</p>
+                        <p className="text-ap-text font-semibold mt-0.5 whitespace-nowrap">{created || "—"}</p>
                     </div>
                     <div>
                         <p className="text-[10.5px] font-bold uppercase tracking-wider text-ap-text-faint">Ends</p>
-                        <p className="font-semibold mt-0.5" style={{ color: e.closed ? "#DC2626" : "#1E293B" }}>{ends || "No end time"}</p>
+                        <p className="font-semibold mt-0.5 whitespace-nowrap" style={{ color: e.closed ? "#DC2626" : "#1E293B" }}>{ends || "No end time"}</p>
                     </div>
                 </div>
 
                 {/* Progress */}
-                <div className="min-w-[150px] flex-1 lg:flex-none lg:w-[170px]">
+                <div className="w-full lg:w-[160px] shrink-0 pl-[52px] lg:pl-0">
                     <div className="flex items-center justify-between text-[11.5px] mb-1">
                         <span className="text-ap-text-muted truncate">{partLabel}</span>
-                        <span className="font-bold" style={{ color: e.pctColor }}>{e.pct}%</span>
+                        <span className="font-bold shrink-0 ml-2" style={{ color: e.pctColor }}>{e.pct}%</span>
                     </div>
                     <div className="h-[6px] bg-gray-100 rounded-full overflow-hidden">
                         <div style={{ width: `${e.pct}%`, background: e.pctColor }} className="h-full rounded-full transition-all" />
@@ -141,7 +143,7 @@ function ExamRow({ e, router }) {
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="grid grid-cols-2 gap-2 w-full lg:flex lg:w-auto shrink-0 pl-[52px] lg:pl-0">
                     <button
                         onClick={() => router.push(`/dashboard/exam/${e.id}/results`)}
                         className="text-[12.5px] font-bold text-ap-text-muted border border-ap-border rounded-[10px] px-3 py-2 hover:bg-ap-bg cursor-pointer transition whitespace-nowrap"
