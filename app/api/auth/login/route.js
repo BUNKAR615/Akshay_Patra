@@ -10,7 +10,7 @@ import { loginSchema } from "../../../../lib/validators";
 import { getClientIp, withDbRetry } from "../../../../lib/http";
 import { sanitize } from "../../../../lib/sanitize";
 import { computeOfferedRoles, resolveRoleScope } from "../../../../lib/auth/loginRoles";
-import { loadOpClaim } from "../../../../lib/auth/operatorClaim";
+import { hasAnyAdminAccess } from "../../../../lib/permissions";
 
 /**
  * POST /api/auth/login
@@ -130,11 +130,26 @@ export async function POST(request) {
         // page (POST /api/auth/select-role). The same staff-format password
         // ("Firstname_##") unlocks every offered role, so one credential is enough.
         const offeredRoles = await computeOfferedRoles(user, resolvedRole);
+
+        // Operator: a user granted a named admin "page role" (e.g. "HR Admin")
+        // can additionally open the admin area. Offer it as an extra choice so
+        // they pick which workspace to start in — their base role's pages stay
+        // available either way. Admins already have everything, so skip them.
+        const permRecord = await prisma.userPermission.findUnique({
+            where: { userId: user.id },
+            select: { isAdmin: true, permissions: true, operatorTitle: true },
+        });
+        const opAccess = hasAnyAdminAccess(permRecord);
+        if (opAccess && resolvedRole !== "ADMIN" && !offeredRoles.includes("OPERATOR")) {
+            offeredRoles.push("OPERATOR");
+        }
+
         if (offeredRoles.length > 1) {
             const stage1 = await signRoleSelectToken({ userId: user.id, roles: offeredRoles });
             const response = ok({
                 needsRoleSelection: true,
                 roles: offeredRoles,
+                operatorTitle: opAccess ? (permRecord?.operatorTitle || "Operator") : null,
                 user: { id: user.id, empCode: user.empCode, name: user.name },
             });
             response.cookies.set("roleSelectToken", stage1, {
@@ -161,8 +176,9 @@ export async function POST(request) {
         const { password: _p, passwordHod: _ph, department: _dept, ...safeUser } = user;
 
         // Per-user feature grants → compact `op` claim that lets middleware admit
-        // a granted non-admin ("Operator") into /dashboard/admin.
-        const op = await loadOpClaim(user.id);
+        // a granted non-admin ("Operator") into /dashboard/admin. Reuses the
+        // permission record already loaded above.
+        const op = opAccess;
 
         const tokenPayload = {
             userId: user.id,

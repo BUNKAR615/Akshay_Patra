@@ -75,6 +75,7 @@ export default function LoginPage() {
                 setRolePicker({
                     userName: json.data.user?.name || "",
                     roles: offered,
+                    operatorTitle: json.data.operatorTitle || "Operator",
                     selectedRole: offered[0] || "",
                 });
                 setLoading(false);
@@ -118,7 +119,11 @@ export default function LoginPage() {
                 }
                 return;
             }
-            const redirectPath = ROLE_REDIRECTS[json.data.user.role];
+            // An operator pick lands in the admin area; every other role uses its
+            // own dashboard.
+            const redirectPath = (rolePicker.selectedRole === "OPERATOR" || json.data.operator)
+                ? "/dashboard/admin"
+                : ROLE_REDIRECTS[json.data.user.role];
             if (!redirectPath) {
                 setError("Your account has no valid role assigned. Please contact your administrator.");
                 setRolePickerSubmitting(false);
@@ -392,6 +397,10 @@ function RolePicker({ rolePicker, setRolePicker, onSubmit, submitting, error, on
                     <legend className="sr-only">Role</legend>
                     {rolePicker.roles.map((r) => {
                         const checked = rolePicker.selectedRole === r;
+                        const label = r === "OPERATOR" ? (rolePicker.operatorTitle || "Operator") : (ROLE_PICK_LABEL[r] || r);
+                        const desc = r === "OPERATOR"
+                            ? "Open your granted admin pages (your other role stays available)."
+                            : (ROLE_PICK_DESC[r] || "");
                         return (
                             <label
                                 key={r}
@@ -410,8 +419,8 @@ function RolePicker({ rolePicker, setRolePicker, onSubmit, submitting, error, on
                                     className="mt-1 w-4 h-4 text-[#003087] accent-[#003087]"
                                 />
                                 <div className="min-w-0">
-                                    <p className="text-base font-bold text-[#1A1A2E]">{ROLE_PICK_LABEL[r] || r}</p>
-                                    <p className="text-[12px] text-[#666666] mt-0.5">{ROLE_PICK_DESC[r] || ""}</p>
+                                    <p className="text-base font-bold text-[#1A1A2E]">{label}</p>
+                                    <p className="text-[12px] text-[#666666] mt-0.5">{desc}</p>
                                 </div>
                             </label>
                         );

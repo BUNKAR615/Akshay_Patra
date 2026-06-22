@@ -10,7 +10,7 @@ import {
 import { ok, fail, serverError } from "../../../../lib/api-response";
 import { selectRoleSchema } from "../../../../lib/validators";
 import { resolveRoleScope } from "../../../../lib/auth/loginRoles";
-import { loadOpClaim } from "../../../../lib/auth/operatorClaim";
+import { hasAnyAdminAccess } from "../../../../lib/permissions";
 
 /**
  * POST /api/auth/select-role
@@ -59,26 +59,45 @@ export async function POST(request) {
         });
         if (!user) return fail("Account not found.", 401);
 
-        // Re-verify the chosen role is still actually held — assignments can
+        // "OPERATOR" is a pseudo-role: the user is choosing to open their named
+        // admin "page role" (e.g. "HR Admin"). The issued token keeps their real
+        // BASE role (so their normal dashboard + scope still work) and carries
+        // the op claim; the client lands them in the admin area. Their base
+        // role's pages remain available — the choice only sets where they start.
+        const isOperatorPick = role === "OPERATOR";
+        const effectiveRole = isOperatorPick
+            ? (stage1Roles.find((r) => r !== "OPERATOR") || user.role)
+            : role;
+
+        // Per-user grants — required for an OPERATOR pick, and the op claim source.
+        const permRecord = await prisma.userPermission.findUnique({
+            where: { userId },
+            select: { isAdmin: true, permissions: true },
+        });
+        const op = hasAnyAdminAccess(permRecord);
+        if (isOperatorPick && !op) {
+            return fail("Operator access is no longer available for your account.", 403);
+        }
+
+        // Re-verify the (base) role is still actually held — assignments can
         // change between login stage 1 and this request, and a stale cookie must
         // never grant a role the user no longer has. Each role is checked against
         // its authoritative source (assignment table, or User.role for ADMIN).
-        const stillAvailable = await roleStillAvailable(userId, role, user);
+        const stillAvailable = await roleStillAvailable(userId, effectiveRole, user);
         if (!stillAvailable) {
             return fail("That role is no longer available for your account.", 403);
         }
 
         // Branch + department scope for the JWT — the same resolver login uses,
         // so a picked role yields a token identical to a direct single-role login.
-        const scope = await resolveRoleScope(userId, role, user);
+        const scope = await resolveRoleScope(userId, effectiveRole, user);
         if (scope.error) return fail(scope.error, 401);
         const { branchId, branchType, branchName, departmentIds } = scope;
 
-        const op = await loadOpClaim(user.id);
         const tokenPayload = {
             userId: user.id,
             empCode: user.empCode,
-            role,
+            role: effectiveRole,
             departmentIds,
             branchId,
             branchType,
@@ -98,9 +117,13 @@ export async function POST(request) {
         const { department: _dept, ...safeUser } = user;
         const response = ok({
             token,
+            // For an operator pick, `role` is the real base role; `operator` tells
+            // the client to land them in the admin area instead of the base
+            // role's dashboard.
+            operator: isOperatorPick,
             user: {
                 ...safeUser,
-                role,
+                role: effectiveRole,
                 branchId,
                 branchType,
                 branchName,
