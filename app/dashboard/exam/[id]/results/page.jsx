@@ -243,48 +243,72 @@ export default function ExamResultsPage() {
 }
 
 function ManagePanel({ exam, id, onChange }) {
+    // Pending (staged) edits — nothing is saved until "Apply changes" is clicked.
     const [when, setWhen] = useState(() => toDateTimeLocal(exam?.dueDate));
+    const [hidden, setHidden] = useState(() => !!exam?.hiddenFromEmployees);
     const [busy, setBusy] = useState(false);
     const [msg, setMsg] = useState("");
 
-    // Keep the input in sync if the exam reloads with a new dueDate.
-    useEffect(() => { setWhen(toDateTimeLocal(exam?.dueDate)); }, [exam?.dueDate]);
+    // Re-sync the staged values whenever the exam reloads (e.g. after applying).
+    useEffect(() => {
+        setWhen(toDateTimeLocal(exam?.dueDate));
+        setHidden(!!exam?.hiddenFromEmployees);
+    }, [exam?.dueDate, exam?.hiddenFromEmployees]);
 
     if (!exam) return null;
     const created = fmtDateTime(exam.createdAt);
     const ends = fmtDateTime(exam.dueDate);
     const closed = exam.closed;
 
-    const patch = async (body, okMsg) => {
+    // What's changed vs the saved exam.
+    const scheduleDirty = when !== toDateTimeLocal(exam.dueDate);
+    const hiddenDirty = hidden !== !!exam.hiddenFromEmployees;
+    const dirty = scheduleDirty || hiddenDirty;
+
+    // Preview of the staged end time / state.
+    const pendingMs = when ? new Date(when).getTime() : null;
+    const willBeOpen = pendingMs == null || pendingMs > Date.now();
+    const reopening = closed && willBeOpen && scheduleDirty;
+
+    const reset = () => {
+        setWhen(toDateTimeLocal(exam.dueDate));
+        setHidden(!!exam.hiddenFromEmployees);
+        setMsg("");
+    };
+
+    const apply = async () => {
+        if (!dirty) return;
+        const summary = [];
+        if (scheduleDirty) summary.push(when ? `end time → ${fmtDateTime(new Date(when))}` : "remove end time");
+        if (hiddenDirty) summary.push(hidden ? "remove from employees' lists" : "restore to employees' lists");
+        if (!window.confirm(`Apply these changes?\n\n• ${summary.join("\n• ")}`)) return;
+
+        const body = {};
+        if (scheduleDirty) {
+            body.dueDate = when ? new Date(when).toISOString() : null;
+            // Reopen the exam when the new end time leaves it open again.
+            if (willBeOpen && (closed || exam.status === "COMPLETED")) body.status = "ACTIVE";
+        }
+        if (hiddenDirty) body.hiddenFromEmployees = hidden;
+
         setBusy(true); setMsg("");
         try {
             await api(`/api/exam/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-            setMsg(okMsg);
+            setMsg("Changes applied and saved.");
             await onChange();
         } catch (e) {
-            setMsg(e?.message || "Could not update the exam.");
+            setMsg(e?.message || "Could not apply the changes.");
         } finally { setBusy(false); }
     };
 
-    const saveSchedule = () => {
-        if (!when) { setMsg("Pick an end date and time first."); return; }
-        const iso = new Date(when).toISOString();
-        // Reschedule and ensure the exam is open again (reopen if it was completed).
-        patch({ dueDate: iso, status: "ACTIVE" }, "End time updated — exam is open.");
-    };
-    const reopenNoDeadline = () => patch({ dueDate: null, status: "ACTIVE" }, "Exam reopened with no end time.");
-    const closeNow = () => patch({ dueDate: new Date().toISOString() }, "Exam closed — no more submissions accepted.");
-    const toggleHidden = () => patch(
-        { hiddenFromEmployees: !exam.hiddenFromEmployees },
-        exam.hiddenFromEmployees ? "Exam restored to employees' lists." : "Exam removed from employees' lists.",
-    );
+    const quickBtn = "text-[12.5px] font-bold border border-ap-border rounded-[9px] px-3 py-1.5 cursor-pointer hover:bg-ap-bg transition";
 
     return (
         <div className="bg-white border border-ap-border rounded-[16px] p-[22px] mb-5">
             <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
                 <div>
                     <h3 className="text-[16px] font-extrabold text-ap-text">Schedule &amp; visibility</h3>
-                    <p className="text-[12.5px] text-ap-text-muted mt-0.5">Control when the exam closes and whether employees can see it.</p>
+                    <p className="text-[12.5px] text-ap-text-muted mt-0.5">Stage your changes, then click <b>Apply changes</b> to save.</p>
                 </div>
                 <div className="flex items-center gap-4 text-[12px]">
                     <div>
@@ -298,6 +322,7 @@ function ManagePanel({ exam, id, onChange }) {
                 </div>
             </div>
 
+            {/* End date & time */}
             <div className="flex items-end gap-3 flex-wrap">
                 <label className="flex flex-col gap-1">
                     <span className="text-[11.5px] font-bold text-ap-text-muted">End date &amp; time</span>
@@ -308,26 +333,46 @@ function ManagePanel({ exam, id, onChange }) {
                         className="border border-ap-border rounded-[10px] px-3 py-2 text-[13.5px] outline-none focus:border-ap-orange"
                     />
                 </label>
-                <button onClick={saveSchedule} disabled={busy} style={{ background: "#00843D" }} className="text-white text-[13px] font-bold rounded-[10px] px-4 py-2.5 cursor-pointer disabled:opacity-60 transition hover:brightness-105">
-                    {closed ? "Resume & set time" : "Save end time"}
-                </button>
-                <button onClick={reopenNoDeadline} disabled={busy} className="text-[13px] font-bold text-ap-text-muted border border-ap-border rounded-[10px] px-4 py-2.5 cursor-pointer disabled:opacity-60 hover:bg-ap-bg">Reopen (no end time)</button>
-                {!closed && exam.dueDate != null && (
-                    <button onClick={closeNow} disabled={busy} style={{ color: "#DC2626", borderColor: "#FCA5A5" }} className="text-[13px] font-bold border rounded-[10px] px-4 py-2.5 cursor-pointer disabled:opacity-60 hover:bg-red-50">Close now</button>
-                )}
-                <div className="flex-1" />
-                <button
-                    onClick={toggleHidden}
-                    disabled={busy}
-                    style={exam.hiddenFromEmployees
-                        ? { background: "#003087", color: "#fff" }
-                        : { color: "#C2410C", borderColor: "#FAD4A0", borderWidth: 1 }}
-                    className="text-[13px] font-bold rounded-[10px] px-4 py-2.5 cursor-pointer disabled:opacity-60 transition hover:brightness-105"
-                >
-                    {exam.hiddenFromEmployees ? "Restore to employees" : "Remove from employees"}
-                </button>
+                <div className="flex items-center gap-2 pb-0.5">
+                    <button type="button" onClick={() => setWhen("")} className={quickBtn}>Clear end time</button>
+                    <button type="button" onClick={() => setWhen(toDateTimeLocal(new Date()))} className={quickBtn}>Close now</button>
+                </div>
             </div>
-            {msg && <p className="text-[12.5px] font-semibold text-ap-text-muted mt-3">{msg}</p>}
+
+            {/* Visibility */}
+            <div className="mt-4 flex items-center gap-3 flex-wrap">
+                <span className="text-[11.5px] font-bold text-ap-text-muted">Employee visibility</span>
+                <button
+                    type="button"
+                    onClick={() => setHidden((h) => !h)}
+                    style={hidden ? { background: "#FEF2F2", color: "#DC2626", borderColor: "#FCA5A5" } : { background: "#EBF7F1", color: "#006B32", borderColor: "#A3D9BC" }}
+                    className="text-[12.5px] font-bold border rounded-[9px] px-3.5 py-1.5 cursor-pointer transition"
+                >
+                    {hidden ? "Removed from employees" : "Visible to employees"}
+                </button>
+                <span className="text-[11.5px] text-ap-text-faint">Click to {hidden ? "restore" : "remove"}</span>
+            </div>
+
+            {/* Apply / discard */}
+            <div className="mt-5 pt-4 border-t border-ap-border flex items-center gap-3 flex-wrap">
+                <button
+                    type="button"
+                    onClick={apply}
+                    disabled={!dirty || busy}
+                    style={{ background: dirty ? "#00843D" : "#CBD5E1" }}
+                    className="text-white text-[13.5px] font-extrabold rounded-[11px] px-5 py-2.5 cursor-pointer disabled:cursor-not-allowed transition hover:brightness-105"
+                >
+                    {busy ? "Applying…" : "Apply changes & save"}
+                </button>
+                <button type="button" onClick={reset} disabled={!dirty || busy} className="text-[13px] font-bold text-ap-text-muted border border-ap-border rounded-[11px] px-4 py-2.5 cursor-pointer disabled:opacity-50 hover:bg-ap-bg">Discard</button>
+                {dirty && (
+                    <span className="text-[12px] font-semibold text-[#B45309]">
+                        Unsaved: {[scheduleDirty && (reopening ? "reopen & reschedule" : when ? "new end time" : "remove end time"), hiddenDirty && (hidden ? "remove from employees" : "restore to employees")].filter(Boolean).join(" · ")}
+                    </span>
+                )}
+                {!dirty && msg && <span className="text-[12.5px] font-semibold text-[#006B32]">{msg}</span>}
+            </div>
+            {dirty && msg && <p className="text-[12.5px] font-semibold text-red-600 mt-2">{msg}</p>}
         </div>
     );
 }
