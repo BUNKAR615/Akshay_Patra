@@ -5,6 +5,7 @@ import DashboardShell from "../../../components/DashboardShell";
 import TimedEvaluationForm from "../../../components/TimedEvaluationForm";
 import { SkeletonCard } from "../../../components/Skeleton";
 import QuarterCountdown from "../../../components/QuarterCountdown";
+import MyExams from "../../../components/MyExams";
 
 async function api(url, opts) {
     const res = await fetch(url, opts);
@@ -113,6 +114,9 @@ export default function EmployeeDashboard() {
                     </div>
                 </div>
             )}
+
+            {/* Exams assigned to this employee (published quizzes) */}
+            <MyExams />
 
             {error && (
                 <div className="mb-6 p-4 bg-[#FFEBEE] border-l-4 border-[#D32F2F] rounded-r-lg shadow-sm">
