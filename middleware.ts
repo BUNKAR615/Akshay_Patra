@@ -96,16 +96,25 @@ export async function middleware(request: NextRequest) {
   try {
     const { payload } = await jwtVerify(token, getSecret())
     const sessionRole = String(payload.role || '')
+    // `op` (operator) claim: true when the user holds any per-user admin-area
+    // grant. Lets a granted non-admin reach /dashboard/admin even though their
+    // JWT role isn't ADMIN. Computed at token issuance (see lib/auth/operatorClaim).
+    const isOperator = payload.op === true
 
     // Dashboard URL isolation: each /dashboard/<segment> belongs to exactly one
     // role. If the user's JWT role doesn't match the segment, redirect them to
     // their own dashboard (never silently render the wrong shell). API routes
     // are NOT gated here — they enforce role at the handler level via
-    // withRole([...]) — so this only affects browser-facing /dashboard/* pages.
+    // withRole([...]) / withPermission(...) — so this only affects browser-facing
+    // /dashboard/* pages.
     if (pathname.startsWith('/dashboard/')) {
       const segment = pathname.split('/')[2] || ''
       const requiredRole = DASHBOARD_ROLE_BY_PREFIX[segment]
-      if (requiredRole && sessionRole !== requiredRole) {
+      // Operators may enter the admin area; the page + APIs enforce which tabs
+      // and routes they can actually reach (per-permission). Everything else
+      // stays strictly role-isolated.
+      const operatorAdmitted = segment === 'admin' && isOperator
+      if (requiredRole && sessionRole !== requiredRole && !operatorAdmitted) {
         const home = (DASHBOARD_HOME as Record<string, string>)[sessionRole]
         if (home) {
           return NextResponse.redirect(new URL(home, request.url))
@@ -126,6 +135,7 @@ export async function middleware(request: NextRequest) {
     response.headers.set('x-user-id', String(payload.userId || ''))
     response.headers.set('x-user-empcode', String(payload.empCode || ''))
     response.headers.set('x-user-role', sessionRole)
+    response.headers.set('x-user-op', isOperator ? '1' : '0')
 
     // departmentIds as JSON array string
     const departmentIds = Array.isArray(payload.departmentIds) ? payload.departmentIds : []

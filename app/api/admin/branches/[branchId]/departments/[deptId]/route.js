@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../../../../lib/prisma";
-import { withRole } from "../../../../../../../lib/withRole";
+import { withPermission } from "../../../../../../../lib/withPermission";
 import { ok, fail, serverError, notFound } from "../../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../../lib/resolveBranch";
@@ -17,7 +17,7 @@ const renameSchema = z.object({
  * Renames a department. Because Department.id is the FK everywhere
  * (users.departmentId, shortlist tables, etc.), renaming is cascade-safe.
  */
-export const PATCH = withRole(["ADMIN"], async (request, { params, user }) => {
+export const PATCH = withPermission("branches.departments", async (request, { params, user }) => {
     try {
         const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;

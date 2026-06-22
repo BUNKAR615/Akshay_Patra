@@ -10,6 +10,7 @@ import {
 import { ok, fail, serverError } from "../../../../lib/api-response";
 import { selectRoleSchema } from "../../../../lib/validators";
 import { resolveRoleScope } from "../../../../lib/auth/loginRoles";
+import { loadOpClaim } from "../../../../lib/auth/operatorClaim";
 
 /**
  * POST /api/auth/select-role
@@ -73,6 +74,7 @@ export async function POST(request) {
         if (scope.error) return fail(scope.error, 401);
         const { branchId, branchType, branchName, departmentIds } = scope;
 
+        const op = await loadOpClaim(user.id);
         const tokenPayload = {
             userId: user.id,
             empCode: user.empCode,
@@ -80,6 +82,7 @@ export async function POST(request) {
             departmentIds,
             branchId,
             branchType,
+            op,
         };
         const token = await signToken(tokenPayload);
         const refreshToken = await signRefreshToken(tokenPayload);

@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../../../lib/prisma";
-import { withRole } from "../../../../../../lib/withRole";
+import { withPermission } from "../../../../../../lib/withPermission";
 import { ok, fail, serverError, notFound } from "../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
@@ -21,7 +21,7 @@ import { resolveBranch } from "../../../../../../lib/resolveBranch";
  *   }
  * }
  */
-export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
+export const GET = withPermission("branches.view", async (request, { params, user }) => {
     try {
         const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;

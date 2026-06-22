@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../../lib/prisma";
-import { withRole } from "../../../../../lib/withRole";
+import { withPermission } from "../../../../../lib/withPermission";
 import { ok, notFound, fail, handleApiError } from "../../../../../lib/api-response";
 import { resetHodStateForQuarters } from "../../../../../lib/auth/quarterReset";
 
@@ -20,7 +20,7 @@ import { resetHodStateForQuarters } from "../../../../../lib/auth/quarterReset";
  * secondary HOD login is denied the moment the quarter closes. See
  * lib/auth/quarterReset.js for the full contract.
  */
-export const POST = withRole(["ADMIN"], async (request, { user }) => {
+export const POST = withPermission("quarter.edit", async (request, { user }) => {
     try {
         let body = {};
         try { body = await request.json(); } catch { }

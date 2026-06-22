@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../../../lib/prisma";
-import { withRole } from "../../../../../../lib/withRole";
+import { withPermission } from "../../../../../../lib/withPermission";
 import { ok, fail, serverError, notFound } from "../../../../../../lib/api-response";
 import { branchEvalConfigSchema } from "../../../../../../lib/validators";
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
@@ -11,7 +11,7 @@ import { resolveBranch } from "../../../../../../lib/resolveBranch";
  * GET /api/admin/branches/[id]/eval-config?quarterId=xxx
  * Get branch eval config for a quarter
  */
-export const GET = withRole(["ADMIN"], async (request, { params }) => {
+export const GET = withPermission("branches.org", async (request, { params }) => {
     try {
         const { branchId: slugOrId } = await params;
         const resolved = await resolveBranch(slugOrId);
@@ -38,7 +38,7 @@ export const GET = withRole(["ADMIN"], async (request, { params }) => {
  * POST /api/admin/branches/[id]/eval-config
  * Create or update branch eval config for a quarter
  */
-export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
+export const POST = withPermission("branches.org", async (request, { params, user }) => {
     try {
         const { branchId: slugOrId } = await params;
         const resolved = await resolveBranch(slugOrId);

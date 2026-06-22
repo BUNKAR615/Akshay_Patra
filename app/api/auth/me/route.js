@@ -4,6 +4,7 @@ export const runtime = 'nodejs'
 import prisma from "../../../../lib/prisma";
 import { ok, unauthorized, notFound, fail, serverError } from "../../../../lib/api-response";
 import { withDbRetry, isTransientDbError } from "../../../../lib/http";
+import { expandGrants, hasAnyAdminAccess } from "../../../../lib/permissions";
 
 /** GET /api/auth/me */
 export async function GET(request) {
@@ -14,7 +15,7 @@ export async function GET(request) {
         // User profile and the active-quarter lookup are independent, so run
         // them concurrently — this endpoint gates every dashboard's first
         // render, so shaving a DB round-trip here speeds up every role's load.
-        const [user, activeQuarter] = await Promise.all([
+        const [user, activeQuarter, permRecord] = await Promise.all([
             withDbRetry(() => prisma.user.findUnique({
                 where: { id: userId },
                 select: {
@@ -33,6 +34,10 @@ export async function GET(request) {
             withDbRetry(() => prisma.quarter.findFirst({
                 where: { status: "ACTIVE" },
                 select: { id: true, name: true },
+            })),
+            withDbRetry(() => prisma.userPermission.findUnique({
+                where: { userId },
+                select: { isAdmin: true, permissions: true, operatorTitle: true },
             })),
         ]);
         if (!user) return notFound("User not found");
@@ -76,8 +81,25 @@ export async function GET(request) {
         // (ADMIN/BM/CM/HR/COMMITTEE). UserProfileCard reads `branchName` first.
         const branchName = user.department?.branch?.name || user.scopedBranch?.name || null;
 
+        // Per-user feature grants for client-side nav/tab filtering. `permissions`
+        // is the EXPANDED key set (grants + implications, e.g. employees.edit also
+        // yields employees.view). ADMIN role implicitly holds everything, so the
+        // client treats role==="ADMIN" as all-access regardless of these fields.
+        const isAdminGrant = !!permRecord?.isAdmin;
+        const permissions = [...expandGrants(permRecord?.permissions || [])];
+        const isOperator = sessionRole !== "ADMIN" && hasAnyAdminAccess(permRecord);
+
         return ok({
-            user: { ...user, role: sessionRole, departmentRoles: filteredDepartmentRoles, branchName },
+            user: {
+                ...user,
+                role: sessionRole,
+                departmentRoles: filteredDepartmentRoles,
+                branchName,
+                isAdmin: isAdminGrant,
+                permissions,
+                isOperator,
+                operatorTitle: isOperator ? (permRecord?.operatorTitle || null) : null,
+            },
             currentQuarter: activeQuarter?.name || null,
         });
     } catch (err) {

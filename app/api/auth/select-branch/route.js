@@ -9,6 +9,7 @@ import {
 } from "../../../../lib/auth";
 import { ok, fail, serverError } from "../../../../lib/api-response";
 import { z } from "zod";
+import { loadOpClaim } from "../../../../lib/auth/operatorClaim";
 
 const bodySchema = z.object({
     branchId: z.string().min(1, "branchId is required"),
@@ -58,6 +59,7 @@ export async function POST(request) {
         });
         if (!user) return fail("Account not found.", 401);
 
+        const op = await loadOpClaim(user.id);
         const tokenPayload = {
             userId: user.id,
             empCode: user.empCode,
@@ -65,6 +67,7 @@ export async function POST(request) {
             departmentIds: user.departmentId ? [user.departmentId] : [],
             branchId: assignment.branch.id,
             branchType: assignment.branch.branchType,
+            op,
         };
         const token = await signToken(tokenPayload);
         const refreshToken = await signRefreshToken(tokenPayload);

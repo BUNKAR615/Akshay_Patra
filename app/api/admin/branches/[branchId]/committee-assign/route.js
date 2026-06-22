@@ -3,7 +3,7 @@ export const runtime = 'nodejs'
 
 import bcrypt from "bcryptjs";
 import prisma from "../../../../../../lib/prisma";
-import { withRole } from "../../../../../../lib/withRole";
+import { withPermission } from "../../../../../../lib/withPermission";
 import { ok, fail, created, conflict, notFound, handleApiError } from "../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
@@ -37,7 +37,7 @@ const assignSchema = z.object({
  * POST /api/admin/branches/[branchId]/committee-assign — assign globally (create if new)
  * DELETE /api/admin/branches/[branchId]/committee-assign?memberUserId=... — remove globally
  */
-export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
+export const GET = withPermission("branches.org", async (request, { params, user }) => {
     try {
         const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;
@@ -62,7 +62,7 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
     }
 });
 
-export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
+export const POST = withPermission("branches.org", async (request, { params, user }) => {
     try {
         const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;
@@ -267,7 +267,7 @@ export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
     }
 });
 
-export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
+export const DELETE = withPermission("branches.org", async (request, { params, user }) => {
     try {
         const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;

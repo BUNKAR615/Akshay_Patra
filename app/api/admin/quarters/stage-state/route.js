@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../../lib/prisma";
-import { withRole } from "../../../../../lib/withRole";
+import { withPermission } from "../../../../../lib/withPermission";
 import { ok, fail, notFound, conflict, handleApiError } from "../../../../../lib/api-response";
 import {
     readStageState,
@@ -34,7 +34,7 @@ async function resolveDisplayQuarter() {
     return quarter;
 }
 
-export const GET = withRole(["ADMIN"], async () => {
+export const GET = withPermission(["pipeline.view", "quarter.view"], async () => {
     try {
         const quarter = await resolveDisplayQuarter();
         if (!quarter) return ok({ quarter: null, state: null, enabled: false });
@@ -50,7 +50,7 @@ export const GET = withRole(["ADMIN"], async () => {
     }
 });
 
-export const POST = withRole(["ADMIN"], async (request, { user }) => {
+export const POST = withPermission("pipeline.edit", async (request, { user }) => {
     try {
         let body = {};
         try { body = await request.json(); } catch { /* empty body */ }

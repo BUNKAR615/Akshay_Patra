@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../../lib/prisma";
-import { withRole } from "../../../../../lib/withRole";
+import { withPermission } from "../../../../../lib/withPermission";
 import { ok, serverError } from "../../../../../lib/api-response";
 
 /**
@@ -10,7 +10,7 @@ import { ok, serverError } from "../../../../../lib/api-response";
  * Returns full org structure: all departments with their assigned evaluators
  * and the full employee list per department.
  */
-export const GET = withRole(["ADMIN"], async () => {
+export const GET = withPermission("departments.view", async () => {
     try {
         const departments = await prisma.department.findMany({
             orderBy: { name: "asc" },

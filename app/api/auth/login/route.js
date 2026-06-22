@@ -10,6 +10,7 @@ import { loginSchema } from "../../../../lib/validators";
 import { getClientIp, withDbRetry } from "../../../../lib/http";
 import { sanitize } from "../../../../lib/sanitize";
 import { computeOfferedRoles, resolveRoleScope } from "../../../../lib/auth/loginRoles";
+import { loadOpClaim } from "../../../../lib/auth/operatorClaim";
 
 /**
  * POST /api/auth/login
@@ -159,6 +160,10 @@ export async function POST(request) {
 
         const { password: _p, passwordHod: _ph, department: _dept, ...safeUser } = user;
 
+        // Per-user feature grants → compact `op` claim that lets middleware admit
+        // a granted non-admin ("Operator") into /dashboard/admin.
+        const op = await loadOpClaim(user.id);
+
         const tokenPayload = {
             userId: user.id,
             empCode: user.empCode,
@@ -166,6 +171,7 @@ export async function POST(request) {
             departmentIds,
             branchId,
             branchType,
+            op,
         };
         const token = await signToken(tokenPayload);
         const refreshToken = await signRefreshToken(tokenPayload);

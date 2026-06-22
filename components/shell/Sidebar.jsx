@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { NAV, resolveActive, DASHBOARD_HOME } from "../../lib/dashboardNav";
+import { filterAdminNav } from "../../lib/permissions";
 import { Ic } from "../ui/Icons";
 import { AP, ROLE_LABEL } from "../ui/tokens";
 import { Avatar } from "../ui";
@@ -37,9 +38,16 @@ export default function Sidebar({
     const searchParams = useSearchParams();
     const view = searchParams.get("view");
     const activeId = resolveActive(role, pathname, view);
-    // Strict per-role nav. If role is unknown (loading / unrecognized) render
-    // empty groups — never silently fall back to the ADMIN tabset.
-    const groups = NAV[role] || [];
+    // Nav set is chosen by AREA, not just role. Inside /dashboard/admin we always
+    // render the ADMIN nav filtered by the user's effective permissions — ADMIN
+    // sees everything; a granted non-admin ("Operator", role !== ADMIN) sees only
+    // the items they hold. Everywhere else it's strict per-role nav. If role is
+    // unknown (loading / unrecognized) render empty groups — never silently fall
+    // back to the ADMIN tabset.
+    const inAdminArea = pathname.startsWith("/dashboard/admin");
+    const groups = inAdminArea
+        ? filterAdminNav(NAV.ADMIN, { role, isAdmin: user?.isAdmin, permissions: user?.permissions })
+        : (NAV[role] || []);
 
     // Collapsible labeled sections, persisted separately from the icon-collapse
     // state (`ap.sidebar.collapsed` is owned by DashboardShell and untouched).
@@ -202,9 +210,14 @@ export default function Sidebar({
                         // /api/auth/me load — better than a stale "User"
                         // placeholder + an empty role line under it.
                         const displayName = user?.name?.trim() || "";
-                        const displayRole = role
-                            ? (ROLE_LABEL[role] || role.replace(/_/g, " "))
-                            : "";
+                        // In the admin area an operator (granted non-admin) is shown by
+                        // their admin-given page-role name (e.g. "HR Admin") rather than
+                        // their base role — that's the hat they're wearing here.
+                        const displayRole = (inAdminArea && user?.operatorTitle)
+                            ? user.operatorTitle
+                            : role
+                                ? (ROLE_LABEL[role] || role.replace(/_/g, " "))
+                                : "";
                         return isCollapsed ? (
                             <div className="flex justify-center">
                                 <Avatar name={displayName || "?"} size={30} color={AP.blue} />

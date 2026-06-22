@@ -1,5 +1,5 @@
 import prisma from "../../../../lib/prisma";
-import { withRole } from "../../../../lib/withRole";
+import { withPermission } from "../../../../lib/withPermission";
 import { ok, fail, notFound, serverError } from "../../../../lib/api-response";
 import { isTransientDbError } from "../../../../lib/http";
 
@@ -12,7 +12,7 @@ import { isTransientDbError } from "../../../../lib/http";
  * back to the most recently created quarter. Passing `quarterId` lets the
  * admin dashboard view an archived (CLOSED) quarter read-only.
  */
-export const GET = withRole(["ADMIN"], async (request) => {
+export const GET = withPermission(["pipeline.view", "quarter.view"], async (request) => {
     try {
         const { searchParams } = new URL(request.url);
         const requestedQuarterId = searchParams.get("quarterId");

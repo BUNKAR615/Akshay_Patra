@@ -3,7 +3,7 @@ export const runtime = 'nodejs'
 
 import prisma from "../../../../../lib/prisma";
 import bcrypt from "bcryptjs";
-import { withRole } from "../../../../../lib/withRole";
+import { withPermission } from "../../../../../lib/withPermission";
 import { NextResponse } from "next/server";
 import { assertBmAssignable, applyBmAssignment, clearBmAssignment } from "../../../../../lib/auth/bmAssignment";
 
@@ -13,7 +13,7 @@ import { assertBmAssignable, applyBmAssignment, clearBmAssignment } from "../../
  * User row. Open to any ADMIN; the existing role===ADMIN guard on the target
  * still prevents demoting the system admin.
  */
-export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
+export const DELETE = withPermission("employees.edit", async (request, { params, user }) => {
     try {
         const { id } = await params;
         const body = await request.json();
@@ -146,7 +146,7 @@ export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
  * Sends a notification to the employee listing what was changed.
  * On department change, clears old dept FK shortcuts (supervisorId/branchManagerId).
  */
-export const PATCH = withRole(["ADMIN"], async (request, { params, user }) => {
+export const PATCH = withPermission("employees.edit", async (request, { params, user }) => {
     try {
         const { id } = await params;
         const body = await request.json();

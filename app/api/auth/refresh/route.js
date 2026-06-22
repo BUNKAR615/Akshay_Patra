@@ -5,6 +5,7 @@ import prisma from "../../../../lib/prisma";
 import { signToken, verifyRefreshToken } from "../../../../lib/auth";
 import { ok, fail, serverError } from "../../../../lib/api-response";
 import { resolveScopeBranch } from "../../../../lib/auth/resolveScopeBranch";
+import { loadOpClaim } from "../../../../lib/auth/operatorClaim";
 
 /**
  * POST /api/auth/refresh
@@ -80,6 +81,10 @@ export async function POST(request) {
             branchType = decoded.branchType || "";
         }
 
+        // Recompute the operator claim from the DB so a permission change since
+        // the last login is picked up at the next token refresh.
+        const op = await loadOpClaim(user.id);
+
         const newToken = await signToken({
             userId: user.id,
             empCode: user.empCode,
@@ -87,6 +92,7 @@ export async function POST(request) {
             departmentIds,
             branchId,
             branchType,
+            op,
         });
 
         const response = ok({ token: newToken });

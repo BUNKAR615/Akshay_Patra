@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../../lib/prisma";
-import { withRole } from "../../../../../lib/withRole";
+import { withPermission } from "../../../../../lib/withPermission";
 import { ok, fail, serverError, validateBody } from "../../../../../lib/api-response";
 import { z } from "zod";
 
@@ -16,7 +16,7 @@ const removeRoleSchema = z.object({
  * DELETE /api/admin/departments/remove-role
  * Removes a role assignment from a department.
  */
-export const DELETE = withRole(["ADMIN"], async (request, { user }) => {
+export const DELETE = withPermission("departments.edit", async (request, { user }) => {
     try {
         const { data, error } = await validateBody(request, removeRoleSchema);
         if (error) return error;

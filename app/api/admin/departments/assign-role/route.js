@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../../lib/prisma";
-import { withRole } from "../../../../../lib/withRole";
+import { withPermission } from "../../../../../lib/withPermission";
 import { created, fail, conflict, serverError, validateBody } from "../../../../../lib/api-response";
 import { assertBmAssignable, applyBmAssignment } from "../../../../../lib/auth/bmAssignment";
 import { z } from "zod";
@@ -18,7 +18,7 @@ const assignRoleSchema = z.object({
  * Assigns a user as evaluator for a specific department.
  * Replace behaviour: removes ALL existing holders for that role in that dept before assigning the new one.
  */
-export const POST = withRole(["ADMIN"], async (request, { user }) => {
+export const POST = withPermission("departments.edit", async (request, { user }) => {
     try {
         const { data, error } = await validateBody(request, assignRoleSchema);
         if (error) return error;

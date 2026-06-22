@@ -3,7 +3,7 @@ export const runtime = 'nodejs'
 
 import bcrypt from "bcryptjs";
 import prisma from "../../../../../../lib/prisma";
-import { withRole } from "../../../../../../lib/withRole";
+import { withPermission } from "../../../../../../lib/withPermission";
 import { ok, fail, notFound, forbidden, conflict, created, handleApiError } from "../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
@@ -17,7 +17,7 @@ const HR_ALLOWED = ["1800349", "5100029"];
  * Returns all users belonging to a branch (employees + branch staff).
  * Supports optional `role` query filter: EMPLOYEE | BRANCH_MANAGER | CLUSTER_MANAGER | HOD
  */
-export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
+export const GET = withPermission("branches.employees", async (request, { params, user }) => {
     try {
         const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;
@@ -163,7 +163,7 @@ export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
  * the branch (name + branchId). Mirrors the global /api/admin/employees POST
  * but targets the URL's branchId instead of a name-only department lookup.
  */
-export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
+export const POST = withPermission("branches.employees", async (request, { params, user }) => {
     try {
         if (!HR_ALLOWED.includes(user.empCode)) {
             return forbidden("You are not authorized to add employees");

@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../../../../lib/prisma";
-import { withRole } from "../../../../../../../lib/withRole";
+import { withPermission } from "../../../../../../../lib/withPermission";
 import { ok, fail, notFound, serverError } from "../../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../../lib/resolveBranch";
@@ -31,7 +31,7 @@ import { resolveBranch } from "../../../../../../../lib/resolveBranch";
  * required so admin can audit evaluation progress mid-quarter. Branch-scoped
  * only; no cross-branch leak.
  */
-export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
+export const GET = withPermission("pipeline.export", async (request, { params, user }) => {
     try {
         const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;

@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../../../lib/prisma";
-import { withRole } from "../../../../../../lib/withRole";
+import { withPermission } from "../../../../../../lib/withPermission";
 import { ok, serverError, notFound } from "../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
@@ -11,7 +11,7 @@ import { resolveBranch } from "../../../../../../lib/resolveBranch";
  * GET /api/admin/branches/[branchId]/departments
  * Returns departments under a branch with per-department counts.
  */
-export const GET = withRole(["ADMIN"], async (request, { params, user }) => {
+export const GET = withPermission("branches.departments", async (request, { params, user }) => {
     try {
         const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;

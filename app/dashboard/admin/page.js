@@ -9,6 +9,8 @@ import { SkeletonCard, SkeletonStats } from "../../../components/Skeleton";
 import UserProfileCard from "../../../components/UserProfileCard";
 import { api } from "../../../lib/clientApi";
 import { getAutoQuarterName } from "../../../lib/quarterUtils";
+import { NAV, DASHBOARD_HOME } from "../../../lib/dashboardNav";
+import { canAccessView, firstAllowedView } from "../../../lib/permissions";
 
 // Each ?view= tab is its own lazily-loaded chunk — switching tabs only ever
 // downloads the code for the tab being opened.
@@ -22,6 +24,7 @@ const QuestionsView = dynamic(() => import("./views/QuestionsView"), { ssr: fals
 const EmployeesView = dynamic(() => import("./views/EmployeesView"), { ssr: false, loading: viewLoading });
 const LogsView = dynamic(() => import("./views/LogsView"), { ssr: false, loading: viewLoading });
 const ReportsPanel = dynamic(() => import("../../../components/admin/ReportsPanel"), { ssr: false, loading: viewLoading });
+const UsersView = dynamic(() => import("./views/UsersView"), { ssr: false, loading: viewLoading });
 
 // Share payload — drops staff on the LOGIN page with the active quarter named.
 function buildAdminSharePayload(quarter) {
@@ -61,6 +64,25 @@ export default function AdminDashboard() {
         if (next !== tab) setTabState(next);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [viewParam]);
+
+    // Permission gate: once the user is known, an operator (granted non-admin)
+    // who lands on a tab they aren't allowed to open is redirected — to their
+    // first granted view, or to their own dashboard if they hold none. ADMIN is
+    // all-access so this is a no-op for them. Defence-in-depth: the sidebar
+    // already hides the entry and the APIs/middleware still 403.
+    useEffect(() => {
+        if (!user) return;
+        const ctx = { role: user.role, isAdmin: user.isAdmin, permissions: user.permissions };
+        if (canAccessView(tab, ctx)) return;
+        const dest = firstAllowedView(NAV.ADMIN, ctx);
+        if (dest) {
+            const qs = dest === "dashboard" ? "" : `?view=${dest}`;
+            router.replace(`/dashboard/admin${qs}`, { scroll: false });
+        } else {
+            router.replace(DASHBOARD_HOME[user.role] || "/login");
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user, tab]);
 
     // Confirm dialog for quarter start/close (shared by dashboard + quarter tabs).
     const [confirm, setConfirm] = useState({ open: false, type: null });
@@ -417,6 +439,7 @@ export default function AdminDashboard() {
                 />
             )}
             {tab === "logs" && <LogsView />}
+            {tab === "users" && <UsersView currentUser={user} />}
 
             {/* Confirmation Dialogs — quarter start/close */}
             <ConfirmDialog

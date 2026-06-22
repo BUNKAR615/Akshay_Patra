@@ -2,14 +2,14 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../../lib/prisma";
-import { withRole } from "../../../../../lib/withRole";
+import { withPermission } from "../../../../../lib/withPermission";
 import { ok, fail, serverError } from "../../../../../lib/api-response";
 
 /**
  * GET /api/admin/departments/roles?departmentId=...
  * Returns role assignments for a specific department.
  */
-export const GET = withRole(["ADMIN"], async (request) => {
+export const GET = withPermission("departments.view", async (request) => {
     try {
         const { searchParams } = new URL(request.url);
         const departmentId = searchParams.get("departmentId");

@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../../lib/prisma";
-import { withRole } from "../../../../../lib/withRole";
+import { withPermission } from "../../../../../lib/withPermission";
 import { NextResponse } from "next/server";
 
 /**
@@ -16,7 +16,7 @@ import { NextResponse } from "next/server";
  *   ?empCode  — match the snapshot empCode (still works for removed users)
  *   ?page=1, ?limit=50
  */
-export const GET = withRole(["ADMIN"], async (request) => {
+export const GET = withPermission("employees.view", async (request) => {
     try {
         const { searchParams } = new URL(request.url);
         const branchId = searchParams.get("branchId");

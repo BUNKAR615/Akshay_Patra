@@ -118,6 +118,9 @@ model User {
   // Audit trail of role/department/branch changes
   assignmentHistory EmployeeAssignmentHistory[]
 
+  // Per-user feature grants (granular access control layered on top of role)
+  permission UserPermission?
+
   @@index([departmentId])
   @@index([role])
   @@index([departmentId, role])
@@ -832,6 +835,23 @@ model EmployeeAssignmentHistory {
   @@index([newBranchId, changedAt])
   @@index([changedAt])
   @@map("employee_assignment_history")
+}
+
+/// UserPermission — per-user feature grants layered on top of the role system.
+/// 1:1 with User. ADMIN role bypasses these checks entirely (see lib/permissions.js).
+/// A non-admin User with any grant is shown as an "Operator" (a display label, not
+/// a Role enum value).
+model UserPermission {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  operatorTitle String? //                 admin-named "page role" (e.g. "HR Admin"); additive to base role
+  isAdmin       Boolean  @default(false) // master override — grants everything
+  permissions   String[] @default([]) //   granted permission-key strings (lib/permissions.js)
+  updatedAt     DateTime @updatedAt
+  updatedById   String? //                 who last edited (audit trail)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_permissions")
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -3,6 +3,7 @@ export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
+import { withPermission } from "../../../../lib/withPermission";
 import { ok, fail, serverError, created, validateBody } from "../../../../lib/api-response";
 import { z } from "zod";
 
@@ -23,7 +24,7 @@ const updateBranchSchema = z.object({
  * GET /api/admin/branches
  * List all branches with department counts
  */
-export const GET = withRole(["ADMIN"], async (request, { user }) => {
+export const GET = withPermission("branches.view", async (request, { user }) => {
     try {
         const branches = await prisma.branch.findMany({
             include: {

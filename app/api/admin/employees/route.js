@@ -3,7 +3,7 @@ export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
 import bcrypt from "bcryptjs";
-import { withRole } from "../../../../lib/withRole";
+import { withPermission } from "../../../../lib/withPermission";
 import { defaultPasswordFor } from "../../../../lib/auth/defaultPassword";
 import { handleApiError } from "../../../../lib/api-response";
 import { NextResponse } from "next/server";
@@ -16,7 +16,7 @@ const HR_ALLOWED = ["1800349", "5100029"]; // Rishpal Kumar (ADMIN), Chetan Sing
  * Returns paginated, searchable employee list for the admin directory.
  * Includes evaluator role mappings so filtering by BM/CM/HOD works.
  */
-export const GET = withRole(["ADMIN"], async (request) => {
+export const GET = withPermission("employees.view", async (request) => {
     try {
         const { searchParams } = new URL(request.url);
         const search = searchParams.get("search") ?? "";
@@ -246,7 +246,7 @@ export const GET = withRole(["ADMIN"], async (request) => {
  * POST /api/admin/employees
  * Add a new employee. Only Rishpal Kumar and Chetan Singh Bhati can do this.
  */
-export const POST = withRole(["ADMIN"], async (request, { user }) => {
+export const POST = withPermission("employees.edit", async (request, { user }) => {
     try {
         if (!HR_ALLOWED.includes(user.empCode)) {
             return NextResponse.json(

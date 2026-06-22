@@ -3,7 +3,7 @@ export const runtime = 'nodejs'
 export const maxDuration = 30
 
 import prisma from "../../../../../lib/prisma";
-import { withRole } from "../../../../../lib/withRole";
+import { withPermission } from "../../../../../lib/withPermission";
 import { created, fail, conflict, serverError, validateBody } from "../../../../../lib/api-response";
 import { isTransientDbError } from "../../../../../lib/http";
 import { startQuarterSchema } from "../../../../../lib/validators";
@@ -82,7 +82,7 @@ function selectSimple(questions, count) {
 /**
  * POST /api/admin/quarters/start
  */
-export const POST = withRole(["ADMIN"], async (request, { user }) => {
+export const POST = withPermission("quarter.edit", async (request, { user }) => {
     try {
         const { data, error } = await validateBody(request, startQuarterSchema);
         if (error) return error;

@@ -4,7 +4,7 @@ export const runtime = 'nodejs'
 import bcrypt from "bcryptjs";
 import * as XLSX from "xlsx";
 import prisma from "../../../../../../../lib/prisma";
-import { withRole } from "../../../../../../../lib/withRole";
+import { withPermission } from "../../../../../../../lib/withPermission";
 import { ok, fail, conflict, serverError, notFound } from "../../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../../lib/resolveBranch";
@@ -85,7 +85,7 @@ function deriveCollar(row, sheetName) {
  *   • Existing BM/CM/HR/Committee role-holders cause the upload to be rejected
  *     (use Org Structure to unassign first).
  */
-export const POST = withRole(["ADMIN"], async (request, { params, user }) => {
+export const POST = withPermission("branches.employees", async (request, { params, user }) => {
     try {
         const { branchId: slugOrId, error } = requireBranchScope(user, params);
         if (error) return error;

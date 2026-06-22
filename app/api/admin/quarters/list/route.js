@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../../lib/prisma";
-import { withRole } from "../../../../../lib/withRole";
+import { withPermission } from "../../../../../lib/withPermission";
 import { ok, fail, serverError } from "../../../../../lib/api-response";
 import { isTransientDbError } from "../../../../../lib/http";
 
@@ -13,7 +13,7 @@ import { isTransientDbError } from "../../../../../lib/http";
  * quarter selector. `status === "CLOSED"` means the quarter is archived and
  * should be presented read-only on the client.
  */
-export const GET = withRole(["ADMIN"], async () => {
+export const GET = withPermission(["pipeline.view", "quarter.view"], async () => {
     try {
         const quarters = await prisma.quarter.findMany({
             orderBy: [{ startDate: "desc" }, { createdAt: "desc" }],
