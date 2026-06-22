@@ -915,6 +915,10 @@ model Exam {
   externalEmpCodeRequired Boolean          @default(true)
   externalApprovalMode    ExamApprovalMode @default(MANUAL)
   allowReattempts         Boolean          @default(false)
+  // When true the exam is hidden from every employee's "My Exams" list — used
+  // to retract a wrongly-created exam or one whose results are already out,
+  // without deleting its responses. Reversible.
+  hiddenFromEmployees     Boolean          @default(false)
   createdById       String // scalar ref → users.id (no relation)
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt

@@ -6,6 +6,7 @@ import ModuleShell from "../../../../components/shell/ModuleShell";
 import { Icon } from "../../../../components/ui/Icons";
 import { Toggle } from "../../../../components/ui";
 import { api } from "../../../../lib/clientApi";
+import { toDateTimeLocal } from "../../../../lib/formatDateTime";
 
 const ACCENT = "#F7941D";
 
@@ -143,7 +144,7 @@ export default function ExamBuilderPage() {
                 setDetails({
                     title: e.title || "", description: e.description || "",
                     timeLimitMin: e.timeLimitMin ?? 45, passMark: e.passMark ?? 70,
-                    dueDate: e.dueDate ? e.dueDate.slice(0, 10) : "",
+                    dueDate: toDateTimeLocal(e.dueDate),
                     shuffle: e.shuffle, showResults: e.showResults, requireCompletion: e.requireCompletion,
                     allowReattempts: e.allowReattempts ?? false,
                     externalEmailRequired: e.externalEmailRequired ?? true,
@@ -380,7 +381,7 @@ function DetailsStep({ details, setDetails, onNext }) {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <Field label="Time limit (min)"><input type="number" min="0" value={details.timeLimitMin} onChange={(e) => set("timeLimitMin", e.target.value)} className={inputCls} /></Field>
                     <Field label="Pass mark (%)"><input type="number" min="0" max="100" value={details.passMark} onChange={(e) => set("passMark", e.target.value)} className={inputCls} /></Field>
-                    <Field label="Due date"><input type="date" value={details.dueDate} onChange={(e) => set("dueDate", e.target.value)} className={inputCls} /></Field>
+                    <Field label="Ends on (date & time)"><input type="datetime-local" value={details.dueDate} onChange={(e) => set("dueDate", e.target.value)} className={inputCls} /></Field>
                 </div>
                 <div className="flex flex-wrap gap-2.5 pt-1">
                     {[["shuffle", "Shuffle questions"], ["showResults", "Show results on submit"], ["requireCompletion", "Require completion"], ["allowReattempts", "Allow reattempts"]].map(([k, l]) => (

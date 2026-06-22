@@ -6,6 +6,7 @@ import ModuleShell from "../../../../../components/shell/ModuleShell";
 import { Icon } from "../../../../../components/ui/Icons";
 import { api } from "../../../../../lib/clientApi";
 import { SkeletonCard } from "../../../../../components/Skeleton";
+import { fmtDateTime, toDateTimeLocal } from "../../../../../lib/formatDateTime";
 
 const PART_STATS = [
     { key: "invited", label: "Invited", sub: "all branches", color: "#003087", tint: "#EEF3FB", icon: "users" },
@@ -28,12 +29,17 @@ export default function ExamResultsPage() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
 
+    const reload = async () => {
+        try { setData(await api(`/api/exam/${id}/results`)); }
+        catch (e) { console.error("[Exam results] load failed:", e); }
+    };
+
     useEffect(() => {
         (async () => {
-            try { setData(await api(`/api/exam/${id}/results`)); }
-            catch (e) { console.error("[Exam results] load failed:", e); }
-            finally { setLoading(false); }
+            await reload();
+            setLoading(false);
         })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [id]);
 
     const exam = data?.exam;
@@ -90,6 +96,9 @@ export default function ExamResultsPage() {
                             </div>
                         ))}
                     </div>
+
+                    {/* Admin management — schedule & visibility */}
+                    <ManagePanel exam={exam} id={id} onChange={reload} />
 
                     {/* Charts row */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
@@ -187,7 +196,7 @@ export default function ExamResultsPage() {
                     {(data.questionStats || []).length > 0 && (
                         <div className="bg-white border border-ap-border rounded-[16px] p-[22px] mb-5">
                             <h3 className="text-[16px] font-extrabold text-ap-text mb-4">Question analytics</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+                            <div className="flex flex-col gap-4">
                                 {data.questionStats.map((q, i) => <QuestionStat key={q.id} q={q} n={i + 1} segColors={data.segColors} />)}
                             </div>
                         </div>
@@ -230,6 +239,96 @@ export default function ExamResultsPage() {
                 </>
             )}
         </ModuleShell>
+    );
+}
+
+function ManagePanel({ exam, id, onChange }) {
+    const [when, setWhen] = useState(() => toDateTimeLocal(exam?.dueDate));
+    const [busy, setBusy] = useState(false);
+    const [msg, setMsg] = useState("");
+
+    // Keep the input in sync if the exam reloads with a new dueDate.
+    useEffect(() => { setWhen(toDateTimeLocal(exam?.dueDate)); }, [exam?.dueDate]);
+
+    if (!exam) return null;
+    const created = fmtDateTime(exam.createdAt);
+    const ends = fmtDateTime(exam.dueDate);
+    const closed = exam.closed;
+
+    const patch = async (body, okMsg) => {
+        setBusy(true); setMsg("");
+        try {
+            await api(`/api/exam/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            setMsg(okMsg);
+            await onChange();
+        } catch (e) {
+            setMsg(e?.message || "Could not update the exam.");
+        } finally { setBusy(false); }
+    };
+
+    const saveSchedule = () => {
+        if (!when) { setMsg("Pick an end date and time first."); return; }
+        const iso = new Date(when).toISOString();
+        // Reschedule and ensure the exam is open again (reopen if it was completed).
+        patch({ dueDate: iso, status: "ACTIVE" }, "End time updated — exam is open.");
+    };
+    const reopenNoDeadline = () => patch({ dueDate: null, status: "ACTIVE" }, "Exam reopened with no end time.");
+    const closeNow = () => patch({ dueDate: new Date().toISOString() }, "Exam closed — no more submissions accepted.");
+    const toggleHidden = () => patch(
+        { hiddenFromEmployees: !exam.hiddenFromEmployees },
+        exam.hiddenFromEmployees ? "Exam restored to employees' lists." : "Exam removed from employees' lists.",
+    );
+
+    return (
+        <div className="bg-white border border-ap-border rounded-[16px] p-[22px] mb-5">
+            <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+                <div>
+                    <h3 className="text-[16px] font-extrabold text-ap-text">Schedule &amp; visibility</h3>
+                    <p className="text-[12.5px] text-ap-text-muted mt-0.5">Control when the exam closes and whether employees can see it.</p>
+                </div>
+                <div className="flex items-center gap-4 text-[12px]">
+                    <div>
+                        <p className="text-[10.5px] font-bold uppercase tracking-wider text-ap-text-faint">Created</p>
+                        <p className="text-ap-text font-semibold mt-0.5">{created || "—"}</p>
+                    </div>
+                    <div>
+                        <p className="text-[10.5px] font-bold uppercase tracking-wider text-ap-text-faint">Ends</p>
+                        <p className="font-semibold mt-0.5" style={{ color: closed ? "#DC2626" : "#1E293B" }}>{ends || "No end time"}{closed ? " · closed" : ""}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex items-end gap-3 flex-wrap">
+                <label className="flex flex-col gap-1">
+                    <span className="text-[11.5px] font-bold text-ap-text-muted">End date &amp; time</span>
+                    <input
+                        type="datetime-local"
+                        value={when}
+                        onChange={(e) => setWhen(e.target.value)}
+                        className="border border-ap-border rounded-[10px] px-3 py-2 text-[13.5px] outline-none focus:border-ap-orange"
+                    />
+                </label>
+                <button onClick={saveSchedule} disabled={busy} style={{ background: "#00843D" }} className="text-white text-[13px] font-bold rounded-[10px] px-4 py-2.5 cursor-pointer disabled:opacity-60 transition hover:brightness-105">
+                    {closed ? "Resume & set time" : "Save end time"}
+                </button>
+                <button onClick={reopenNoDeadline} disabled={busy} className="text-[13px] font-bold text-ap-text-muted border border-ap-border rounded-[10px] px-4 py-2.5 cursor-pointer disabled:opacity-60 hover:bg-ap-bg">Reopen (no end time)</button>
+                {!closed && exam.dueDate != null && (
+                    <button onClick={closeNow} disabled={busy} style={{ color: "#DC2626", borderColor: "#FCA5A5" }} className="text-[13px] font-bold border rounded-[10px] px-4 py-2.5 cursor-pointer disabled:opacity-60 hover:bg-red-50">Close now</button>
+                )}
+                <div className="flex-1" />
+                <button
+                    onClick={toggleHidden}
+                    disabled={busy}
+                    style={exam.hiddenFromEmployees
+                        ? { background: "#003087", color: "#fff" }
+                        : { color: "#C2410C", borderColor: "#FAD4A0", borderWidth: 1 }}
+                    className="text-[13px] font-bold rounded-[10px] px-4 py-2.5 cursor-pointer disabled:opacity-60 transition hover:brightness-105"
+                >
+                    {exam.hiddenFromEmployees ? "Restore to employees" : "Remove from employees"}
+                </button>
+            </div>
+            {msg && <p className="text-[12.5px] font-semibold text-ap-text-muted mt-3">{msg}</p>}
+        </div>
     );
 }
 

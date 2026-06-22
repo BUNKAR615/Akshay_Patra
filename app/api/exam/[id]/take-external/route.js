@@ -5,6 +5,7 @@ import prisma from "../../../../../lib/prisma";
 import { ok, fail, notFound, serverError, validateBody } from "../../../../../lib/api-response";
 import { submitSchema, draftSchema } from "../../../../../lib/examValidators";
 import { gradeExam } from "../../../../../lib/examScore";
+import { isExamClosed, isPastSubmissionGrace } from "../../../../../lib/examDeadline";
 
 // Resolve the external taker from the ?token= query param. Returns the
 // approved registrant or null. The exam itself is returned too (with questions
@@ -48,8 +49,9 @@ export async function GET(request, { params }) {
         );
         const submitted = response.submittedAt != null;
         return ok({
-            exam: { id: exam.id, title: exam.title, description: exam.description, timeLimitMin: exam.timeLimitMin, passMark: exam.passMark, showResults: exam.showResults, questionCount: questions.length },
+            exam: { id: exam.id, title: exam.title, description: exam.description, timeLimitMin: exam.timeLimitMin, passMark: exam.passMark, showResults: exam.showResults, questionCount: questions.length, dueDate: exam.dueDate },
             questions, savedAnswers, startedAt: response.startedAt, submitted,
+            closed: isExamClosed(exam) && !submitted,
             result: submitted && exam.showResults ? { marks: response.marks, rank: response.rank, passed: (response.marks ?? 0) >= exam.passMark, passMark: exam.passMark } : null,
         });
     } catch (err) {
@@ -96,6 +98,14 @@ export async function POST(request, { params }) {
         const { id } = await params;
         const { registrant, exam, error } = await resolveTaker(request, id, true);
         if (error) return error;
+
+        const already = await prisma.examResponse.findUnique({
+            where: { examId_employeeId: { examId: id, employeeId: registrant.id } },
+            select: { submittedAt: true },
+        });
+        if (isPastSubmissionGrace(exam) && !already?.submittedAt) {
+            return fail("This exam has closed. Submissions are no longer accepted.", 403);
+        }
 
         const { data, error: vErr } = await validateBody(request, submitSchema);
         if (vErr) return vErr;

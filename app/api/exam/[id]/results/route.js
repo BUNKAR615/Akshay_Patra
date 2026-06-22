@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import prisma from "../../../../../lib/prisma";
 import { withRole } from "../../../../../lib/withRole";
 import { ok, notFound, serverError } from "../../../../../lib/api-response";
+import { isExamClosed } from "../../../../../lib/examDeadline";
 
 const SCORE_BUCKETS = [
     { range: "0–20", color: "#DC2626" },
@@ -168,7 +169,7 @@ export const GET = withRole(["ADMIN"], async (request, { params }) => {
         const completedPct = invited ? Math.round((completed / invited) * 100) : 0;
 
         return ok({
-            exam: { id: exam.id, title: exam.title, status: exam.status, passMark: exam.passMark },
+            exam: { id: exam.id, title: exam.title, status: exam.status, passMark: exam.passMark, timeLimitMin: exam.timeLimitMin, createdAt: exam.createdAt, dueDate: exam.dueDate, closed: isExamClosed(exam), hiddenFromEmployees: exam.hiddenFromEmployees },
             participation: { invited, started, completed, pending, inProgress, startedPct, completedPct },
             split, registration,
             scoreDist: buckets, branchBars, deptBars,

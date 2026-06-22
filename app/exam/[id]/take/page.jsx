@@ -20,6 +20,11 @@ function fmtTime(sec) {
     const s = sec % 60;
     return `${m}:${String(s).padStart(2, "0")}`;
 }
+function fmtEndDateTime(value) {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
 
 export default function TakeExamPage() {
     const { id } = useParams();
@@ -67,6 +72,7 @@ export default function TakeExamPage() {
                     if (raw) setBookmarks(new Set(JSON.parse(raw)));
                 } catch { /* ignore */ }
                 if (d.submitted) { setResult(d.result); setStage("done"); }
+                else if (d.closed) { setStage("closed"); }
             } catch (e) {
                 console.error("[Take] load failed:", e);
             } finally { setLoading(false); }
@@ -103,10 +109,15 @@ export default function TakeExamPage() {
     }, [answers, stage, id, serialize, takeUrl]);
 
     // ── Timer ──
-    const deadline = useMemo(
-        () => (exam?.timeLimitMin && startedAtMs ? startedAtMs + exam.timeLimitMin * 60000 : null),
-        [exam, startedAtMs]
-    );
+    // Effective deadline = whichever comes first: the per-attempt time limit or
+    // the exam's hard close time (dueDate). When it elapses the runner
+    // auto-submits whatever has been answered.
+    const deadline = useMemo(() => {
+        const timer = exam?.timeLimitMin && startedAtMs ? startedAtMs + exam.timeLimitMin * 60000 : null;
+        const due = exam?.dueDate ? new Date(exam.dueDate).getTime() : null;
+        const cands = [timer, due].filter((x) => x != null);
+        return cands.length ? Math.min(...cands) : null;
+    }, [exam, startedAtMs]);
     const [nowMs, setNowMs] = useState(() => Date.now());
     useEffect(() => {
         if (stage !== "exam" || !deadline) return;
@@ -209,6 +220,10 @@ export default function TakeExamPage() {
                 <ResultScreen exam={exam} result={result} answeredCount={answeredCount} total={total} external={external} onExit={() => router.push("/dashboard/exam")} />
             )}
 
+            {stage === "closed" && (
+                <ClosedScreen exam={exam} external={external} onExit={() => router.push("/dashboard/exam")} />
+            )}
+
             <style jsx global>{`
                 @keyframes apFadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
                 @keyframes apSlideNext { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: translateX(0); } }
@@ -241,6 +256,7 @@ function CenterCard({ children }) {
 
 // ─────────────────────────── Welcome ───────────────────────────
 function WelcomeScreen({ exam, total, hasProgress, onStart, onExit }) {
+    const endsAt = exam?.dueDate ? fmtEndDateTime(exam.dueDate) : null;
     const metas = [
         { label: "Questions", value: total },
         { label: "Time limit", value: exam?.timeLimitMin ? `${exam.timeLimitMin} min` : "Untimed" },
@@ -277,6 +293,7 @@ function WelcomeScreen({ exam, total, hasProgress, onStart, onExit }) {
                             <ul className="space-y-2.5">
                                 {[
                                     exam?.timeLimitMin ? `You have ${exam.timeLimitMin} minutes once you start — the timer keeps running.` : "This exam is untimed — take your time.",
+                                    ...(endsAt ? [`This exam closes on ${endsAt} — it won't accept submissions after that.`] : []),
                                     "Your answers save automatically; you can leave and resume.",
                                     "Bookmark tricky questions and review everything before submitting.",
                                     "Once submitted, your responses are final.",
@@ -295,6 +312,29 @@ function WelcomeScreen({ exam, total, hasProgress, onStart, onExit }) {
                         {total === 0 && <p className="text-center text-[13px] text-ap-text-muted mt-3">This exam has no questions yet.</p>}
                     </div>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+// ─────────────────────────── Closed ───────────────────────────
+function ClosedScreen({ exam, external, onExit }) {
+    const endsAt = exam?.dueDate ? fmtEndDateTime(exam.dueDate) : null;
+    return (
+        <div className="flex-1 flex items-center justify-center px-4 py-10" style={{ background: "radial-gradient(1000px 500px at 50% -10%, #0A3FA0 0%, #0D1B3E 60%, #081230 100%)" }}>
+            <div className="w-full max-w-[480px] bg-white rounded-[24px] p-8 sm:p-10 text-center shadow-2xl" style={{ animation: "apFadeUp .5s ease" }}>
+                <div style={{ background: "#FEF2F2" }} className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <svg width="38" height="38" fill="none" viewBox="0 0 24 24"><path d="M12 22a10 10 0 100-20 10 10 0 000 20zM12 8v4M12 16h.01" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </div>
+                <h1 className="text-[24px] font-extrabold text-ap-text tracking-tight">This exam has closed</h1>
+                <p className="text-[14.5px] text-ap-text-muted mt-2">
+                    <span className="font-bold text-ap-text">{exam?.title}</span> is no longer accepting submissions{endsAt ? <> — it closed on <span className="font-semibold text-ap-text">{endsAt}</span></> : ""}.
+                </p>
+                {external ? (
+                    <p className="mt-8 text-[13.5px] text-ap-text-muted">You may now close this window.</p>
+                ) : (
+                    <button onClick={onExit} style={{ background: ACCENT }} className="w-full mt-8 text-white font-extrabold text-[15px] rounded-[12px] py-3.5 cursor-pointer transition hover:-translate-y-0.5">Back to dashboard</button>
+                )}
             </div>
         </div>
     );

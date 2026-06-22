@@ -5,6 +5,7 @@ import prisma from "../../../lib/prisma";
 import { withRole } from "../../../lib/withRole";
 import { ok, created, serverError, validateBody } from "../../../lib/api-response";
 import { createExamSchema } from "../../../lib/examValidators";
+import { isExamClosed } from "../../../lib/examDeadline";
 
 const BANDS = (pct) => (pct >= 80 ? "#00843D" : pct >= 40 ? "#F7941D" : pct > 0 ? "#0369A1" : "#94A3B8");
 
@@ -44,7 +45,10 @@ export const GET = withRole(["ADMIN"], async () => {
                 completed,
                 pct,
                 pctColor: BANDS(pct),
+                createdAt: e.createdAt,
                 dueDate: e.dueDate,
+                closed: isExamClosed(e),
+                hiddenFromEmployees: e.hiddenFromEmployees,
             };
         });
 

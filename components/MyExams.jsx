@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../lib/clientApi";
+import { fmtDateTime } from "../lib/formatDateTime";
 
 const ACCENT = "#F7941D";
 const BLUE = "#003087";
@@ -12,14 +13,8 @@ const PROGRESS_BADGE = {
     NOT_STARTED: { bg: "#FEF4E8", tx: "#C2410C", label: "Not started" },
     IN_PROGRESS: { bg: "#EEF3FB", tx: "#003087", label: "In progress" },
     SUBMITTED: { bg: "#E8F5E9", tx: "#1B5E20", label: "Completed" },
+    CLOSED: { bg: "#FEF2F2", tx: "#DC2626", label: "Closed" },
 };
-
-function fmtDue(dueDate) {
-    if (!dueDate) return null;
-    const d = new Date(dueDate);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-}
 
 /**
  * MyExams — lists the exams the signed-in employee was invited to. Quizzes the
@@ -66,8 +61,14 @@ export default function MyExams() {
                 {exams.map((e) => {
                     const badge = PROGRESS_BADGE[e.progress] || PROGRESS_BADGE.NOT_STARTED;
                     const done = e.progress === "SUBMITTED";
-                    const due = fmtDue(e.dueDate);
-                    const cta = done ? (e.marks != null ? "View result" : "Completed") : e.progress === "IN_PROGRESS" ? "Resume" : "Start exam";
+                    const closed = e.progress === "CLOSED";
+                    const ends = fmtDateTime(e.dueDate);
+                    // Disabled = nothing actionable: completed-without-result, or closed.
+                    const disabled = (done && e.marks == null) || closed;
+                    const cta = closed ? "Closed"
+                        : done ? (e.marks != null ? "View result" : "Completed")
+                        : e.progress === "IN_PROGRESS" ? "Resume" : "Start exam";
+                    const btnBg = closed ? "#9CA3AF" : done ? (e.marks != null ? BLUE : "#9CA3AF") : ACCENT;
                     return (
                         <div key={e.id} className="border border-[#E0E0E0] rounded-xl p-4 flex items-start gap-3 flex-wrap sm:flex-nowrap">
                             <div className="flex-1 min-w-0">
@@ -79,7 +80,7 @@ export default function MyExams() {
                                     {e.questionCount} question{e.questionCount === 1 ? "" : "s"}
                                     {e.timeLimitMin ? ` · ${e.timeLimitMin} min` : " · Untimed"}
                                     {` · Pass ${e.passMark}%`}
-                                    {due ? ` · Due ${due}` : ""}
+                                    {ends ? ` · ${closed ? "Closed" : "Ends"} ${ends}` : ""}
                                 </p>
                                 {done && e.marks != null && (
                                     <p className="text-[12.5px] font-bold mt-1.5" style={{ color: e.passed ? GREEN : "#C2410C" }}>
@@ -88,12 +89,12 @@ export default function MyExams() {
                                 )}
                             </div>
                             <button
-                                onClick={() => router.push(`/exam/${e.id}/take`)}
-                                disabled={done && e.marks == null}
-                                style={{ background: done ? (e.marks != null ? BLUE : "#9CA3AF") : ACCENT }}
-                                className="text-white text-[13.5px] font-bold rounded-[10px] px-5 py-2.5 cursor-pointer transition hover:brightness-105 disabled:cursor-default shrink-0 whitespace-nowrap"
+                                onClick={() => !disabled && router.push(`/exam/${e.id}/take`)}
+                                disabled={disabled}
+                                style={{ background: btnBg }}
+                                className="text-white text-[13.5px] font-bold rounded-[10px] px-5 py-2.5 cursor-pointer transition hover:brightness-105 disabled:cursor-default disabled:opacity-90 shrink-0 whitespace-nowrap"
                             >
-                                {cta} {!done && "→"}
+                                {cta} {!done && !closed && "→"}
                             </button>
                         </div>
                     );

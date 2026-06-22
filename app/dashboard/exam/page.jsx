@@ -6,6 +6,7 @@ import ModuleShell from "../../../components/shell/ModuleShell";
 import { Icon } from "../../../components/ui/Icons";
 import { api } from "../../../lib/clientApi";
 import { SkeletonCard } from "../../../components/Skeleton";
+import { fmtDateTime } from "../../../lib/formatDateTime";
 
 const STATUS_BADGE = {
     ACTIVE: { bg: "#EBF7F1", tx: "#006B32", bd: "#A3D9BC", label: "Active" },
@@ -82,60 +83,79 @@ export default function ExamListPage() {
                     <button onClick={() => router.push("/dashboard/exam/new")} style={{ background: "#F7941D" }} className="text-white font-bold text-sm rounded-[11px] px-4 py-2 cursor-pointer">+ Create Exam</button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                    {exams.map((e) => <ExamCard key={e.id} e={e} router={router} />)}
+                <div className="flex flex-col gap-3">
+                    {exams.map((e) => <ExamRow key={e.id} e={e} router={router} />)}
                 </div>
             )}
         </ModuleShell>
     );
 }
 
-function ExamCard({ e, router }) {
+function ExamRow({ e, router }) {
     const badge = STATUS_BADGE[e.status] || STATUS_BADGE.DRAFT;
     const canTake = e.status === "ACTIVE" || e.status === "COMPLETED";
     const partLabel = e.invited ? `${e.completed} of ${e.invited} completed` : "Not published";
+    const created = fmtDateTime(e.createdAt);
+    const ends = fmtDateTime(e.dueDate);
     return (
-        <div className="bg-white border border-ap-border rounded-[16px] p-[22px] transition-all hover:shadow-card-hover hover:-translate-y-0.5">
-            <div className="flex items-start gap-3.5">
+        <div className="bg-white border border-ap-border rounded-[16px] p-[18px] transition-all hover:shadow-card-hover">
+            <div className="flex items-center gap-4 flex-wrap lg:flex-nowrap">
+                {/* Identity */}
                 <span style={{ background: badge.bg, color: badge.tx }} className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0">
                     <Icon name="exam" size={20} sw={1.8} />
                 </span>
-                <div className="flex-1 min-w-0">
-                    <h3 className="text-[15.5px] font-extrabold text-ap-text leading-tight">{e.title}</h3>
-                    <p className="flex items-center gap-1.5 text-[12.5px] text-ap-text-muted mt-1">
-                        <span className="inline-flex" style={{ color: "#94A3B8" }}><Icon name={AUD_ICON[e.audienceMode] || "grid"} size={14} /></span>
+                <div className="min-w-0 flex-1 lg:basis-[260px] lg:flex-none">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-[15px] font-extrabold text-ap-text leading-tight truncate">{e.title}</h3>
+                        <span style={{ background: badge.bg, color: badge.tx, borderColor: badge.bd }} className="text-[10.5px] font-bold border px-2 py-0.5 rounded-full shrink-0">{badge.label}</span>
+                        {e.closed && <span style={{ background: "#FEF2F2", color: "#DC2626", borderColor: "#FCA5A5" }} className="text-[10.5px] font-bold border px-2 py-0.5 rounded-full shrink-0">Closed</span>}
+                        {e.hiddenFromEmployees && <span style={{ background: "#F1F5F9", color: "#475569", borderColor: "#CBD5E1" }} className="text-[10.5px] font-bold border px-2 py-0.5 rounded-full shrink-0">Hidden</span>}
+                    </div>
+                    <p className="flex items-center gap-1.5 text-[12px] text-ap-text-muted mt-1">
+                        <span className="inline-flex" style={{ color: "#94A3B8" }}><Icon name={AUD_ICON[e.audienceMode] || "grid"} size={13} /></span>
                         {e.audienceLabel} · {e.questionCount} questions
                     </p>
                 </div>
-                <span style={{ background: badge.bg, color: badge.tx, borderColor: badge.bd }} className="text-[11px] font-bold border px-2.5 py-0.5 rounded-full shrink-0">
-                    {badge.label}
-                </span>
-            </div>
 
-            <div className="mt-4 mb-4">
-                <div className="flex items-center justify-between text-[12px] mb-1.5">
-                    <span className="text-ap-text-muted">{partLabel}</span>
-                    <span className="font-bold" style={{ color: e.pctColor }}>{e.pct}%</span>
+                {/* Dates */}
+                <div className="flex items-center gap-6 lg:gap-8 text-[12px] shrink-0">
+                    <div>
+                        <p className="text-[10.5px] font-bold uppercase tracking-wider text-ap-text-faint">Created</p>
+                        <p className="text-ap-text font-semibold mt-0.5">{created || "—"}</p>
+                    </div>
+                    <div>
+                        <p className="text-[10.5px] font-bold uppercase tracking-wider text-ap-text-faint">Ends</p>
+                        <p className="font-semibold mt-0.5" style={{ color: e.closed ? "#DC2626" : "#1E293B" }}>{ends || "No end time"}</p>
+                    </div>
                 </div>
-                <div className="h-[7px] bg-gray-100 rounded-full overflow-hidden">
-                    <div style={{ width: `${e.pct}%`, background: e.pctColor }} className="h-full rounded-full transition-all" />
-                </div>
-            </div>
 
-            <div className="flex items-center gap-2.5">
-                <button
-                    onClick={() => router.push(`/dashboard/exam/${e.id}/results`)}
-                    className="flex-1 text-[13px] font-bold text-ap-text-muted border border-ap-border rounded-[10px] py-2 hover:bg-ap-bg cursor-pointer transition"
-                >
-                    View Results
-                </button>
-                <button
-                    onClick={() => (canTake ? router.push(`/exam/${e.id}/take`) : router.push(`/dashboard/exam/new?id=${e.id}`))}
-                    style={{ borderColor: canTake ? "#FAD4A0" : "#E4E7ED", color: canTake ? "#C2410C" : "#64748B" }}
-                    className="flex-1 text-[13px] font-bold border rounded-[10px] py-2 hover:bg-ap-bg cursor-pointer transition"
-                >
-                    {canTake ? "Preview" : "Edit"}
-                </button>
+                {/* Progress */}
+                <div className="min-w-[150px] flex-1 lg:flex-none lg:w-[170px]">
+                    <div className="flex items-center justify-between text-[11.5px] mb-1">
+                        <span className="text-ap-text-muted truncate">{partLabel}</span>
+                        <span className="font-bold" style={{ color: e.pctColor }}>{e.pct}%</span>
+                    </div>
+                    <div className="h-[6px] bg-gray-100 rounded-full overflow-hidden">
+                        <div style={{ width: `${e.pct}%`, background: e.pctColor }} className="h-full rounded-full transition-all" />
+                    </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 shrink-0">
+                    <button
+                        onClick={() => router.push(`/dashboard/exam/${e.id}/results`)}
+                        className="text-[12.5px] font-bold text-ap-text-muted border border-ap-border rounded-[10px] px-3 py-2 hover:bg-ap-bg cursor-pointer transition whitespace-nowrap"
+                    >
+                        {e.status === "DRAFT" ? "Manage" : "Results"}
+                    </button>
+                    <button
+                        onClick={() => (canTake ? router.push(`/exam/${e.id}/take`) : router.push(`/dashboard/exam/new?id=${e.id}`))}
+                        style={{ borderColor: canTake ? "#FAD4A0" : "#E4E7ED", color: canTake ? "#C2410C" : "#64748B" }}
+                        className="text-[12.5px] font-bold border rounded-[10px] px-3 py-2 hover:bg-ap-bg cursor-pointer transition whitespace-nowrap"
+                    >
+                        {canTake ? "Preview" : "Edit"}
+                    </button>
+                </div>
             </div>
         </div>
     );

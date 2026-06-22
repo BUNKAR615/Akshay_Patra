@@ -3,9 +3,10 @@ export const runtime = "nodejs";
 
 import prisma from "../../../../../lib/prisma";
 import { withRole } from "../../../../../lib/withRole";
-import { ok, notFound, serverError, validateBody } from "../../../../../lib/api-response";
+import { ok, fail, notFound, serverError, validateBody } from "../../../../../lib/api-response";
 import { submitSchema, draftSchema } from "../../../../../lib/examValidators";
 import { gradeExam } from "../../../../../lib/examScore";
+import { isExamClosed, isPastSubmissionGrace } from "../../../../../lib/examDeadline";
 
 const ALL_ROLES = ["EMPLOYEE", "SUPERVISOR", "HOD", "BRANCH_MANAGER", "CLUSTER_MANAGER", "HR", "COMMITTEE", "ADMIN"];
 
@@ -60,11 +61,13 @@ export const GET = withRole(ALL_ROLES, async (request, { params, user }) => {
                 passMark: exam.passMark,
                 showResults: exam.showResults,
                 questionCount: questions.length,
+                dueDate: exam.dueDate,
             },
             questions,
             savedAnswers,
             startedAt: response.startedAt,
             submitted,
+            closed: isExamClosed(exam) && !submitted,
             // Only reveal the score when the exam allows it.
             result: submitted && exam.showResults
                 ? { marks: response.marks, rank: response.rank, passed: (response.marks ?? 0) >= exam.passMark, passMark: exam.passMark }
@@ -134,6 +137,16 @@ export const POST = withRole(ALL_ROLES, async (request, { params, user }) => {
             include: { questions: { include: { choices: true } } },
         });
         if (!exam) return notFound("Exam not found");
+
+        // Hard deadline — once dueDate passes, nobody can submit. Don't lock out
+        // a response that was already submitted (idempotent re-POSTs).
+        const already = await prisma.examResponse.findUnique({
+            where: { examId_employeeId: { examId: id, employeeId: user.userId } },
+            select: { submittedAt: true },
+        });
+        if (isPastSubmissionGrace(exam) && !already?.submittedAt) {
+            return fail("This exam has closed. Submissions are no longer accepted.", 403);
+        }
 
         const { data, error } = await validateBody(request, submitSchema);
         if (error) return error;

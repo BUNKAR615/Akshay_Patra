@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { ok, serverError } from "../../../../lib/api-response";
+import { isExamClosed } from "../../../../lib/examDeadline";
 
 const ALL_ROLES = ["EMPLOYEE", "SUPERVISOR", "HOD", "BRANCH_MANAGER", "CLUSTER_MANAGER", "HR", "COMMITTEE", "ADMIN"];
 
@@ -18,7 +19,8 @@ export const GET = withRole(ALL_ROLES, async (request, { user }) => {
         const invites = await prisma.examInvite.findMany({
             where: {
                 employeeId: user.userId,
-                exam: { status: { in: ["ACTIVE", "COMPLETED"] } },
+                // Hidden exams are retracted from every employee's list.
+                exam: { status: { in: ["ACTIVE", "COMPLETED"] }, hiddenFromEmployees: false },
             },
             include: {
                 exam: {
@@ -54,7 +56,8 @@ export const GET = withRole(ALL_ROLES, async (request, { user }) => {
             const submitted = !!resp?.submittedAt;
             // started = has a response row but not yet submitted
             const started = !!resp && !submitted;
-            const progress = submitted ? "SUBMITTED" : started ? "IN_PROGRESS" : "NOT_STARTED";
+            const closed = isExamClosed(e) && !submitted;
+            const progress = submitted ? "SUBMITTED" : closed ? "CLOSED" : started ? "IN_PROGRESS" : "NOT_STARTED";
             return {
                 id: e.id,
                 title: e.title,
@@ -63,6 +66,7 @@ export const GET = withRole(ALL_ROLES, async (request, { user }) => {
                 timeLimitMin: e.timeLimitMin,
                 passMark: e.passMark,
                 dueDate: e.dueDate,
+                closed,
                 questionCount: e._count.questions,
                 progress,
                 submittedAt: resp?.submittedAt ?? null,
@@ -72,7 +76,7 @@ export const GET = withRole(ALL_ROLES, async (request, { user }) => {
             };
         });
 
-        const pending = exams.filter((e) => e.progress !== "SUBMITTED").length;
+        const pending = exams.filter((e) => e.progress === "NOT_STARTED" || e.progress === "IN_PROGRESS").length;
         return ok({ exams, pending });
     } catch (err) {
         console.error("[GET /api/exam/my] error:", err);
