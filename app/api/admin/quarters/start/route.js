@@ -24,56 +24,9 @@ function fisherYatesShuffle(arr) {
 }
 
 /**
- * Select SELF-level questions with category-balance constraints.
- * Guarantees ≥2 from each category, then fills remaining randomly.
- */
-function selectSelfQuestions(questions, count) {
-    // Group by category
-    const byCategory = {};
-    for (const q of questions) {
-        if (!byCategory[q.category]) byCategory[q.category] = [];
-        byCategory[q.category].push(q);
-    }
-
-    const categories = Object.keys(byCategory);
-    const minPerCategory = 2;
-    const minRequired = categories.length * minPerCategory;
-
-    if (count < minRequired) {
-        // If requested count is less than min required, just take 1 from each + fill
-        const selected = [];
-        for (const cat of categories) {
-            const shuffled = fisherYatesShuffle(byCategory[cat]);
-            selected.push(shuffled[0]);
-        }
-        // Fill remaining randomly from unused
-        const usedIds = new Set(selected.map(q => q.id));
-        const remaining = fisherYatesShuffle(questions.filter(q => !usedIds.has(q.id)));
-        const needed = Math.min(count - selected.length, remaining.length);
-        selected.push(...remaining.slice(0, needed));
-        return fisherYatesShuffle(selected);
-    }
-
-    // Pick minPerCategory from each
-    const selected = [];
-    const usedIds = new Set();
-    for (const cat of categories) {
-        const shuffled = fisherYatesShuffle(byCategory[cat]);
-        const picks = shuffled.slice(0, minPerCategory);
-        selected.push(...picks);
-        picks.forEach(q => usedIds.add(q.id));
-    }
-
-    // Fill remaining slots randomly from unused questions
-    const remaining = fisherYatesShuffle(questions.filter(q => !usedIds.has(q.id)));
-    const slotsLeft = count - selected.length;
-    selected.push(...remaining.slice(0, slotsLeft));
-
-    return fisherYatesShuffle(selected);
-}
-
-/**
- * Simple random selection for BM / CM levels.
+ * Select `count` questions at random. The old category-balanced selection
+ * (≥2 per category) was removed along with the question-category restriction —
+ * every active question is now equally eligible regardless of any grouping.
  */
 function selectSimple(questions, count) {
     return fisherYatesShuffle(questions).slice(0, Math.min(count, questions.length));
@@ -163,7 +116,7 @@ export const POST = withPermission("quarter.edit", async (request, { user }) => 
             selfPoolForAssignment = manualSelf;
             selfPerEmployee = manualSelf.length;
         } else {
-            // Automatic: the system picks a random, category-balanced subset.
+            // Automatic: the system picks a plain random subset (no category quota).
             const selfCount = data.questionCount; // strictly admin-set
             const bmCount = data.bmQuestionCount || 15;
             const cmCount = data.cmQuestionCount || 10;
@@ -179,7 +132,7 @@ export const POST = withPermission("quarter.edit", async (request, { user }) => 
                 return fail(`Not enough active CLUSTER_MANAGER questions. Need ${cmCount}, found ${cmQuestions.length}. Add more questions.`);
             }
 
-            selectedSelf = selectSelfQuestions(selfQuestions, selfCount);
+            selectedSelf = selectSimple(selfQuestions, selfCount);
             selectedBm = selectSimple(bmQuestions, bmCount);
             selectedCm = selectSimple(cmQuestions, cmCount);
             selfPoolForAssignment = selfQuestions;

@@ -5,8 +5,6 @@ import { api } from "../../../../lib/clientApi";
 import ConfirmDialog from "../../../../components/ConfirmDialog";
 import { SearchInput } from "../../../../components/ui";
 
-const CATEGORIES = ["ATTENDANCE", "DISCIPLINE", "PRODUCTIVITY", "TEAMWORK", "INITIATIVE", "COMMUNICATION", "INTEGRITY"];
-
 // `level` is the evaluation STAGE the question belongs to. Only these three are
 // managed here — HOD reuses the Branch Manager bank, HR Stage 4 is attendance-
 // based (not question-driven).
@@ -18,23 +16,23 @@ const STAGE_LABELS = {
 };
 const STAGE_SHORT = { SELF: "Stage 1", BRANCH_MANAGER: "Stage 2", CLUSTER_MANAGER: "Stage 3" };
 
-// `collarType` is the employee CATEGORY a question applies to. "BOTH" maps to a
-// stored null (shared by every employee) — the default and backward-compatible
-// value. The other two restrict a question to one category only.
+// AUDIENCE — which employees a question is for. "BOTH" maps to a stored null
+// (every employee), the default; the other two restrict the question to one
+// audience only. (Stored on Question.collarType.)
 const COLLAR_OPTIONS = [
-    { value: "BOTH", label: "Both categories" },
-    { value: "WHITE_COLLAR", label: "White-collar only" },
-    { value: "BLUE_COLLAR", label: "Blue-collar only" },
+    { value: "BOTH", label: "Both" },
+    { value: "BLUE_COLLAR", label: "Blue collar" },
+    { value: "WHITE_COLLAR", label: "White collar" },
 ];
 const COLLAR_BADGE = {
     BOTH: { label: "Both", cls: "bg-[#EDE7F6] text-[#5E35B1] border-[#D1C4E9]" },
-    WHITE_COLLAR: { label: "White-collar", cls: "bg-[#E3F2FD] text-[#003087] border-[#90CAF9]" },
-    BLUE_COLLAR: { label: "Blue-collar", cls: "bg-[#FFF8E1] text-[#E65100] border-[#FFE082]" },
+    WHITE_COLLAR: { label: "White collar", cls: "bg-[#E3F2FD] text-[#003087] border-[#90CAF9]" },
+    BLUE_COLLAR: { label: "Blue collar", cls: "bg-[#FFF8E1] text-[#E65100] border-[#FFE082]" },
 };
 // A stored question's collarType (null | WHITE_COLLAR | BLUE_COLLAR) → UI token.
 const collarOf = (q) => q.collarType || "BOTH";
 
-const EMPTY_NEW = { text: "", textHindi: "", category: "ATTENDANCE", level: "SELF", collarType: "BOTH", addToQuarter: true };
+const EMPTY_NEW = { text: "", textHindi: "", level: "SELF", collarType: "BOTH", addToQuarter: true };
 
 /**
  * Question bank, redesigned around two axes the admin actually works in:
@@ -44,8 +42,11 @@ const EMPTY_NEW = { text: "", textHindi: "", category: "ATTENDANCE", level: "SEL
  *     gets an "In quarter" checkbox; ticking/unticking stages the change locally.
  *     Nothing is written until the admin hits "Apply changes" and confirms.
  *
- * Each question also carries an employee CATEGORY (collarType: Both / White /
- * Blue) set on the add & edit forms.
+ * Each question also carries an AUDIENCE (Both / Blue collar / White collar)
+ * set on the add & edit forms.
+ *
+ * Deletion is allowed only while NO quarter is active; editing is always
+ * allowed. (The server enforces this too.)
  *
  * The questions array is cached in page.js (fetched once per session) — CRUD
  * handlers here mutate it via the passed setQuestions. Quarter membership is
@@ -54,7 +55,7 @@ const EMPTY_NEW = { text: "", textHindi: "", category: "ATTENDANCE", level: "SEL
 export default function QuestionsView({ questions, setQuestions, fetchQuestions, can = () => true }) {
     const [newQ, setNewQ] = useState(EMPTY_NEW);
     const [qMsg, setQMsg] = useState({ type: "", text: "" });
-    const [qFilter, setQFilter] = useState({ category: "", collar: "", search: "" });
+    const [qFilter, setQFilter] = useState({ collar: "", search: "" });
     const [onlyInQuarter, setOnlyInQuarter] = useState(false);
     const [editingQ, setEditingQ] = useState(null);
     const [deleteQ, setDeleteQ] = useState(null);
@@ -76,6 +77,11 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions,
     const selectedQuarter = quarters.find((q) => q.id === selectedQuarterId) || null;
     const quarterIsClosed = selectedQuarter?.status === "CLOSED";
     const quarterReadOnly = !selectedQuarterId || quarterIsClosed;
+
+    // Deletion is blocked entirely while ANY quarter is active (editing stays
+    // allowed). With no active quarter, questions are freely deletable.
+    const activeQuarter = quarters.find((q) => q.status === "ACTIVE") || null;
+    const deleteBlocked = !!activeQuarter;
 
     // Load the quarter list once; default the picker to the active quarter.
     useEffect(() => {
@@ -131,9 +137,11 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions,
                 method: "PUT", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ add, remove }),
             });
-            setCommittedQIds(new Set(d.questionIds || []));
+            const finalIds = new Set(d.questionIds || []);
+            setCommittedQIds(finalIds);
             setPending({});
-            setQMsg({ type: "success", text: d.message || "Quarter questions updated!" });
+            const n = finalIds.size;
+            setQMsg({ type: "success", text: `${n} question${n !== 1 ? "s are" : " is"} selected for ${selectedQuarter?.name || "the quarter"}. You can proceed.` });
         } catch (e) { setQMsg({ type: "error", text: e.message }); }
     };
 
@@ -143,7 +151,7 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions,
         try {
             const d = await api("/api/admin/questions", {
                 method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: newQ.text, textHindi: newQ.textHindi, category: newQ.category, level: newQ.level, collarType: newQ.collarType }),
+                body: JSON.stringify({ text: newQ.text, textHindi: newQ.textHindi, level: newQ.level, collarType: newQ.collarType }),
             });
             setQuestions((prev) => [d.question, ...prev]);
 
@@ -170,7 +178,7 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions,
         try {
             const d = await api(`/api/admin/questions/${editingQ.id}`, {
                 method: "PUT", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: editingQ.text, textHindi: editingQ.textHindi, category: editingQ.category, level: editingQ.level, collarType: editingQ.collarType }),
+                body: JSON.stringify({ text: editingQ.text, textHindi: editingQ.textHindi, level: editingQ.level, collarType: editingQ.collarType }),
             });
             setQuestions((prev) => prev.map((q) => (q.id === editingQ.id ? d.question : q)));
             setEditingQ(null);
@@ -209,10 +217,9 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions,
         return questions
             .filter((q) => q.level === activeStage)
             .filter((q) => !qFilter.collar || collarOf(q) === qFilter.collar)
-            .filter((q) => !qFilter.category || q.category === qFilter.category)
             .filter((q) => !search || q.text.toLowerCase().includes(search) || (q.textHindi || "").toLowerCase().includes(search))
             .filter((q) => !onlyInQuarter || desiredIn(q.id))
-            .sort((a, b) => a.category.localeCompare(b.category) || a.text.localeCompare(b.text));
+            .sort((a, b) => a.text.localeCompare(b.text));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [questions, activeStage, qFilter, onlyInQuarter, pending, committedQIds]);
 
@@ -226,9 +233,9 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions,
     });
 
     const activeCount = questions.filter((q) => q.isActive).length;
-    const filtersActive = qFilter.search || qFilter.category || qFilter.collar || onlyInQuarter;
+    const filtersActive = qFilter.search || qFilter.collar || onlyInQuarter;
 
-    // Per-stage breakdown of ACTIVE questions by employee category.
+    // Per-stage breakdown of ACTIVE questions by audience.
     const configByStage = LEVELS.map((level) => {
         const ql = questions.filter((q) => q.level === level && q.isActive);
         return {
@@ -263,6 +270,9 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions,
                 <div>
                     <h2 className="text-xl font-bold text-ap-blue">Question Bank</h2>
                     <p className="text-sm text-gray-700">{questions.length} total · {activeCount} active</p>
+                    {deleteBlocked && (
+                        <p className="mt-1 text-[12px] text-[#E65100] font-medium">Quarter “{activeQuarter?.name}” is active — questions can be edited but not deleted until it’s closed.</p>
+                    )}
                 </div>
                 <div className="flex gap-2">
                     <button onClick={fetchQuestions} className="min-h-[44px] px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:text-ap-blue text-[14px] cursor-pointer hover:bg-gray-50 transition-colors">↻ Refresh</button>
@@ -305,10 +315,19 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions,
                     <div className="space-y-4">
                         <div><label className="block text-sm text-gray-700 mb-1 font-medium">Question Text (English)</label><textarea value={newQ.text} onChange={(e) => setNewQ({ ...newQ, text: e.target.value })} rows={2} placeholder="Enter the question text in English..." className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ap-blue resize-none" /></div>
                         <div><label className="block text-sm text-gray-700 mb-1 font-medium">Question Text (Hindi)</label><textarea value={newQ.textHindi} onChange={(e) => setNewQ({ ...newQ, textHindi: e.target.value })} rows={2} placeholder="Enter the question text in Hindi..." className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ap-blue resize-none" /></div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div><label className="block text-sm text-gray-700 mb-1 font-medium">Stage</label><select value={newQ.level} onChange={(e) => setNewQ({ ...newQ, level: e.target.value })} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ap-blue">{LEVELS.map((l) => <option key={l} value={l}>{STAGE_LABELS[l]}</option>)}</select></div>
-                            <div><label className="block text-sm text-gray-700 mb-1 font-medium">Employee Category</label><select value={newQ.collarType} onChange={(e) => setNewQ({ ...newQ, collarType: e.target.value })} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ap-blue">{COLLAR_OPTIONS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</select></div>
-                            <div><label className="block text-sm text-gray-700 mb-1 font-medium">Topic</label><select value={newQ.category} onChange={(e) => setNewQ({ ...newQ, category: e.target.value })} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ap-blue">{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
+                            <div>
+                                <label className="block text-sm text-gray-700 mb-1 font-medium">Audience</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {COLLAR_OPTIONS.map((c) => (
+                                        <label key={c.value} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer select-none transition-colors ${newQ.collarType === c.value ? "border-ap-blue bg-ap-blue-50 text-ap-blue font-semibold" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}>
+                                            <input type="radio" name="new-audience" value={c.value} checked={newQ.collarType === c.value} onChange={(e) => setNewQ({ ...newQ, collarType: e.target.value })} className="w-4 h-4 accent-ap-blue cursor-pointer" />
+                                            {c.label}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                         {selectedQuarterId && !quarterIsClosed && (
                             <label className="flex items-center gap-2 text-sm text-gray-800 cursor-pointer select-none">
@@ -346,19 +365,12 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions,
                     <label className="block text-xs text-gray-700 mb-1 font-medium">Search</label>
                     <SearchInput value={qFilter.search} onChange={(v) => setQFilter((p) => ({ ...p, search: v }))} placeholder={`Search ${STAGE_SHORT[activeStage]} questions...`} />
                 </div>
-                <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-3">
+                <div className="flex gap-3">
                     <div>
-                        <label className="block text-xs text-gray-700 mb-1 font-medium">Employee Category</label>
+                        <label className="block text-xs text-gray-700 mb-1 font-medium">Audience</label>
                         <select value={qFilter.collar} onChange={(e) => setQFilter({ ...qFilter, collar: e.target.value })} className="w-full sm:w-auto px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ap-blue sm:min-w-[150px]">
-                            <option value="">All Categories</option>
+                            <option value="">All audiences</option>
                             {COLLAR_OPTIONS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-xs text-gray-700 mb-1 font-medium">Topic</label>
-                        <select value={qFilter.category} onChange={(e) => setQFilter({ ...qFilter, category: e.target.value })} className="w-full sm:w-auto px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ap-blue sm:min-w-[150px]">
-                            <option value="">All Topics</option>
-                            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                         </select>
                     </div>
                 </div>
@@ -369,7 +381,7 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions,
                     </label>
                 )}
                 {filtersActive && (
-                    <button onClick={() => { setQFilter({ category: "", collar: "", search: "" }); setOnlyInQuarter(false); }} className="w-full sm:w-auto px-3 py-2 bg-gray-50 hover:bg-white border border-ap-border text-gray-700 rounded-lg text-sm cursor-pointer transition-colors">Clear</button>
+                    <button onClick={() => { setQFilter({ collar: "", search: "" }); setOnlyInQuarter(false); }} className="w-full sm:w-auto px-3 py-2 bg-gray-50 hover:bg-white border border-ap-border text-gray-700 rounded-lg text-sm cursor-pointer transition-colors">Clear</button>
                 )}
             </div>
 
@@ -386,10 +398,9 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions,
                                 <div className="space-y-2">
                                     <textarea value={editingQ.text} onChange={(e) => setEditingQ({ ...editingQ, text: e.target.value })} rows={2} placeholder="English text" className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ap-blue resize-none" />
                                     <textarea value={editingQ.textHindi || ""} onChange={(e) => setEditingQ({ ...editingQ, textHindi: e.target.value })} rows={2} placeholder="Hindi text" className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ap-blue resize-none" />
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                        <select value={editingQ.level} onChange={(e) => setEditingQ({ ...editingQ, level: e.target.value })} className="px-2 py-1.5 bg-white border border-gray-300 rounded-lg text-gray-900 text-xs">{LEVELS.map((l) => <option key={l} value={l}>{STAGE_LABELS[l]}</option>)}</select>
-                                        <select value={editingQ.collarType} onChange={(e) => setEditingQ({ ...editingQ, collarType: e.target.value })} className="px-2 py-1.5 bg-white border border-gray-300 rounded-lg text-gray-900 text-xs">{COLLAR_OPTIONS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</select>
-                                        <select value={editingQ.category} onChange={(e) => setEditingQ({ ...editingQ, category: e.target.value })} className="px-2 py-1.5 bg-white border border-gray-300 rounded-lg text-gray-900 text-xs">{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <div><label className="block text-[11px] text-gray-500 mb-0.5 font-medium">Stage</label><select value={editingQ.level} onChange={(e) => setEditingQ({ ...editingQ, level: e.target.value })} className="w-full px-2 py-1.5 bg-white border border-gray-300 rounded-lg text-gray-900 text-xs">{LEVELS.map((l) => <option key={l} value={l}>{STAGE_LABELS[l]}</option>)}</select></div>
+                                        <div><label className="block text-[11px] text-gray-500 mb-0.5 font-medium">Audience</label><select value={editingQ.collarType} onChange={(e) => setEditingQ({ ...editingQ, collarType: e.target.value })} className="w-full px-2 py-1.5 bg-white border border-gray-300 rounded-lg text-gray-900 text-xs">{COLLAR_OPTIONS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</select></div>
                                     </div>
                                     <div className="flex gap-2">
                                         <button onClick={() => setConfirm({ title: "Apply changes?", message: "Save the edits to this question?", confirmLabel: "Save", variant: "default", onConfirm: saveEditQuestion })} className="min-h-[40px] px-3 py-1.5 bg-ap-blue hover:bg-ap-green text-white text-[13px] sm:text-[14px] font-bold rounded-lg cursor-pointer transition-colors shadow-sm">Save</button>
@@ -406,8 +417,7 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions,
                                     )}
                                     <div className={`flex-1 ${q.isActive ? "" : "opacity-50"}`}>
                                         <div className="flex items-start gap-2 flex-wrap">
-                                            <span className={`mt-0.5 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${COLLAR_BADGE[collarOf(q)].cls}`} title={`Applies to: ${COLLAR_BADGE[collarOf(q)].label}`}>{COLLAR_BADGE[collarOf(q)].label}</span>
-                                            <span className="mt-0.5 shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200 uppercase tracking-wider">{q.category}</span>
+                                            <span className={`mt-0.5 shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${COLLAR_BADGE[collarOf(q)].cls}`} title={`Audience: ${COLLAR_BADGE[collarOf(q)].label}`}>{COLLAR_BADGE[collarOf(q)].label}</span>
                                             <div className="min-w-0">
                                                 <p className={`text-[13px] sm:text-sm tracking-tight ${q.isActive ? "text-gray-900" : "text-gray-400 line-through"}`}>{q.text}</p>
                                                 {q.textHindi && <p className="text-[12px] sm:text-[13px] text-gray-500 italic mt-0.5">{q.textHindi}</p>}
@@ -415,8 +425,8 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions,
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                                        {can("questions.editdelete") && <button onClick={() => setEditingQ({ id: q.id, text: q.text, textHindi: q.textHindi || "", category: q.category, level: q.level, collarType: collarOf(q) })} className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-3 py-1.5 bg-gray-50 font-bold border border-ap-border text-gray-700 hover:text-ap-blue rounded-md cursor-pointer transition-colors text-[12px] sm:text-[13px]">Edit</button>}
-                                        {can("questions.editdelete") && <button onClick={() => setDeleteQ(q)} className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-3 py-1.5 bg-gray-50 font-bold border border-ap-border text-gray-700 hover:text-[#D32F2F] rounded-md cursor-pointer transition-colors text-[12px] sm:text-[13px]">Delete</button>}
+                                        {can("questions.editdelete") && <button onClick={() => setEditingQ({ id: q.id, text: q.text, textHindi: q.textHindi || "", level: q.level, collarType: collarOf(q) })} className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-3 py-1.5 bg-gray-50 font-bold border border-ap-border text-gray-700 hover:text-ap-blue rounded-md cursor-pointer transition-colors text-[12px] sm:text-[13px]">Edit</button>}
+                                        {can("questions.editdelete") && <button onClick={() => setDeleteQ(q)} disabled={deleteBlocked} title={deleteBlocked ? `Delete is disabled while "${activeQuarter?.name}" is active — you can still edit.` : "Delete question"} className={`min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-3 py-1.5 font-bold border rounded-md transition-colors text-[12px] sm:text-[13px] ${deleteBlocked ? "bg-gray-100 border-gray-200 text-gray-300 cursor-not-allowed" : "bg-gray-50 border-ap-border text-gray-700 hover:text-[#D32F2F] cursor-pointer"}`}>Delete</button>}
                                         <button onClick={() => toggleQuestion(q.id)} className={`min-h-[36px] sm:min-h-[40px] text-[12px] sm:text-[13px] font-bold px-2.5 sm:px-3 py-1.5 rounded-lg border transition-colors cursor-pointer shrink-0 shadow-sm ${q.isActive ? "bg-ap-green text-white border-[#A5D6A7]" : "bg-gray-300 text-gray-700 border-[#EF9A9A]"}`}>{q.isActive ? "Active" : "Off"}</button>
                                     </div>
                                 </div>
@@ -432,7 +442,7 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions,
                 <button onClick={() => setShowConfig((s) => !s)} className="w-full flex items-center justify-between px-5 py-4 cursor-pointer text-left">
                     <div>
                         <h2 className="text-lg font-bold text-ap-blue">Assessment Configuration</h2>
-                        <p className="text-[12px] text-gray-500">Per-stage breakdown of active questions by employee category.</p>
+                        <p className="text-[12px] text-gray-500">Per-stage breakdown of active questions by audience.</p>
                     </div>
                     <span className="text-gray-400 text-sm">{showConfig ? "▲ Hide" : "▼ Show"}</span>
                 </button>
@@ -472,7 +482,7 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions,
                             </table>
                         </div>
                         <p className="text-[12px] text-gray-500 mt-3">
-                            &ldquo;Effective set&rdquo; is what each employee actually receives: shared (Both) questions plus the ones tagged for their category.
+                            &ldquo;Effective set&rdquo; is what each employee actually receives: shared (Both) questions plus the ones tagged for their audience.
                         </p>
                     </div>
                 )}

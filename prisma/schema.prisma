@@ -173,7 +173,11 @@ model Quarter {
 model Question {
   id                  String                     @id @default(cuid())
   text                String
-  category            QuestionCategory
+  // Legacy free-text grouping ("topic"). The category/type RESTRICTION feature
+  // was removed — questions are no longer quota-limited or balanced by category,
+  // and the admin UI no longer surfaces it. Kept nullable only so historical
+  // audit-log details and old reports keep resolving; new questions store null.
+  category            QuestionCategory?
   level               EvaluationLevel
   // Which employee category this question targets:
   //   null          → applies to BOTH collars (shared / default)

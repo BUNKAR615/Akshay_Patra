@@ -32,7 +32,9 @@ export const POST = withPermission("questions.add", async (request, { user }) =>
         if (error) return error;
 
         const question = await prisma.question.create({
-            data: { text: data.text.trim(), textHindi: (data.textHindi || "").trim(), category: data.category, level: data.level, collarType: data.collarType ?? null, isActive: true },
+            // category is a removed legacy concept — store null unless an old
+            // client still sends one.
+            data: { text: data.text.trim(), textHindi: (data.textHindi || "").trim(), category: data.category ?? null, level: data.level, collarType: data.collarType ?? null, isActive: true },
         });
 
         await prisma.auditLog.create({

@@ -83,10 +83,13 @@ export const DELETE = withPermission("questions.editdelete", async (request, { p
         const question = await prisma.question.findUnique({ where: { id } });
         if (!question) return notFound("Question not found");
 
-        // Check if question is used in any quarter
-        const usedInQuarter = await prisma.quarterQuestion.findFirst({ where: { questionId: id } });
-        if (usedInQuarter) {
-            return fail("Cannot delete a question that has been used in a quarter. Deactivate it instead.", 400);
+        // Deletion rule: questions may be deleted ONLY while no quarter is
+        // running. If a quarter is active, deletion is blocked (editing stays
+        // allowed); with no active quarter, any question is deletable and the
+        // FK cascade clears its links to past (closed) quarters.
+        const activeQuarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" }, select: { name: true } });
+        if (activeQuarter) {
+            return fail(`Cannot delete questions while the quarter "${activeQuarter.name}" is active. You can still edit the question, or delete it after the quarter is closed.`, 400);
         }
 
         await prisma.question.delete({ where: { id } });
