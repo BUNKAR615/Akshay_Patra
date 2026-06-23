@@ -2,9 +2,23 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import DashboardShell from "../../../../../components/DashboardShell";
 
+// Sidebar "Org Structure" submenu deep-links here with ?focus=<role>. Role
+// assignment happens per-branch, so we surface which role the admin came to
+// assign and carry the focus onto each branch's org page.
+const FOCUS_LABEL = {
+    BM: "Branch Manager",
+    CM: "Cluster Manager",
+    HR: "HR Personnel",
+    COMMITTEE: "Committee",
+};
+
 export default function GlobalHrCommitteePage() {
+    const searchParams = useSearchParams();
+    const focus = searchParams.get("focus");
+    const focusLabel = FOCUS_LABEL[focus] || null;
     const [user, setUser] = useState(null);
     const [branches, setBranches] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -36,9 +50,16 @@ export default function GlobalHrCommitteePage() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                 Back to Dashboard
             </Link>
-            <p className="text-sm text-[#666666] mb-6">
-                Pick a branch to manage its organizational structure.
-            </p>
+            {focusLabel ? (
+                <div className="mb-6 flex items-center gap-2 rounded-lg border border-[#90CAF9] bg-[#E3F2FD] px-4 py-3">
+                    <span className="text-[13px] font-bold text-[#003087]">Assigning: {focusLabel}</span>
+                    <span className="text-[12px] text-[#666666]">— pick a branch to assign its {focusLabel.toLowerCase()}.</span>
+                </div>
+            ) : (
+                <p className="text-sm text-[#666666] mb-6">
+                    Pick a branch to manage its organizational structure.
+                </p>
+            )}
             {loading ? (
                 <div className="flex items-center justify-center h-48">
                     <div className="animate-spin h-8 w-8 border-2 border-[#003087] border-t-transparent rounded-full" />
@@ -48,7 +69,7 @@ export default function GlobalHrCommitteePage() {
                     {branches.map((b) => (
                         <Link
                             key={b.id}
-                            href={`/dashboard/admin/${b.slug || b.id}/org`}
+                            href={`/dashboard/admin/${b.slug || b.id}/org${focus ? `?focus=${focus}` : ""}`}
                             className="bg-white border border-[#E0E0E0] hover:border-[#003087] hover:shadow-md rounded-xl p-5 transition-all no-underline"
                         >
                             <div className="flex items-center justify-between mb-2">

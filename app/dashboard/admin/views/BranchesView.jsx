@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "../../../../lib/clientApi";
+import { useScrollToSection } from "../../../../lib/useScrollToSection";
 import ConfirmDialog from "../../../../components/ConfirmDialog";
 
 /**
@@ -21,6 +22,10 @@ export default function BranchesView({ branches, branchLoading, refetchBranches,
     const [importResult, setImportResult] = useState(null);
     const [importMsg, setImportMsg] = useState({ type: "", text: "" });
     const [confirmImport, setConfirmImport] = useState(false);
+
+    // Sidebar deep-links: ?section=add scrolls to "Add New Branch"; ?section=list
+    // to the branch list (Edit / Delete live there).
+    useScrollToSection("branches", [branchLoading]);
 
     useEffect(() => { refetchBranches(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
@@ -76,7 +81,7 @@ export default function BranchesView({ branches, branchLoading, refetchBranches,
             {branchMsg.text && <div className={`p-3 rounded-lg text-sm font-medium ${branchMsg.type === "error" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>{branchMsg.text}</div>}
 
             {/* Add Branch */}
-            <div className="bg-white border border-ap-border rounded-card p-4 space-y-3 shadow-card">
+            <div id="branches-add" className="bg-white border border-ap-border rounded-card p-4 space-y-3 shadow-card scroll-mt-4">
                 <h3 className="font-bold text-ap-blue">Add New Branch</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                     <input value={newBranch.name} onChange={e => setNewBranch(p => ({ ...p, name: e.target.value }))} placeholder="Branch Name" className="border rounded-lg px-3 py-2 text-sm" />
@@ -160,7 +165,7 @@ export default function BranchesView({ branches, branchLoading, refetchBranches,
 
             {/* Branch List */}
             {branchLoading ? <div className="text-center py-8 text-gray-500">Loading...</div> : (
-                <div className="grid gap-4">
+                <div id="branches-list" className="grid gap-4 scroll-mt-4">
                     {branches.map(branch => (
                         <div
                             key={branch.id}

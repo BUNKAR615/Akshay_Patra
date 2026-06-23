@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { api } from "../../../../lib/clientApi";
+import { useScrollToSection } from "../../../../lib/useScrollToSection";
 import ConfirmDialog from "../../../../components/ConfirmDialog";
 import { SearchInput } from "../../../../components/ui";
 
@@ -61,6 +63,12 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions 
     const [showAddForm, setShowAddForm] = useState(false);
     const [showConfig, setShowConfig] = useState(false);
     const [activeStage, setActiveStage] = useState("SELF");
+
+    // Sidebar deep-links: ?section=add opens the add form; select/list scroll to
+    // the quarter picker / question list respectively.
+    const sectionParam = useSearchParams().get("section");
+    useEffect(() => { if (sectionParam === "add") setShowAddForm(true); }, [sectionParam]);
+    useScrollToSection("questions", [showAddForm]);
 
     // Generic confirm dialog ("Apply changes?") shared by add / edit / apply.
     const [confirm, setConfirm] = useState(null); // { title, message, confirmLabel, variant, onConfirm }
@@ -271,7 +279,7 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions 
             </div>
 
             {/* ═══════ Quarter picker ═══════ */}
-            <div className="bg-white border border-ap-border shadow-card rounded-card p-4 sm:p-5">
+            <div id="questions-select" className="bg-white border border-ap-border shadow-card rounded-card p-4 sm:p-5 scroll-mt-4">
                 <div className="flex flex-col sm:flex-row sm:items-end gap-3">
                     <div className="sm:min-w-[280px]">
                         <label className="block text-xs text-gray-700 mb-1 font-semibold uppercase tracking-wider">Quarter</label>
@@ -300,7 +308,7 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions 
 
             {/* Add Question Form (collapsible) */}
             {showAddForm && (
-                <div className="bg-white border border-ap-border shadow-card rounded-card p-5 sm:p-6">
+                <div id="questions-add" className="bg-white border border-ap-border shadow-card rounded-card p-5 sm:p-6 scroll-mt-4">
                     <h3 className="text-lg font-semibold text-ap-blue mb-4">Add New Question</h3>
                     <div className="space-y-4">
                         <div><label className="block text-sm text-gray-700 mb-1 font-medium">Question Text (English)</label><textarea value={newQ.text} onChange={(e) => setNewQ({ ...newQ, text: e.target.value })} rows={2} placeholder="Enter the question text in English..." className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ap-blue resize-none" /></div>
@@ -376,7 +384,7 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions 
             <p className="text-xs text-gray-500">{visible.length} {STAGE_SHORT[activeStage]} question{visible.length !== 1 ? "s" : ""} shown</p>
 
             {/* ═══════ Question list (current stage) ═══════ */}
-            <div className="bg-white border border-ap-border rounded-card overflow-hidden shadow-card divide-y divide-ap-border">
+            <div id="questions-list" className="bg-white border border-ap-border rounded-card overflow-hidden shadow-card divide-y divide-ap-border scroll-mt-4">
                 {visible.map((q) => {
                     const inQ = desiredIn(q.id);
                     const staged = Object.prototype.hasOwnProperty.call(pending, q.id);
