@@ -356,7 +356,13 @@ function SidebarNode({ node, depth, collapsed, activeId, activeAncestors, openNo
     const hasChildren = node.children && node.children.length > 0;
     const active = activeId === node.id;
     const onPath = activeAncestors.has(node.id);
-    const isOpen = hasChildren && (onPath || !!openNodes[node.id]);
+    // Top-level submenus (Branches, Pipeline, Quarters…) start EXPANDED so the
+    // sub-options are visible on load; deeper levels (each branch's 5 pages)
+    // start collapsed to keep the list manageable. A stored toggle wins over the
+    // default; an ancestor of the active page is always forced open.
+    const defaultOpen = depth === 0;
+    const stored = openNodes[node.id];
+    const isOpen = hasChildren && (onPath || (stored === undefined ? defaultOpen : stored));
     const icon = depth === 0 ? (Ic[node.icon] || Ic.dashboard) : null;
     const padLeft = collapsed ? 0 : 18 + depth * 15;
     const labelColor = active || hover || onPath ? "#fff" : depth === 0 ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.42)";
@@ -404,9 +410,9 @@ function SidebarNode({ node, depth, collapsed, activeId, activeAncestors, openNo
                         onClick={() => toggleNode(node.id)}
                         aria-label={isOpen ? `Collapse ${node.label}` : `Expand ${node.label}`}
                         aria-expanded={isOpen}
-                        className="absolute right-0 top-0 bottom-0 px-2.5 flex items-center bg-transparent border-none cursor-pointer text-white/40 hover:text-white/80"
+                        className="absolute right-0 top-0 bottom-0 px-2.5 flex items-center bg-transparent border-none cursor-pointer text-white/60 hover:text-white"
                     >
-                        <svg width="11" height="11" fill="none" viewBox="0 0 24 24" aria-hidden="true" className={`transition-transform duration-150 ${isOpen ? "" : "-rotate-90"}`}>
+                        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" aria-hidden="true" className={`transition-transform duration-150 ${isOpen ? "" : "-rotate-90"}`}>
                             <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
                         </svg>
                     </button>
