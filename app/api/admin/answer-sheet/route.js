@@ -2,7 +2,8 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
-import { withRole } from "../../../../lib/withRole";
+import { withPermission } from "../../../../lib/withPermission";
+import { REPORTS_ANY } from "../../../../lib/permissions";
 import { ok, fail, notFound, serverError } from "../../../../lib/api-response";
 
 /**
@@ -25,7 +26,7 @@ import { ok, fail, notFound, serverError } from "../../../../lib/api-response";
  * else ACTIVE, else most recent. Like that route, scores are deliberately
  * exposed to ADMIN even while the quarter is ACTIVE (audit override).
  */
-export const GET = withRole(["ADMIN"], async (request) => {
+export const GET = withPermission(REPORTS_ANY, async (request) => {
     try {
         const { searchParams } = new URL(request.url);
         const employeeId = searchParams.get("employeeId");

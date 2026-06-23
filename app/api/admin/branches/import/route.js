@@ -4,7 +4,7 @@ export const runtime = 'nodejs'
 import bcrypt from "bcryptjs";
 import * as XLSX from "xlsx";
 import prisma from "../../../../../lib/prisma";
-import { withRole } from "../../../../../lib/withRole";
+import { withPermission } from "../../../../../lib/withPermission";
 import { ok, fail, serverError } from "../../../../../lib/api-response";
 import { defaultPasswordFor } from "../../../../../lib/auth/defaultPassword";
 import { findRoleHolderConflicts } from "../../../../../lib/auth/bulkUploadDemotionGuard";
@@ -260,7 +260,7 @@ async function replaceBranch(branch, branchRows, adminEmpCode) {
  * Body (multipart/form-data): `file` (required), `branchName` (required only
  * for the no-Location Jaipur file).
  */
-export const POST = withRole(["ADMIN"], async (request, { user }) => {
+export const POST = withPermission("branches.add", async (request, { user }) => {
     try {
         const formData = await request.formData();
         const file = formData.get("file");

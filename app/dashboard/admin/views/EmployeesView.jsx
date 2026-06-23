@@ -23,7 +23,7 @@ const ROLE_BADGE = (r) =>
  * pendingAddDept: org tab's "Add Employee" hand-off — opens the add form
  * pre-filled with that department.
  */
-export default function EmployeesView({ user, initialSearch = "", pendingAddDept = null, onConsumePendingAdd }) {
+export default function EmployeesView({ user, initialSearch = "", pendingAddDept = null, onConsumePendingAdd, can = () => true }) {
     const toast = useToast();
     const [employees, setEmployees] = useState([]);
     const [empDepartments, setEmpDepartments] = useState([]);
@@ -399,8 +399,8 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
                 const roles = e.roles || [e.role];
                 return (
                     <div className="flex gap-1.5">
-                        <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="text-xs px-3 py-1.5 bg-ap-blue hover:bg-ap-green text-white rounded-lg font-semibold transition-colors cursor-pointer">Edit</button>
-                        {!roles.includes("ADMIN") && <button onClick={(ev) => { ev.stopPropagation(); setRemoveId(e.id); }} className="text-xs px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg font-semibold hover:bg-red-100 cursor-pointer">Remove</button>}
+                        {can("employees.edit") && <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="text-xs px-3 py-1.5 bg-ap-blue hover:bg-ap-green text-white rounded-lg font-semibold transition-colors cursor-pointer">Edit</button>}
+                        {can("employees.edit") && !roles.includes("ADMIN") && <button onClick={(ev) => { ev.stopPropagation(); setRemoveId(e.id); }} className="text-xs px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg font-semibold hover:bg-red-100 cursor-pointer">Remove</button>}
                     </div>
                 );
             },
@@ -420,15 +420,21 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
                     </p>
                 </div>
                 <div className="grid grid-cols-3 sm:flex gap-2">
+                    {can("employees.add") && (
                     <button onClick={() => { setShowAddEmp(!showAddEmp); setAddMsg({ type: "", text: "" }); }} className="h-10 px-2.5 sm:px-3.5 bg-ap-green hover:bg-ap-green-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap shadow-sm">
                         {showAddEmp ? "Cancel" : "Add Employee"}
                     </button>
+                    )}
+                    {can("employees.bulkupload") && (
                     <button onClick={() => { setShowBulkUpload(!showBulkUpload); setBulkMsg({ type: "", text: "" }); setBulkResult(null); }} className="h-10 px-2.5 sm:px-3.5 bg-ap-orange hover:bg-ap-orange-600 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap shadow-sm">
                         {showBulkUpload ? "Cancel" : "Bulk Upload"}
                     </button>
+                    )}
+                    {can("employees.export") && (
                     <button onClick={downloadExcel} disabled={excelLoading} className="h-10 px-2.5 sm:px-3.5 bg-white border border-gray-300 hover:bg-gray-50 text-ap-green text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors disabled:opacity-60 whitespace-nowrap shadow-sm">
                         {excelLoading ? "Exporting..." : "Export Excel"}
                     </button>
+                    )}
                 </div>
             </div>
 
@@ -608,8 +614,8 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
                         </div>
                         {isAdmin && (
                             <div className="flex gap-1.5 pt-1">
-                                <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="text-xs px-3 py-1.5 bg-ap-blue text-white rounded-lg font-semibold cursor-pointer">Edit</button>
-                                {!(e.roles || [e.role]).includes("ADMIN") && <button onClick={(ev) => { ev.stopPropagation(); setRemoveId(e.id); }} className="text-xs px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg font-semibold cursor-pointer">Remove</button>}
+                                {can("employees.edit") && <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="text-xs px-3 py-1.5 bg-ap-blue text-white rounded-lg font-semibold cursor-pointer">Edit</button>}
+                                {can("employees.edit") && !(e.roles || [e.role]).includes("ADMIN") && <button onClick={(ev) => { ev.stopPropagation(); setRemoveId(e.id); }} className="text-xs px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg font-semibold cursor-pointer">Remove</button>}
                             </div>
                         )}
                     </div>
@@ -735,7 +741,7 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
                 onClose={() => setDetailEmp(null)}
                 title="Employee Details"
                 width={460}
-                footer={isAdmin && detailEmp ? (
+                footer={can("employees.edit") && detailEmp ? (
                     <div className="flex gap-2">
                         <button
                             onClick={() => { const emp = detailEmp; setDetailEmp(null); openEditModal(emp); }}

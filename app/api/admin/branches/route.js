@@ -2,7 +2,6 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
-import { withRole } from "../../../../lib/withRole";
 import { withPermission } from "../../../../lib/withPermission";
 import { ok, fail, serverError, created, validateBody } from "../../../../lib/api-response";
 import { z } from "zod";
@@ -65,7 +64,7 @@ export const GET = withPermission("branches.view", async (request, { user }) => 
  * POST /api/admin/branches
  * Create a new branch or update an existing one
  */
-export const POST = withRole(["ADMIN"], async (request, { user }) => {
+export const POST = withPermission("branches.add", async (request, { user }) => {
     try {
         const body = await request.json();
 

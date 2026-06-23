@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../../../lib/clientApi";
-import { PERMISSION_TREE } from "../../../../lib/permissions";
+import { PERMISSION_TREE, branchKey } from "../../../../lib/permissions";
 import { Card, Btn, Toggle, SearchInput, Avatar, Badge, Alert, TInput, useToast } from "../../../../components/ui";
 
 /**
@@ -40,6 +40,12 @@ export default function UsersView({ currentUser }) {
     const [expanded, setExpanded] = useState({});
     const [saving, setSaving] = useState(false);
     const [saveMsg, setSaveMsg] = useState(null); // { type, text }
+
+    // Branches power the per-branch grant matrix (Branches module). Fetched once.
+    const [branches, setBranches] = useState([]);
+    useEffect(() => {
+        api("/api/admin/branches").then((d) => setBranches(d.branches || [])).catch(() => {});
+    }, []);
 
     const isAdminUser = currentUser?.role === "ADMIN" || currentUser?.isAdmin;
 
@@ -249,6 +255,7 @@ export default function UsersView({ currentUser }) {
                                         radioValue={radioValue}
                                         setRadio={setRadio}
                                         toggleKey={toggleKey}
+                                        branches={branches}
                                     />
                                 ))}
                             </div>
@@ -276,8 +283,8 @@ export default function UsersView({ currentUser }) {
 }
 
 /** One top-level module row with a +/− expander and its sub-features. */
-function ModuleRow({ module: m, expanded, onToggleExpand, grants, radioValue, setRadio, toggleKey }) {
-    const summary = moduleSummary(m, grants, radioValue);
+function ModuleRow({ module: m, expanded, onToggleExpand, grants, radioValue, setRadio, toggleKey, branches }) {
+    const summary = moduleSummary(m, grants, radioValue, branches);
     return (
         <div className="border border-ap-border rounded-lg overflow-hidden">
             <button
@@ -303,6 +310,8 @@ function ModuleRow({ module: m, expanded, onToggleExpand, grants, radioValue, se
                     {m.hint && <p className="text-[11px] text-gray-400 mb-2 mt-1">{m.hint}</p>}
                     {m.kind === "radio" ? (
                         <RadioControl value={radioValue(m)} onChange={(v) => setRadio(m, v)} />
+                    ) : m.kind === "branchMatrix" ? (
+                        <BranchMatrix module={m} branches={branches} grants={grants} toggleKey={toggleKey} />
                     ) : (
                         <div className="space-y-0.5">
                             {m.options.map((opt) => (
@@ -347,11 +356,67 @@ function RadioControl({ value, onChange }) {
 }
 
 /** Short right-aligned summary of a module's current grant state. */
-function moduleSummary(m, grants, radioValue) {
+function moduleSummary(m, grants, radioValue, branches = []) {
     if (m.kind === "radio") {
         const v = radioValue(m);
         return v === "none" ? "None" : v === "view" ? "View" : "Edit";
     }
+    if (m.kind === "branchMatrix") {
+        let n = 0;
+        for (const b of branches) for (const f of m.features) if (grants.has(branchKey(b.id, f.feature))) n++;
+        for (const opt of m.globalOptions) if (grants.has(opt.key)) n++;
+        return n === 0 ? "None" : `${n} selected`;
+    }
     const n = m.options.filter((o) => grants.has(o.key)).length;
     return n === 0 ? "None" : `${n} selected`;
+}
+
+/**
+ * Per-branch grant matrix: one row per branch with a toggle for each feature
+ * (keys `branch:<id>:<feature>`), plus the global Add/Delete-branch toggles.
+ */
+function BranchMatrix({ module: m, branches, grants, toggleKey }) {
+    return (
+        <div className="space-y-3">
+            {/* Global branch actions */}
+            <div className="space-y-0.5">
+                {m.globalOptions.map((opt) => (
+                    <label key={opt.key} className="flex items-center justify-between gap-3 py-1.5 cursor-pointer">
+                        <span className="text-[13px] text-gray-700">{opt.label}</span>
+                        <Toggle on={grants.has(opt.key)} onChange={() => toggleKey(opt.key)} label={opt.label} />
+                    </label>
+                ))}
+            </div>
+
+            {/* Per-branch feature matrix */}
+            {branches.length === 0 ? (
+                <p className="text-[12px] text-gray-400 py-1">No branches found.</p>
+            ) : (
+                <div className="space-y-2">
+                    {branches.map((b) => {
+                        const onCount = m.features.filter((f) => grants.has(branchKey(b.id, f.feature))).length;
+                        return (
+                            <div key={b.id} className="rounded-lg border border-ap-border bg-white p-2.5">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[12px] font-bold text-ap-blue truncate">{b.name}</span>
+                                    <span className="text-[10px] text-gray-400 shrink-0">{onCount === 0 ? "No access" : `${onCount}/${m.features.length}`}</span>
+                                </div>
+                                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                    {m.features.map((f) => {
+                                        const key = branchKey(b.id, f.feature);
+                                        return (
+                                            <label key={f.feature} className="flex items-center gap-2 py-1 cursor-pointer">
+                                                <Toggle on={grants.has(key)} onChange={() => toggleKey(key)} label={`${b.name} ${f.label}`} />
+                                                <span className="text-[12px] text-gray-700">{f.label}</span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
 }

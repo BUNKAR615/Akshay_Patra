@@ -3,7 +3,7 @@ export const runtime = 'nodejs'
 
 import prisma from "../../../../../lib/prisma";
 import bcrypt from "bcryptjs";
-import { withRole } from "../../../../../lib/withRole";
+import { withPermission } from "../../../../../lib/withPermission";
 import { ok, fail, conflict, serverError } from "../../../../../lib/api-response";
 import { applyBmAssignment } from "../../../../../lib/auth/bmAssignment";
 import { defaultPasswordFor, defaultHodSecondaryPasswordFor } from "../../../../../lib/auth/defaultPassword";
@@ -65,7 +65,7 @@ const COLLAR_MAP = {
  *
  * Creates/upserts Branch → CM → BM → Departments → Employees in a single prisma.$transaction.
  */
-export const POST = withRole(["ADMIN"], async (request, { user }) => {
+export const POST = withPermission("branches.add", async (request, { user }) => {
     try {
         const formData = await request.formData();
         const file = formData.get("file");

@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
-import { withRole } from "../../../../lib/withRole";
+import { withPermission } from "../../../../lib/withPermission";
 import { ok, fail, serverError, validateBody } from "../../../../lib/api-response";
 import { collarTypeSchema } from "../../../../lib/validators";
 import { z } from "zod";
@@ -15,7 +15,7 @@ const bulkCollarSchema = z.object({
  * POST /api/admin/collar-type
  * Admin sets collar type for employees (bulk or single)
  */
-export const POST = withRole(["ADMIN"], async (request, { user }) => {
+export const POST = withPermission("employees.edit", async (request, { user }) => {
     try {
         const body = await request.json();
 

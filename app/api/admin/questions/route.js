@@ -2,7 +2,8 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
-import { withRole } from "../../../../lib/withRole";
+import { withPermission } from "../../../../lib/withPermission";
+import { QUESTIONS_ANY } from "../../../../lib/permissions";
 import { ok, created, serverError, validateBody } from "../../../../lib/api-response";
 import { createQuestionSchema } from "../../../../lib/validators";
 
@@ -10,7 +11,7 @@ import { createQuestionSchema } from "../../../../lib/validators";
  * GET /api/admin/questions
  * Returns all questions in the bank
  */
-export const GET = withRole(["ADMIN"], async () => {
+export const GET = withPermission(QUESTIONS_ANY, async () => {
     try {
         const questions = await prisma.question.findMany({
             orderBy: { createdAt: "desc" },
@@ -25,7 +26,7 @@ export const GET = withRole(["ADMIN"], async () => {
 /**
  * POST /api/admin/questions
  */
-export const POST = withRole(["ADMIN"], async (request, { user }) => {
+export const POST = withPermission("questions.add", async (request, { user }) => {
     try {
         const { data, error } = await validateBody(request, createQuestionSchema);
         if (error) return error;

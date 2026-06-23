@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "../../../../lib/clientApi";
+import { branchKey, BRANCH_FEATURES } from "../../../../lib/permissions";
 import ConfirmDialog from "../../../../components/ConfirmDialog";
 
 /**
@@ -9,7 +10,7 @@ import ConfirmDialog from "../../../../components/ConfirmDialog";
  * feeds the toolbar scope selector and the pipeline export) — this view gets
  * it via props and triggers a refetch on mount, same as the old tab-entry fetch.
  */
-export default function BranchesView({ branches, branchLoading, refetchBranches, onOpenBranch }) {
+export default function BranchesView({ branches, branchLoading, refetchBranches, onOpenBranch, can = () => true }) {
     const [branchMsg, setBranchMsg] = useState({ type: "", text: "" });
     const [newBranch, setNewBranch] = useState({ name: "", location: "", branchType: "SMALL" });
     const [editBranch, setEditBranch] = useState(null);
@@ -76,6 +77,7 @@ export default function BranchesView({ branches, branchLoading, refetchBranches,
             {branchMsg.text && <div className={`p-3 rounded-lg text-sm font-medium ${branchMsg.type === "error" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>{branchMsg.text}</div>}
 
             {/* Add Branch */}
+            {can("branches.add") && (
             <div className="bg-white border border-ap-border rounded-card p-4 space-y-3 shadow-card">
                 <h3 className="font-bold text-ap-blue">Add New Branch</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
@@ -88,8 +90,10 @@ export default function BranchesView({ branches, branchLoading, refetchBranches,
                     <button onClick={handleCreateBranch} className="bg-ap-blue text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-ap-blue-700 cursor-pointer">Create Branch</button>
                 </div>
             </div>
+            )}
 
             {/* Replace Branch Data — full sheet import */}
+            {can("branches.add") && (
             <div className="bg-white border border-[#EF9A9A] rounded-card p-4 space-y-3">
                 <h3 className="font-bold text-[#D32F2F]">Replace Branch Data (Import Sheet)</h3>
                 <p className="text-xs text-gray-500">
@@ -157,11 +161,12 @@ export default function BranchesView({ branches, branchLoading, refetchBranches,
                     </div>
                 )}
             </div>
+            )}
 
-            {/* Branch List */}
+            {/* Branch List — operators see only branches they hold any access to. */}
             {branchLoading ? <div className="text-center py-8 text-gray-500">Loading...</div> : (
                 <div className="grid gap-4">
-                    {branches.map(branch => (
+                    {branches.filter(b => BRANCH_FEATURES.some(f => can(branchKey(b.id, f)))).map(branch => (
                         <div
                             key={branch.id}
                             onClick={() => onOpenBranch(branch.slug || branch.id)}
@@ -177,7 +182,7 @@ export default function BranchesView({ branches, branchLoading, refetchBranches,
                                 </div>
                                 <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                                     <span className={`px-2 py-1 rounded text-xs font-bold ${branch.branchType === "BIG" ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}`}>{branch.branchType}</span>
-                                    {editBranch?.id === branch.id ? (
+                                    {!can("branches.add") ? null : editBranch?.id === branch.id ? (
                                         <div className="flex items-center gap-2">
                                             <select value={editBranch.branchType} onChange={e => setEditBranch(p => ({ ...p, branchType: e.target.value }))} className="border rounded px-2 py-1 text-xs">
                                                 <option value="SMALL">Small</option>

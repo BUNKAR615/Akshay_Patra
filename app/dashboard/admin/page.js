@@ -10,7 +10,7 @@ import UserProfileCard from "../../../components/UserProfileCard";
 import { api } from "../../../lib/clientApi";
 import { getAutoQuarterName } from "../../../lib/quarterUtils";
 import { NAV, DASHBOARD_HOME } from "../../../lib/dashboardNav";
-import { canAccessView, firstAllowedView } from "../../../lib/permissions";
+import { canAccessView, firstAllowedView, hasPermission } from "../../../lib/permissions";
 
 // Each ?view= tab is its own lazily-loaded chunk — switching tabs only ever
 // downloads the code for the tab being opened.
@@ -115,6 +115,10 @@ export default function AdminDashboard() {
     // Share menu
     const [shareMenuOpen, setShareMenuOpen] = useState(false);
     const [shareCopied, setShareCopied] = useState(false);
+
+    // Granular capability check used by views to hide ungranted actions. ADMIN
+    // (and full-admin operators) get true for everything, so their UI is intact.
+    const can = (key) => hasPermission({ role: user?.role, isAdmin: user?.isAdmin, permissions: user?.permissions }, key);
 
     useEffect(() => {
         (async () => {
@@ -388,13 +392,14 @@ export default function AdminDashboard() {
                     onNavigate={setTab}
                 />
             )}
-            {tab === "reports" && <ReportsPanel />}
+            {tab === "reports" && <ReportsPanel can={can} />}
             {tab === "pipeline" && (
                 <PipelineView
                     quarterProgress={quarterProgress}
                     progressLoading={progressLoading}
                     branches={branches}
                     selectedQuarterId={selectedQuarterId}
+                    can={can}
                 />
             )}
             {tab === "branches" && (
@@ -403,6 +408,7 @@ export default function AdminDashboard() {
                     branchLoading={branchLoading}
                     refetchBranches={fetchBranches}
                     onOpenBranch={(slug) => router.push(`/dashboard/admin/${slug}`)}
+                    can={can}
                 />
             )}
             {tab === "org" && (
@@ -420,6 +426,7 @@ export default function AdminDashboard() {
                     quarterLoading={quarterLoading}
                     onRequestStart={requestStartQuarter}
                     onRequestClose={requestCloseQuarter}
+                    can={can}
                 />
             )}
             {tab === "questions" && (
@@ -427,6 +434,7 @@ export default function AdminDashboard() {
                     questions={questions}
                     setQuestions={setQuestions}
                     fetchQuestions={fetchQuestions}
+                    can={can}
                 />
             )}
             {tab === "employees" && (
@@ -436,6 +444,7 @@ export default function AdminDashboard() {
                     initialSearch={searchParams.get("search") || ""}
                     pendingAddDept={pendingAddDept}
                     onConsumePendingAdd={() => setPendingAddDept(null)}
+                    can={can}
                 />
             )}
             {tab === "logs" && <LogsView />}

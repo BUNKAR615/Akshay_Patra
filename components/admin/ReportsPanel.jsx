@@ -23,15 +23,25 @@ const SECTIONS = [
     { id: "tables", label: "Detailed Tables" },
 ];
 
-export default function ReportsPanel() {
+export default function ReportsPanel({ can = () => true }) {
     const [quarters, setQuarters] = useState([]);
     const [selectedQuarterId, setSelectedQuarterId] = useState(null);
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-    const [section, setSection] = useState("charts");
+    // Only the report sections the operator was granted (reports.<id>). ADMIN
+    // gets all (can() returns true).
+    const visibleSections = useMemo(() => SECTIONS.filter((s) => can(`reports.${s.id}`)), [can]);
+    const [section, setSection] = useState(visibleSections[0]?.id || "charts");
     const [filters, setFilters] = useState(BLANK_FILTERS);
     const [sheetEmp, setSheetEmp] = useState(null);
+
+    // Keep the active section within what's visible.
+    useEffect(() => {
+        if (visibleSections.length && !visibleSections.some((s) => s.id === section)) {
+            setSection(visibleSections[0].id);
+        }
+    }, [visibleSections, section]);
 
     const setFilter = (k, v) => setFilters(f => ({ ...f, [k]: v }));
 
@@ -140,7 +150,7 @@ export default function ReportsPanel() {
 
                 {/* Section selector */}
                 <div className="flex flex-wrap gap-2 mt-4">
-                    {SECTIONS.map(s => (
+                    {visibleSections.map(s => (
                         <button key={s.id} type="button" onClick={() => setSection(s.id)}
                             className={`px-4 py-2 rounded-lg text-xs font-bold border transition-colors ${section === s.id
                                 ? "bg-[#003087] text-white border-[#003087]"

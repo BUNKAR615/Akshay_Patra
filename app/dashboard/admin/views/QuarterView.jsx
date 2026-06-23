@@ -9,7 +9,7 @@ import StageControlPanel from "../../../../components/admin/StageControlPanel";
  * actions (and their ConfirmDialogs) stay in page.js so the API flow and
  * quarter list refresh are unchanged.
  */
-export default function QuarterView({ quarterProgress, quarterMsg, quarterLoading, onRequestStart, onRequestClose }) {
+export default function QuarterView({ quarterProgress, quarterMsg, quarterLoading, onRequestStart, onRequestClose, can = () => true }) {
     const [quarterName, setQuarterName] = useState("");
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
@@ -47,7 +47,8 @@ export default function QuarterView({ quarterProgress, quarterMsg, quarterLoadin
                     <span className="font-bold text-ap-blue">{quarterProgress.quarter.questionSelectionMode === "MANUAL" ? "Manual" : "Automatic"}</span>
                 </div>
             )}
-            <StageControlPanel quarter={quarterProgress?.quarter} />
+            {can("quarter.pause") && <StageControlPanel quarter={quarterProgress?.quarter} />}
+            {can("quarter.start") && (
             <div className="bg-white border border-ap-border shadow-card rounded-card p-6">
                 <h3 className="text-lg font-semibold text-ap-blue mb-4">Start New Quarter</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -96,6 +97,8 @@ export default function QuarterView({ quarterProgress, quarterMsg, quarterLoadin
                     {quarterLoading ? "Starting..." : "Start Quarter"}
                 </button>
             </div>
+            )}
+            {can("quarter.close") && (
             <div className="bg-white border border-ap-border shadow-card rounded-card p-6">
                 <h3 className="text-lg font-semibold text-ap-blue mb-2">Close Active Quarter</h3>
                 <p className="text-gray-700 text-sm mb-4">No scores can be modified after closing.</p>
@@ -103,6 +106,7 @@ export default function QuarterView({ quarterProgress, quarterMsg, quarterLoadin
                     {quarterLoading ? "Closing..." : "Close Current Quarter"}
                 </button>
             </div>
+            )}
         </div>
     );
 }

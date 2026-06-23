@@ -2,7 +2,8 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
-import { withRole } from "../../../../lib/withRole";
+import { withPermission } from "../../../../lib/withPermission";
+import { REPORTS_ANY } from "../../../../lib/permissions";
 import { ok, fail, notFound, serverError } from "../../../../lib/api-response";
 
 /**
@@ -24,7 +25,7 @@ import { ok, fail, notFound, serverError } from "../../../../lib/api-response";
  * exposes live scores to ADMIN even while the quarter is ACTIVE so admin can
  * report on evaluation progress mid-quarter.
  */
-export const GET = withRole(["ADMIN"], async (request) => {
+export const GET = withPermission(REPORTS_ANY, async (request) => {
     try {
         const { searchParams } = new URL(request.url);
         const requestedQuarterId = searchParams.get("quarterId");

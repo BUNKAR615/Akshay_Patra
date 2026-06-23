@@ -8,7 +8,7 @@ import { AP, SEMANTIC } from "../../../../components/ui/tokens";
 import StageDetailModal from "../../../../components/admin/StageDetailModal";
 
 /** Pipeline tab — per-branch stage drill-down, ongoing-eval export, winners list. */
-export default function PipelineView({ quarterProgress, progressLoading, branches, selectedQuarterId }) {
+export default function PipelineView({ quarterProgress, progressLoading, branches, selectedQuarterId, can = () => true }) {
     const [exportBranchId, setExportBranchId] = useState("");
     const [exportLoading, setExportLoading] = useState(false);
     const [exportError, setExportError] = useState("");
@@ -211,7 +211,7 @@ export default function PipelineView({ quarterProgress, progressLoading, branche
 
     return (
         <div className="space-y-6">
-            {!quarterProgress ? (
+            {can("pipeline.stages") && (!quarterProgress ? (
                 <div className="bg-white border border-ap-border rounded-card p-8 text-center text-sm text-gray-500">
                     {progressLoading ? "Loading pipeline..." : "No active quarter."}
                 </div>
@@ -348,9 +348,10 @@ export default function PipelineView({ quarterProgress, progressLoading, branche
                         })}
                     </div>
                 </>
-            )}
+            ))}
 
             {/* Branch Winners — same list the committee sees */}
+            {can("pipeline.winners") && (
             <div className="bg-gradient-to-r from-[#FFF8E1] to-[#FFF3E0] border border-[#FFCC80] rounded-card p-4 sm:p-6 shadow-card">
                 <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                     <h2 className="text-lg font-bold text-[#F57C00] flex items-center gap-2 m-0"><span className="text-xl" aria-hidden="true">🏆</span> Branch Winners</h2>
@@ -431,10 +432,12 @@ export default function PipelineView({ quarterProgress, progressLoading, branche
                     </div>
                 )}
             </div>
+            )}
 
             {/* Download Ongoing Evaluation — branch picker + Excel export.
                 Demoted below the funnel + winners: it's a power-user export, not
                 the headline of the page. */}
+            {can("pipeline.export") && (
             <div className="bg-white border border-ap-border rounded-card p-5 shadow-card">
                 <div className="flex items-start sm:items-center gap-3 flex-col sm:flex-row sm:justify-between">
                     <div>
@@ -470,6 +473,7 @@ export default function PipelineView({ quarterProgress, progressLoading, branche
                     </div>
                 )}
             </div>
+            )}
 
             {stageDetail && (
                 <StageDetailModal

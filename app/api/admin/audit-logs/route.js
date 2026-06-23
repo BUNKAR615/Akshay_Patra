@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
-import { withRole } from "../../../../lib/withRole";
+import { withPermission } from "../../../../lib/withPermission";
 import { ok, serverError } from "../../../../lib/api-response";
 
 /**
@@ -10,7 +10,7 @@ import { ok, serverError } from "../../../../lib/api-response";
  * Supports filtering by action, userId, date range.
  * Query params: page, limit, action, userId, from, to
  */
-export const GET = withRole(["ADMIN"], async (request) => {
+export const GET = withPermission("audit.view", async (request) => {
     try {
         const { searchParams } = new URL(request.url);
         const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));

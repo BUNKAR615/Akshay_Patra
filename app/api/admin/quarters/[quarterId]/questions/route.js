@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 import prisma from "../../../../../../lib/prisma";
-import { withRole } from "../../../../../../lib/withRole";
+import { withPermission } from "../../../../../../lib/withPermission";
 import { ok, fail, notFound, serverError, validateBody } from "../../../../../../lib/api-response";
 import { quarterQuestionsUpdateSchema } from "../../../../../../lib/validators";
 
@@ -12,7 +12,7 @@ import { quarterQuestionsUpdateSchema } from "../../../../../../lib/validators";
  * set) so the Questions page can show, per question, whether it belongs to the
  * selected quarter.
  */
-export const GET = withRole(["ADMIN"], async (request, { params }) => {
+export const GET = withPermission("questions.select", async (request, { params }) => {
     try {
         const { quarterId } = await params;
         if (!quarterId) return fail("Quarter ID is required");
@@ -35,7 +35,7 @@ export const GET = withRole(["ADMIN"], async (request, { params }) => {
  * quarter (skipping duplicates) and unlinks the `remove` ones. Returns the
  * resulting membership so the client can reconcile its committed state.
  */
-export const PUT = withRole(["ADMIN"], async (request, { params, user }) => {
+export const PUT = withPermission("questions.select", async (request, { params, user }) => {
     try {
         const { quarterId } = await params;
         if (!quarterId) return fail("Quarter ID is required");

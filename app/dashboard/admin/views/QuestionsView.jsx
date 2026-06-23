@@ -51,7 +51,7 @@ const EMPTY_NEW = { text: "", textHindi: "", category: "ATTENDANCE", level: "SEL
  * handlers here mutate it via the passed setQuestions. Quarter membership is
  * fetched/owned locally since it is quarter-scoped.
  */
-export default function QuestionsView({ questions, setQuestions, fetchQuestions }) {
+export default function QuestionsView({ questions, setQuestions, fetchQuestions, can = () => true }) {
     const [newQ, setNewQ] = useState(EMPTY_NEW);
     const [qMsg, setQMsg] = useState({ type: "", text: "" });
     const [qFilter, setQFilter] = useState({ category: "", collar: "", search: "" });
@@ -266,7 +266,7 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions 
                 </div>
                 <div className="flex gap-2">
                     <button onClick={fetchQuestions} className="min-h-[44px] px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:text-ap-blue text-[14px] cursor-pointer hover:bg-gray-50 transition-colors">↻ Refresh</button>
-                    <button onClick={() => { setNewQ({ ...EMPTY_NEW, level: activeStage }); setShowAddForm((s) => !s); }} className="px-4 py-2 min-h-[44px] bg-ap-blue hover:bg-ap-green text-white font-bold text-[14px] rounded-lg cursor-pointer transition-all shadow-sm">+ Add Question</button>
+                    {can("questions.add") && <button onClick={() => { setNewQ({ ...EMPTY_NEW, level: activeStage }); setShowAddForm((s) => !s); }} className="px-4 py-2 min-h-[44px] bg-ap-blue hover:bg-ap-green text-white font-bold text-[14px] rounded-lg cursor-pointer transition-all shadow-sm">+ Add Question</button>}
                 </div>
             </div>
 
@@ -398,7 +398,7 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions 
                                 </div>
                             ) : (
                                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                                    {selectedQuarterId && (
+                                    {selectedQuarterId && can("questions.select") && (
                                         <label className={`flex items-center gap-1.5 shrink-0 text-[11px] font-bold select-none ${quarterReadOnly ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`} title={quarterReadOnly ? "Read-only" : "Include in selected quarter"}>
                                             <input type="checkbox" disabled={quarterReadOnly} checked={inQ} onChange={() => toggleQuarter(q.id)} className="w-4 h-4 accent-ap-blue cursor-pointer disabled:cursor-not-allowed" />
                                             <span className={inQ ? "text-ap-blue" : "text-gray-400"}>In quarter</span>
@@ -415,8 +415,8 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions 
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                                        <button onClick={() => setEditingQ({ id: q.id, text: q.text, textHindi: q.textHindi || "", category: q.category, level: q.level, collarType: collarOf(q) })} className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-3 py-1.5 bg-gray-50 font-bold border border-ap-border text-gray-700 hover:text-ap-blue rounded-md cursor-pointer transition-colors text-[12px] sm:text-[13px]">Edit</button>
-                                        <button onClick={() => setDeleteQ(q)} className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-3 py-1.5 bg-gray-50 font-bold border border-ap-border text-gray-700 hover:text-[#D32F2F] rounded-md cursor-pointer transition-colors text-[12px] sm:text-[13px]">Delete</button>
+                                        {can("questions.editdelete") && <button onClick={() => setEditingQ({ id: q.id, text: q.text, textHindi: q.textHindi || "", category: q.category, level: q.level, collarType: collarOf(q) })} className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-3 py-1.5 bg-gray-50 font-bold border border-ap-border text-gray-700 hover:text-ap-blue rounded-md cursor-pointer transition-colors text-[12px] sm:text-[13px]">Edit</button>}
+                                        {can("questions.editdelete") && <button onClick={() => setDeleteQ(q)} className="min-h-[36px] sm:min-h-[40px] px-2.5 sm:px-3 py-1.5 bg-gray-50 font-bold border border-ap-border text-gray-700 hover:text-[#D32F2F] rounded-md cursor-pointer transition-colors text-[12px] sm:text-[13px]">Delete</button>}
                                         <button onClick={() => toggleQuestion(q.id)} className={`min-h-[36px] sm:min-h-[40px] text-[12px] sm:text-[13px] font-bold px-2.5 sm:px-3 py-1.5 rounded-lg border transition-colors cursor-pointer shrink-0 shadow-sm ${q.isActive ? "bg-ap-green text-white border-[#A5D6A7]" : "bg-gray-300 text-gray-700 border-[#EF9A9A]"}`}>{q.isActive ? "Active" : "Off"}</button>
                                     </div>
                                 </div>
@@ -479,7 +479,7 @@ export default function QuestionsView({ questions, setQuestions, fetchQuestions 
             </div>
 
             {/* ═══════ Sticky "Apply changes" bar (quarter staging) ═══════ */}
-            {pendingCount > 0 && !quarterReadOnly && (
+            {pendingCount > 0 && !quarterReadOnly && can("questions.select") && (
                 <div className="sticky bottom-3 z-20">
                     <div className="bg-ap-blue text-white rounded-xl shadow-pop px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <span className="text-sm font-semibold">

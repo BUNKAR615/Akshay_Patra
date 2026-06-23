@@ -1,12 +1,12 @@
 import prisma from "../../../../../lib/prisma";
-import { withRole } from "../../../../../lib/withRole";
+import { withPermission } from "../../../../../lib/withPermission";
 import { ok, fail, notFound, serverError, validateBody } from "../../../../../lib/api-response";
 import { updateQuestionSchema } from "../../../../../lib/validators";
 
 /**
  * PATCH /api/admin/questions/:id — toggle isActive
  */
-export const PATCH = withRole(["ADMIN"], async (request, { params, user }) => {
+export const PATCH = withPermission("questions.editdelete", async (request, { params, user }) => {
     try {
         const { id } = await params;
         if (!id) return fail("Question ID is required");
@@ -35,7 +35,7 @@ export const PATCH = withRole(["ADMIN"], async (request, { params, user }) => {
 /**
  * PUT /api/admin/questions/:id — edit question text/category/level
  */
-export const PUT = withRole(["ADMIN"], async (request, { params, user }) => {
+export const PUT = withPermission("questions.editdelete", async (request, { params, user }) => {
     try {
         const { id } = await params;
         if (!id) return fail("Question ID is required");
@@ -75,7 +75,7 @@ export const PUT = withRole(["ADMIN"], async (request, { params, user }) => {
 /**
  * DELETE /api/admin/questions/:id — delete question
  */
-export const DELETE = withRole(["ADMIN"], async (request, { params, user }) => {
+export const DELETE = withPermission("questions.editdelete", async (request, { params, user }) => {
     try {
         const { id } = await params;
         if (!id) return fail("Question ID is required");
