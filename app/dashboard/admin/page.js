@@ -311,11 +311,11 @@ export default function AdminDashboard() {
     const encodedShareBody = encodeURIComponent(`${sharePayload.text}\n\n${sharePayload.url}`);
 
     if (loading) {
-        return <DashboardShell user={user} title={user?.operatorTitle || "HR Admin"}><div className="space-y-4"><SkeletonStats count={4} /><SkeletonCard lines={4} /><SkeletonCard lines={3} /></div></DashboardShell>;
+        return <DashboardShell user={user} title={user?.operatorTitle || "Admin Panel"}><div className="space-y-4"><SkeletonStats count={4} /><SkeletonCard lines={4} /><SkeletonCard lines={3} /></div></DashboardShell>;
     }
 
     return (
-        <DashboardShell user={user} title={user?.operatorTitle || "HR Admin"}>
+        <DashboardShell user={user} title={user?.operatorTitle || "Admin Panel"}>
             {/* Profile + scope/share toolbar live only on the command-center
                 (dashboard) view. Sub-views have their own headers + breadcrumbs,
                 so repeating these on every tab was pure clutter; the old in-app

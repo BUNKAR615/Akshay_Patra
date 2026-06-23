@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
 import {
     api, evaluatedByRole,
 } from "./reports/helpers.js";
@@ -25,22 +24,12 @@ const SECTIONS = [
 ];
 
 export default function ReportsPanel() {
-    const searchParams = useSearchParams();
     const [quarters, setQuarters] = useState([]);
     const [selectedQuarterId, setSelectedQuarterId] = useState(null);
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-    // Honour the sidebar deep-link ?section=charts|answersheet|evaluator|stage|tables.
-    const [section, setSection] = useState(() => {
-        const s = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("section") : null;
-        return SECTIONS.some((x) => x.id === s) ? s : "charts";
-    });
-    // React to later submenu clicks that only change ?section= (no remount).
-    const sectionParam = searchParams.get("section");
-    useEffect(() => {
-        if (sectionParam && SECTIONS.some((x) => x.id === sectionParam)) setSection(sectionParam);
-    }, [sectionParam]);
+    const [section, setSection] = useState("charts");
     const [filters, setFilters] = useState(BLANK_FILTERS);
     const [sheetEmp, setSheetEmp] = useState(null);
 

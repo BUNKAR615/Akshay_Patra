@@ -3,7 +3,6 @@
 import { useState } from "react";
 import QuarterCountdown from "../../../../components/QuarterCountdown";
 import StageControlPanel from "../../../../components/admin/StageControlPanel";
-import { useScrollToSection } from "../../../../lib/useScrollToSection";
 
 /**
  * Quarter management tab. Form state lives here; the confirmed start/close
@@ -19,9 +18,6 @@ export default function QuarterView({ quarterProgress, quarterMsg, quarterLoadin
     // questions marked "In quarter" on the Questions tab.
     const [quarterMode, setQuarterMode] = useState("AUTO");
     const [localErr, setLocalErr] = useState("");
-
-    // Sidebar deep-links: ?section=start|stages|close scrolls to the block.
-    useScrollToSection("quarter");
 
     const requestStart = () => {
         if (!quarterName || !startDate || !endDate) return;
@@ -51,10 +47,8 @@ export default function QuarterView({ quarterProgress, quarterMsg, quarterLoadin
                     <span className="font-bold text-ap-blue">{quarterProgress.quarter.questionSelectionMode === "MANUAL" ? "Manual" : "Automatic"}</span>
                 </div>
             )}
-            <div id="quarter-stages" className="scroll-mt-4">
-                <StageControlPanel quarter={quarterProgress?.quarter} />
-            </div>
-            <div id="quarter-start" className="bg-white border border-ap-border shadow-card rounded-card p-6 scroll-mt-4">
+            <StageControlPanel quarter={quarterProgress?.quarter} />
+            <div className="bg-white border border-ap-border shadow-card rounded-card p-6">
                 <h3 className="text-lg font-semibold text-ap-blue mb-4">Start New Quarter</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
@@ -102,7 +96,7 @@ export default function QuarterView({ quarterProgress, quarterMsg, quarterLoadin
                     {quarterLoading ? "Starting..." : "Start Quarter"}
                 </button>
             </div>
-            <div id="quarter-close" className="bg-white border border-ap-border shadow-card rounded-card p-6 scroll-mt-4">
+            <div className="bg-white border border-ap-border shadow-card rounded-card p-6">
                 <h3 className="text-lg font-semibold text-ap-blue mb-2">Close Active Quarter</h3>
                 <p className="text-gray-700 text-sm mb-4">No scores can be modified after closing.</p>
                 <button onClick={onRequestClose} disabled={quarterLoading} className="min-h-[44px] min-w-[120px] text-[14px] px-6 py-2.5 bg-ap-blue text-white border border-ap-blue hover:bg-ap-green rounded-lg font-bold disabled:bg-gray-300 disabled:text-gray-500 cursor-pointer transition-colors shadow-sm">

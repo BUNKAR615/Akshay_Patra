@@ -23,7 +23,10 @@ export default function UsersView({ currentUser }) {
     const [users, setUsers] = useState([]);
     const [usersLoading, setUsersLoading] = useState(true);
     const [search, setSearch] = useState("");
-    const [operatorsOnly, setOperatorsOnly] = useState(false);
+    // Default to showing only current operators (users who already hold admin-area
+    // access) so the page opens on "who has access today". Toggle off to browse
+    // every user when granting access to someone new.
+    const [operatorsOnly, setOperatorsOnly] = useState(true);
 
     const [selectedId, setSelectedId] = useState(null);
     const [selectedUser, setSelectedUser] = useState(null);

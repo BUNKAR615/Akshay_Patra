@@ -3,15 +3,12 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { api } from "../../../../lib/clientApi";
 import { fmtDate, fmtScore } from "../../../../lib/quarterUtils";
-import { useScrollToSection } from "../../../../lib/useScrollToSection";
 import { ProgressBar } from "../../../../components/ui";
 import { AP, SEMANTIC } from "../../../../components/ui/tokens";
 import StageDetailModal from "../../../../components/admin/StageDetailModal";
 
 /** Pipeline tab — per-branch stage drill-down, ongoing-eval export, winners list. */
 export default function PipelineView({ quarterProgress, progressLoading, branches, selectedQuarterId }) {
-    // Sidebar deep-links: ?section=stages|winners|export scrolls to the block.
-    useScrollToSection("pipeline", [quarterProgress]);
     const [exportBranchId, setExportBranchId] = useState("");
     const [exportLoading, setExportLoading] = useState(false);
     const [exportError, setExportError] = useState("");
@@ -261,7 +258,7 @@ export default function PipelineView({ quarterProgress, progressLoading, branche
                         </div>
                     </div>
 
-                    <h2 id="pipeline-stages" className="text-xl font-bold text-ap-blue scroll-mt-4">Evaluation Pipeline</h2>
+                    <h2 className="text-xl font-bold text-ap-blue">Evaluation Pipeline</h2>
                     <p className="text-[12px] text-gray-500 -mt-2">
                         <span className="font-bold text-ap-blue">Click any stage</span> to open its detailed view — totals, evaluator details &amp; answer scripts.
                         {" "}<span className="font-bold text-ap-blue">Evaluated</span> = scored so far ·
@@ -354,7 +351,7 @@ export default function PipelineView({ quarterProgress, progressLoading, branche
             )}
 
             {/* Branch Winners — same list the committee sees */}
-            <div id="pipeline-winners" className="bg-gradient-to-r from-[#FFF8E1] to-[#FFF3E0] border border-[#FFCC80] rounded-card p-4 sm:p-6 shadow-card scroll-mt-4">
+            <div className="bg-gradient-to-r from-[#FFF8E1] to-[#FFF3E0] border border-[#FFCC80] rounded-card p-4 sm:p-6 shadow-card">
                 <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                     <h2 className="text-lg font-bold text-[#F57C00] flex items-center gap-2 m-0"><span className="text-xl" aria-hidden="true">🏆</span> Branch Winners</h2>
                     <div className="flex items-center gap-2 flex-wrap">
@@ -438,7 +435,7 @@ export default function PipelineView({ quarterProgress, progressLoading, branche
             {/* Download Ongoing Evaluation — branch picker + Excel export.
                 Demoted below the funnel + winners: it's a power-user export, not
                 the headline of the page. */}
-            <div id="pipeline-export" className="bg-white border border-ap-border rounded-card p-5 shadow-card scroll-mt-4">
+            <div className="bg-white border border-ap-border rounded-card p-5 shadow-card">
                 <div className="flex items-start sm:items-center gap-3 flex-col sm:flex-row sm:justify-between">
                     <div>
                         <h3 className="text-[16px] font-bold text-ap-blue m-0">Download Ongoing Evaluation</h3>

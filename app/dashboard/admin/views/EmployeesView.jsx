@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { api } from "../../../../lib/clientApi";
 import DataTable from "../../../../components/ui/DataTable";
 import { Modal, Drawer, SearchInput, useToast } from "../../../../components/ui";
@@ -36,11 +35,8 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
     const [empBranches, setEmpBranches] = useState([]);
     const [empDepartmentStats, setEmpDepartmentStats] = useState([]);
 
-    // Add employee. The Branches → "Add Employees" submenu deep-links with
-    // ?action=add, so open the form when that's present too.
-    const addAction = useSearchParams().get("action") === "add";
-    const [showAddEmp, setShowAddEmp] = useState(!!pendingAddDept || addAction);
-    useEffect(() => { if (addAction) setShowAddEmp(true); }, [addAction]);
+    // Add employee
+    const [showAddEmp, setShowAddEmp] = useState(!!pendingAddDept);
     const [addForm, setAddForm] = useState({ name: "", mobile: "", departmentName: pendingAddDept || "", joiningDate: "", reason: "", empCode: "", designation: "" });
     const [addMsg, setAddMsg] = useState({ type: "", text: "" });
     const [addLoading, setAddLoading] = useState(false);
