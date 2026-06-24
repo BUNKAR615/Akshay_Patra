@@ -447,7 +447,7 @@ export default function BranchEmployeesPage() {
                         <div>
                             <label className="block text-xs font-bold text-[#666666] mb-1">Category</label>
                             <select value={addForm.collarType} onChange={(e) => setAddForm({ ...addForm, collarType: e.target.value })} className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm">
-                                <option value="">Use department default</option>
+                                <option value="">Default (Blue-collar)</option>
                                 <option value="BLUE_COLLAR">Blue-collar</option>
                                 <option value="WHITE_COLLAR">White-collar</option>
                             </select>
@@ -558,7 +558,7 @@ export default function BranchEmployeesPage() {
                                 <div className="bg-red-50 border border-red-300 rounded-lg p-3">
                                     <p className="text-xs font-bold text-red-800 mb-1">Departments removed ({bulkResult.removedDepartments.length}) — not in this file:</p>
                                     <p className="text-[11px] text-red-700">
-                                        {bulkResult.removedDepartments.map(d => `${d.name} (${d.collarType})`).join(", ")}
+                                        {bulkResult.removedDepartments.map(d => d.name).join(", ")}
                                     </p>
                                 </div>
                             )}

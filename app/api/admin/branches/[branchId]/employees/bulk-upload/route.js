@@ -176,15 +176,11 @@ export const POST = withPermission("branches.employees", async (request, { param
         const dedupedRows = [...seen.values()];
         const dupedOut = rows.length - dedupedRows.length;
 
-        // Build the set of (department-name, collar) pairs that need a target dept.
-        // Real-world departments often have BOTH a blue-collar variant (workers)
-        // AND a white-collar variant (supervisors / managers) — e.g. Jaipur has
-        // both "Distribution" (BLUE_COLLAR) and "Distribution White Collar" (WHITE_COLLAR).
-        // The Excel sheet uses the SAME `Department_Description` value ("Distribution")
-        // for both groups, so dept lookup must be done by (name, collar) PAIR, not name alone.
-        const deptKeyOf = (name, collar) => `${name}::${collar}`;
-        const deptPairs = new Set();
-        for (const r of dedupedRows) deptPairs.add(deptKeyOf(r.department, r.collarType));
+        // Departments are branch-scoped and NOT collar-tagged — a single
+        // department holds both blue- and white-collar employees. Collar is
+        // stored per-employee (r.collarType on the user upsert below), so the
+        // target department is resolved by NAME alone.
+        const deptNames = new Set(dedupedRows.map((r) => r.department));
 
         // ── Safety: never demote an ADMIN user. Silently filter ADMIN rows out.
         const adminUsers = await prisma.user.findMany({
@@ -249,75 +245,34 @@ export const POST = withPermission("branches.employees", async (request, { param
         }
 
         const result = await prisma.$transaction(async (tx) => {
-            // Collar-aware department resolution. For each (deptName, collar) pair:
-            //   1. Exact match (name = deptName, collarType = collar)            → use it
-            //   2. Pre-seeded suffix variant ("Distribution White Collar" etc.,
-            //      starts-with deptName, collarType matches)                     → use it
-            //   3. Same-name dept regardless of collar (single-collar dept)      → use it
-            //   4. Create. If a same-name dept of a DIFFERENT collar already
-            //      exists, append " White Collar" / " Blue Collar" suffix to
-            //      avoid the @@unique([name, branchId]) constraint.
-            const deptMap = new Map();           // (name, collar) → dept.id
+            // Name-only department resolution. For each department name in the
+            // sheet, find the existing branch department or create it. Collar is
+            // per-employee, so a single department serves both collars.
+            const deptMap = new Map();           // name → dept.id
             const deptsCreated = [];
             const deptResolutionLog = [];        // for response/audit
-            const collarSuffix = (c) => c === "WHITE_COLLAR" ? "White Collar" : "Blue Collar";
 
-            for (const key of deptPairs) {
-                const [deptName, collarType] = key.split("::");
-
-                // 1) exact (name, collar) match
+            for (const deptName of deptNames) {
                 let dept = await tx.department.findFirst({
-                    where: { branchId, name: deptName, collarType },
+                    where: { branchId, name: deptName },
                 });
-                let resolvedVia = "exact-name-collar";
+                let resolvedVia = "existing";
 
-                // 2) pre-seeded suffix variant
                 if (!dept) {
-                    dept = await tx.department.findFirst({
-                        where: {
-                            branchId,
-                            collarType,
-                            name: { startsWith: deptName, mode: "insensitive" },
-                        },
-                    });
-                    if (dept) resolvedVia = "suffix-variant";
-                }
-
-                // 3) any-collar same-name fallback (single-collar dept exists).
-                //    Skipped in replace mode — the sheet is the source of truth
-                //    for collar, so an unsplit dept of a different collar should
-                //    not absorb a row tagged with the opposite collar. Step 4
-                //    will create the missing collar variant (suffix-named) so
-                //    both Maintenance/Security blue and white end up distinct.
-                if (!dept && !replaceMode) {
-                    dept = await tx.department.findFirst({
-                        where: { branchId, name: deptName },
-                    });
-                    if (dept) resolvedVia = "name-only-fallback";
-                }
-
-                // 4) create
-                if (!dept) {
-                    const sameNameOtherCollar = await tx.department.findFirst({
-                        where: { branchId, name: deptName },
-                    });
-                    const finalName = sameNameOtherCollar
-                        ? `${deptName} ${collarSuffix(collarType)}`
-                        : deptName;
                     dept = await tx.department.create({
-                        data: { name: finalName, branchId, collarType },
+                        data: { name: deptName, branchId },
                     });
-                    deptsCreated.push(finalName);
+                    deptsCreated.push(deptName);
                     resolvedVia = "created";
                 }
 
-                deptMap.set(key, dept.id);
-                deptResolutionLog.push({ deptName, collarType, resolvedTo: dept.name, deptCollar: dept.collarType, via: resolvedVia });
+                deptMap.set(deptName, dept.id);
+                deptResolutionLog.push({ deptName, resolvedTo: dept.name, via: resolvedVia });
             }
 
             let createdCount = 0, updatedCount = 0;
             for (const r of importableRows) {
-                const departmentId = deptMap.get(deptKeyOf(r.department, r.collarType));
+                const departmentId = deptMap.get(r.department);
                 const existing = await tx.user.findUnique({ where: { empCode: r.empCode } });
                 if (existing) {
                     await tx.user.update({
@@ -393,11 +348,11 @@ export const POST = withPermission("branches.employees", async (request, { param
 
                 const staleDepts = await tx.department.findMany({
                     where: { branchId, id: { notIn: [...keptDeptIds] } },
-                    select: { id: true, name: true, collarType: true },
+                    select: { id: true, name: true },
                 });
                 for (const d of staleDepts) {
                     await tx.department.delete({ where: { id: d.id } });
-                    removedDepartments.push({ name: d.name, collarType: d.collarType });
+                    removedDepartments.push({ name: d.name });
                 }
             }
 
@@ -413,8 +368,8 @@ export const POST = withPermission("branches.employees", async (request, { param
         const importedByDept = {};
         for (const r of importableRows) {
             const deptId = result.deptResolutionLog.find(
-                (e) => e.deptName === r.department && e.collarType === r.collarType
-            )?.resolvedTo || `${r.department} (${r.collarType})`;
+                (e) => e.deptName === r.department
+            )?.resolvedTo || r.department;
             importedByDept[deptId] = (importedByDept[deptId] || 0) + 1;
         }
 

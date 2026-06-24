@@ -130,15 +130,10 @@ export default function OrgView({ orgStructure, orgLoading, fetchOrg, onRequestA
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <div className="hidden sm:flex gap-1.5 items-center">
-                                            {dept.collarType === "WHITE_COLLAR" ? (
-                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-ap-blue border border-blue-200 font-bold">WHITE COLLAR</span>
-                                            ) : (
-                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-ap-green border border-emerald-200 font-bold">BLUE COLLAR</span>
-                                            )}
-                                            {dept.collarType === "WHITE_COLLAR" && dept.branchManagers?.[0] && (
+                                            {dept.branchManagers?.[0] && (
                                                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-50 text-gray-700 border border-ap-border font-bold">BM: {dept.branchManagers[0].name.split(" ")[0]}</span>
                                             )}
-                                            {dept.collarType !== "WHITE_COLLAR" && dept.hods?.[0] && (
+                                            {dept.hods?.[0] && (
                                                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-50 text-gray-700 border border-ap-border font-bold">HOD: {dept.hods[0].name.split(" ")[0]}</span>
                                             )}
                                         </div>
@@ -149,41 +144,39 @@ export default function OrgView({ orgStructure, orgLoading, fetchOrg, onRequestA
                                 {/* Expanded content */}
                                 {isExpanded && (
                                     <div className="border-t border-ap-border p-3 sm:p-5 space-y-5">
-                                        {dept.collarType === "WHITE_COLLAR" ? (
-                                            <div className="bg-blue-50/60 rounded-lg p-4 border border-blue-100">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <p className="text-xs font-bold text-ap-blue uppercase tracking-wider m-0">Branch Manager (Evaluator)</p>
-                                                    <button onClick={() => openReassignModal({ id: dept.id, name: dept.name }, "BRANCH_MANAGER")} className="text-[10px] px-2 py-0.5 rounded bg-ap-blue text-white font-bold hover:bg-ap-green transition-colors cursor-pointer">Reassign</button>
-                                                </div>
-                                                {dept.branchManagers?.length > 0 ? (
-                                                    <div className="space-y-2">
-                                                        {dept.branchManagers.map(bm => (
-                                                            <button key={bm.id} onClick={() => setPersonDetail(bm)} className="w-full text-left p-2 rounded-lg hover:bg-white transition-colors cursor-pointer group/person bg-transparent border-none">
-                                                                <p className="text-sm text-ap-blue font-semibold group-hover/person:underline m-0">{bm.name}</p>
-                                                                <p className="text-xs text-gray-500 m-0">{bm.designation || "—"} {bm.empCode ? `(${bm.empCode})` : ""}</p>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                ) : <p className="text-sm text-gray-400 italic m-0">Not Assigned</p>}
+                                        <div className="bg-blue-50/60 rounded-lg p-4 border border-blue-100">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <p className="text-xs font-bold text-ap-blue uppercase tracking-wider m-0">Branch Manager (Evaluator)</p>
+                                                <button onClick={() => openReassignModal({ id: dept.id, name: dept.name }, "BRANCH_MANAGER")} className="text-[10px] px-2 py-0.5 rounded bg-ap-blue text-white font-bold hover:bg-ap-green transition-colors cursor-pointer">Reassign</button>
                                             </div>
-                                        ) : (
-                                            <div className="bg-emerald-50/60 rounded-lg p-4 border border-emerald-100">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <p className="text-xs font-bold text-ap-green uppercase tracking-wider m-0">Head of Department (Evaluator)</p>
-                                                    <button onClick={() => openReassignModal({ id: dept.id, name: dept.name }, "HOD")} className="text-[10px] px-2 py-0.5 rounded bg-ap-green text-white font-bold hover:bg-ap-blue transition-colors cursor-pointer">Reassign</button>
+                                            {dept.branchManagers?.length > 0 ? (
+                                                <div className="space-y-2">
+                                                    {dept.branchManagers.map(bm => (
+                                                        <button key={bm.id} onClick={() => setPersonDetail(bm)} className="w-full text-left p-2 rounded-lg hover:bg-white transition-colors cursor-pointer group/person bg-transparent border-none">
+                                                            <p className="text-sm text-ap-blue font-semibold group-hover/person:underline m-0">{bm.name}</p>
+                                                            <p className="text-xs text-gray-500 m-0">{bm.designation || "—"} {bm.empCode ? `(${bm.empCode})` : ""}</p>
+                                                        </button>
+                                                    ))}
                                                 </div>
-                                                {dept.hods?.length > 0 ? (
-                                                    <div className="space-y-2">
-                                                        {dept.hods.map(h => (
-                                                            <button key={h.id} onClick={() => setPersonDetail(h)} className="w-full text-left p-2 rounded-lg hover:bg-white transition-colors cursor-pointer group/person bg-transparent border-none">
-                                                                <p className="text-sm text-ap-green font-semibold group-hover/person:underline m-0">{h.name}</p>
-                                                                <p className="text-xs text-gray-500 m-0">{h.designation || "—"} {h.empCode ? `(${h.empCode})` : ""}</p>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                ) : <p className="text-sm text-gray-400 italic m-0">Not Assigned</p>}
+                                            ) : <p className="text-sm text-gray-400 italic m-0">Not Assigned</p>}
+                                        </div>
+
+                                        <div className="bg-emerald-50/60 rounded-lg p-4 border border-emerald-100">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <p className="text-xs font-bold text-ap-green uppercase tracking-wider m-0">Head of Department (Evaluator)</p>
+                                                <button onClick={() => openReassignModal({ id: dept.id, name: dept.name }, "HOD")} className="text-[10px] px-2 py-0.5 rounded bg-ap-green text-white font-bold hover:bg-ap-blue transition-colors cursor-pointer">Reassign</button>
                                             </div>
-                                        )}
+                                            {dept.hods?.length > 0 ? (
+                                                <div className="space-y-2">
+                                                    {dept.hods.map(h => (
+                                                        <button key={h.id} onClick={() => setPersonDetail(h)} className="w-full text-left p-2 rounded-lg hover:bg-white transition-colors cursor-pointer group/person bg-transparent border-none">
+                                                            <p className="text-sm text-ap-green font-semibold group-hover/person:underline m-0">{h.name}</p>
+                                                            <p className="text-xs text-gray-500 m-0">{h.designation || "—"} {h.empCode ? `(${h.empCode})` : ""}</p>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            ) : <p className="text-sm text-gray-400 italic m-0">Not Assigned</p>}
+                                        </div>
 
                                         {/* Employee List */}
                                         <div>

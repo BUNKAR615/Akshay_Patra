@@ -17,7 +17,6 @@ export const GET = withPermission("departments.view", async () => {
             select: {
                 id: true,
                 name: true,
-                collarType: true,
                 branch: { select: { id: true, name: true, branchType: true } },
                 departmentRoles: {
                     include: { user: { select: { id: true, empCode: true, name: true, designation: true, mobile: true } } },
@@ -86,7 +85,6 @@ export const GET = withPermission("departments.view", async () => {
                     name: dept.name,
                     branch: dept.branch.name,
                     branchType: dept.branch.branchType,
-                    collarType: dept.collarType,
                     employeeCount: dept._count.users,
                     branchManager: branchManagers[0] || null,
                     branchManagers,

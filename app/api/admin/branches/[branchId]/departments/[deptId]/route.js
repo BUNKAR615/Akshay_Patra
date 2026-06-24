@@ -66,3 +66,54 @@ export const PATCH = withPermission("branches.departments", async (request, { pa
         return serverError();
     }
 });
+
+/**
+ * DELETE /api/admin/branches/[branchId]/departments/[deptId]
+ * Deletes a department from THIS branch only. Blocked while employees are still
+ * assigned (admin must move/remove them first). The same-named department in
+ * any other branch is a separate row and is unaffected.
+ */
+export const DELETE = withPermission("branches.departments", async (request, { params, user }) => {
+    try {
+        const { branchId: slugOrId, error } = requireBranchScope(user, params);
+        if (error) return error;
+
+        const resolvedBranch = await resolveBranch(slugOrId);
+        if (!resolvedBranch) return notFound("Branch not found");
+        const branchId = resolvedBranch.id;
+
+        const { deptId } = params;
+        if (!deptId) return fail("Department ID is required");
+
+        const dept = await prisma.department.findUnique({
+            where: { id: deptId },
+            include: { _count: { select: { users: true } } },
+        });
+        if (!dept) return notFound("Department not found");
+        if (dept.branchId !== branchId) return fail("Department does not belong to this branch", 403);
+
+        if (dept._count.users > 0) {
+            return fail(
+                `Move or remove this department's ${dept._count.users} employee${dept._count.users === 1 ? "" : "s"} before deleting it`,
+                409
+            );
+        }
+
+        // Empty department — safe to delete. FK cascades clear any role
+        // mappings, HOD assignments, and legacy shortlist rows tied to it.
+        await prisma.department.delete({ where: { id: deptId } });
+
+        await prisma.auditLog.create({
+            data: {
+                userId: user.userId,
+                action: "DEPARTMENT_DELETED",
+                details: { branchId, departmentId: deptId, name: dept.name },
+            },
+        }).catch(() => {});
+
+        return ok({ deleted: true, departmentId: deptId });
+    } catch (err) {
+        console.error("[DEPT-DELETE] Error:", err.message);
+        return serverError();
+    }
+});

@@ -135,19 +135,13 @@ function extractRows(workbook) {
 async function replaceBranch(branch, branchRows, adminEmpCode) {
     const branchId = branch.id;
 
-    // ── Department set: one per distinct deptName; collar = majority of its
-    //    employees' collar (tie → WHITE_COLLAR). ──
-    const deptTally = new Map();      // deptName -> { blue, white }
+    // ── Department set: one per distinct deptName. Departments are NOT
+    //    collar-tagged — collar is stored per-employee. ──
+    const deptNameSet = new Set();
     for (const r of branchRows) {
-        if (!r.deptName) continue;
-        const t = deptTally.get(r.deptName) || { blue: 0, white: 0 };
-        if (r.employeeCollar === "BLUE_COLLAR") t.blue++; else t.white++;
-        deptTally.set(r.deptName, t);
+        if (r.deptName) deptNameSet.add(r.deptName);
     }
-    const deptDefs = [...deptTally.entries()].map(([name, t]) => ({
-        name,
-        collarType: t.blue > t.white ? "BLUE_COLLAR" : "WHITE_COLLAR",
-    }));
+    const deptDefs = [...deptNameSet].map((name) => ({ name }));
 
     const keptCodes = [...new Set(branchRows.map((r) => r.empCode))];
 
@@ -210,7 +204,7 @@ async function replaceBranch(branch, branchRows, adminEmpCode) {
         await tx.department.deleteMany({ where: { branchId } });
         if (deptDefs.length > 0) {
             await tx.department.createMany({
-                data: deptDefs.map((d) => ({ name: d.name, branchId, collarType: d.collarType })),
+                data: deptDefs.map((d) => ({ name: d.name, branchId })),
             });
         }
         const freshDepts = await tx.department.findMany({
@@ -235,7 +229,7 @@ async function replaceBranch(branch, branchRows, adminEmpCode) {
         });
 
         return {
-            departmentsCreated: deptDefs.map((d) => `${d.name} (${d.collarType})`),
+            departmentsCreated: deptDefs.map((d) => d.name),
             employeesImported: branchRows.length,
             archivedEmployees: staleUsers.map((u) => ({ empCode: u.empCode, name: u.name })),
         };

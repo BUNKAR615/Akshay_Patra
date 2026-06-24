@@ -404,9 +404,6 @@ export default function BranchOrgPage() {
                             <div key={d.id} className="flex items-center justify-between bg-[#F9FAFB] rounded-lg px-4 py-3">
                                 <div className="flex items-center gap-2">
                                     <span className="font-medium text-sm text-[#333]">{d.name}</span>
-                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${d.collarType === "WHITE_COLLAR" ? "bg-gray-100 text-gray-600" : "bg-blue-50 text-blue-600"}`}>
-                                        {d.collarType === "WHITE_COLLAR" ? "WC" : "BC"}
-                                    </span>
                                 </div>
                                 <span className="text-[12px] text-[#666] font-medium">{d.employeeCount} emp</span>
                             </div>

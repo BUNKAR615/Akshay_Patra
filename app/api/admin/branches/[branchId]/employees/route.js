@@ -83,7 +83,7 @@ export const GET = withPermission("branches.employees", async (request, { params
             // committee). One of the two is always populated: BMs anchor on
             // User.branchId; everyone else anchors on their department's branch.
             scopedBranch: { select: { id: true, name: true } },
-            department: { select: { id: true, name: true, collarType: true, branchId: true, branch: { select: { id: true, name: true } } } },
+            department: { select: { id: true, name: true, branchId: true, branch: { select: { id: true, name: true } } } },
             createdAt: true,
         };
 
@@ -259,7 +259,7 @@ export const POST = withPermission("branches.employees", async (request, { param
                 role: "EMPLOYEE",
                 branchId,
                 departmentId: dept.id,
-                collarType: resolvedCollar || dept.collarType,
+                collarType: resolvedCollar || null,
                 designation: designation || null,
                 mobile: mobile || null,
             },

@@ -164,14 +164,12 @@ export const POST = withPermission("branches.add", async (request, { user }) => 
             passwordHodHashes.set(r.empCode, await bcrypt.hash(plainHod, SALT_ROUNDS));
         }
 
-        // Validate department collar consistency
-        const deptCollarMap = new Map();
+        // Departments are NOT collar-tagged — a single department may hold both
+        // blue- and white-collar employees. Collar is stored per-employee, so we
+        // only collect the distinct department names to create.
+        const deptNames = new Set();
         for (const r of [...empRows, ...hodRows]) {
-            const existing = deptCollarMap.get(r.department);
-            if (existing && existing !== r.collarType) {
-                return fail(`Department "${r.department}" has mixed collar types (${existing} and ${r.collarType}). Each department must have one collar type.`, 400);
-            }
-            deptCollarMap.set(r.department, r.collarType);
+            deptNames.add(r.department);
         }
 
         // ── Spec rule: only ONE Branch Manager per branch, only ONE branch
@@ -310,10 +308,10 @@ export const POST = withPermission("branches.add", async (request, { user }) => 
             // 4. Upsert Departments
             const deptMap = new Map();
             const deptsCreated = [];
-            for (const [deptName, collarType] of deptCollarMap) {
+            for (const deptName of deptNames) {
                 let dept = await tx.department.findFirst({ where: { name: deptName, branchId: branch.id } });
                 if (!dept) {
-                    dept = await tx.department.create({ data: { name: deptName, branchId: branch.id, collarType } });
+                    dept = await tx.department.create({ data: { name: deptName, branchId: branch.id } });
                     deptsCreated.push(deptName);
                 }
                 deptMap.set(deptName, dept.id);

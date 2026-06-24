@@ -92,13 +92,14 @@ export async function GET(request: Request) {
 
     // ── Fallback: serve from QuarterQuestion (backwards compat) ──
     // Resolve the employee's effective collar so the shared SELF pool is also
-    // category-filtered when no per-employee assignment row exists. Falls back
-    // through live user value → department default → BLUE_COLLAR.
+    // category-filtered when no per-employee assignment row exists. Collar is
+    // per-employee (departments are no longer collar-tagged); defaults to
+    // BLUE_COLLAR.
     const empForCollar = await prisma.user.findUnique({
       where: { id: userId },
-      select: { collarType: true, department: { select: { collarType: true } } }
+      select: { collarType: true }
     })
-    const empCollar = empForCollar?.collarType || empForCollar?.department?.collarType || 'BLUE_COLLAR'
+    const empCollar = empForCollar?.collarType || 'BLUE_COLLAR'
 
     const quarterQuestions = await prisma.quarterQuestion.findMany({
       where: {

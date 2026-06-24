@@ -107,7 +107,7 @@ export const POST = withPermission("branches.org", async (request, { params, use
                         mobile: data.mobile || null,
                         password: hash,
                         role: "CLUSTER_MANAGER",
-                        ...(newDept ? { departmentId: newDept.id, branchId, collarType: newDept.collarType } : {}),
+                        ...(newDept ? { departmentId: newDept.id, branchId } : {}),
                     },
                 });
             }
