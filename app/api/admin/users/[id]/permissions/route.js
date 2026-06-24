@@ -7,7 +7,7 @@ import prisma from "../../../../../../lib/prisma";
 import { withRole } from "../../../../../../lib/withRole";
 import { ok, fail, notFound, handleApiError, validateBody } from "../../../../../../lib/api-response";
 import { getClientIp } from "../../../../../../lib/http";
-import { PERMISSION_KEYS, isValidPermissionKey } from "../../../../../../lib/permissions";
+import { isValidPermissionKey } from "../../../../../../lib/permissions";
 
 /**
  * GET /api/admin/users/[id]/permissions
@@ -65,12 +65,11 @@ export const PUT = withRole(["ADMIN"], async (request, { params, user }) => {
         const { data, error } = await validateBody(request, updateSchema);
         if (error) return error;
 
-        // Drop duplicates and reject any key not in the catalog.
-        const permissions = [...new Set(data.permissions)];
-        const invalid = permissions.filter((k) => !isValidPermissionKey(k));
-        if (invalid.length) {
-            return fail(`Unknown permission key(s): ${invalid.join(", ")}. Allowed: ${PERMISSION_KEYS.join(", ")}`, 400);
-        }
+        // Drop duplicates and silently prune any key not in the current catalog.
+        // The catalog changed (granular per-branch model), so a user's previously
+        // stored keys like "branches.view"/"pipeline.edit" are simply removed on
+        // the next save rather than blocking it.
+        const permissions = [...new Set(data.permissions)].filter((k) => isValidPermissionKey(k));
         // When isAdmin is set, the individual grants are redundant — store none.
         const storedPermissions = data.isAdmin ? [] : permissions;
         const operatorTitle = data.operatorTitle ? data.operatorTitle : null;
