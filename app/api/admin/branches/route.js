@@ -28,7 +28,7 @@ export const GET = withPermission("branches.view", async (request, { user }) => 
         const branches = await prisma.branch.findMany({
             include: {
                 departments: {
-                    select: { id: true, name: true, collarType: true, _count: { select: { users: true } } },
+                    select: { id: true, name: true, _count: { select: { users: true } } },
                 },
                 _count: {
                     select: { departments: true },
