@@ -150,7 +150,7 @@ export const PATCH = withPermission("employees.edit", async (request, { params, 
     try {
         const { id } = await params;
         const body = await request.json();
-        const { department, role, designation, password, mobile, departmentId: bodyDepartmentId, branchId: bodyBranchId, collarType } = body;
+        const { name, department, role, designation, password, mobile, departmentId: bodyDepartmentId, branchId: bodyBranchId, collarType } = body;
 
         // Fetch current employee data + their current branch (for history snapshot)
         const employee = await prisma.user.findUnique({
@@ -168,6 +168,26 @@ export const PATCH = withPermission("employees.edit", async (request, { params, 
 
         const updateData = {};
         const changes = [];
+
+        // Name — correct a misspelled / wrong employee name. This only touches
+        // the User.name column. Every role assignment (BM/CM/HR/Committee/HOD)
+        // keys on userId, never on the name string, so a name correction can
+        // never break or detach an existing assignment. Normalized to uppercase
+        // to match how names are stored on create / bulk-upload.
+        if (name !== undefined) {
+            const trimmed = String(name).trim();
+            if (!trimmed) {
+                return NextResponse.json({ success: false, message: "Name cannot be empty" }, { status: 400 });
+            }
+            if (trimmed.length > 120) {
+                return NextResponse.json({ success: false, message: "Name is too long (max 120 characters)" }, { status: 400 });
+            }
+            const normalizedName = trimmed.toUpperCase();
+            if (normalizedName !== (employee.name || "")) {
+                updateData.name = normalizedName;
+                changes.push(`Name changed from "${employee.name || "—"}" to "${normalizedName}"`);
+            }
+        }
 
         // Designation
         if (designation !== undefined && designation !== (employee.designation || "")) {

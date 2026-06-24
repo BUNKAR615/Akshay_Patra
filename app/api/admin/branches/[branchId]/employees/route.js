@@ -7,6 +7,7 @@ import { withPermission } from "../../../../../../lib/withPermission";
 import { ok, fail, notFound, forbidden, conflict, created, handleApiError } from "../../../../../../lib/api-response";
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
+import { resolveBranchDisplayRoles } from "../../../../../../lib/branchRoleDisplay";
 import { defaultPasswordFor } from "../../../../../../lib/auth/defaultPassword";
 
 // Only these two empCodes can add employees (mirrors /api/admin/employees POST)
@@ -92,6 +93,23 @@ export const GET = withPermission("branches.employees", async (request, { params
             orderBy: [{ role: "asc" }, { name: "asc" }],
         });
 
+        // Per-branch role context. A user can be an EMPLOYEE in their home
+        // branch yet act as a role-holder (CM/HR/Committee/HOD) here. We collect
+        // the set of roles each user actually wears IN THIS BRANCH so the UI can
+        // render "Employee + Cluster Manager" in the home branch but "Cluster
+        // Manager" only in a branch where they merely visit as a role-holder —
+        // while the branch field always keeps their ORIGINAL (home) branch.
+        const branchRoleMap = new Map(); // userId -> Set<Role held in this branch>
+        const addBranchRole = (uid, r) => {
+            if (!branchRoleMap.has(uid)) branchRoleMap.set(uid, new Set());
+            branchRoleMap.get(uid).add(r);
+        };
+        // BM is anchored on User.branchId, so it surfaces in the base `users`
+        // query rather than an assignment-table union.
+        for (const u of users) {
+            if (u.role === "BRANCH_MANAGER" && u.branchId === branchId) addBranchRole(u.id, "BRANCH_MANAGER");
+        }
+
         // Union in role-holders whose User.branchId is null because they live
         // in the assignment tables (CM and HR can serve multiple branches; a
         // single Committee row is per (member, branch)). BM is already covered
@@ -132,6 +150,11 @@ export const GET = withPermission("branches.employees", async (request, { params
                     })
                     : Promise.resolve([]),
             ]);
+            for (const r of cmRows) addBranchRole(r.cm.id, "CLUSTER_MANAGER");
+            for (const r of hrRows) addBranchRole(r.hr.id, "HR");
+            for (const r of committeeRows) addBranchRole(r.member.id, "COMMITTEE");
+            for (const r of hodRows) addBranchRole(r.hod.id, "HOD");
+
             extraRoleHolders = [
                 ...cmRows.map((r) => r.cm),
                 ...hrRows.map((r) => r.hr),
@@ -146,7 +169,27 @@ export const GET = withPermission("branches.employees", async (request, { params
         for (const u of users) merged.set(u.id, u);
         for (const u of extraRoleHolders) if (!merged.has(u.id)) merged.set(u.id, u);
 
-        const finalUsers = [...merged.values()].sort((a, b) => {
+        // Annotate each row with its branch-relative identity. `originalBranch`
+        // is the person's home branch (their department's branch, or their
+        // scoped branch for departmentless role-holders) and never changes with
+        // the list you're viewing. `displayRoles` is what to show HERE:
+        //   • home branch  → base employment role + any roles assigned here
+        //                     (e.g. EMPLOYEE + CLUSTER_MANAGER)
+        //   • other branch → only the role(s) they are assigned to here
+        //                     (e.g. CLUSTER_MANAGER), home branch still shown.
+        const annotate = (u) => {
+            const originalBranch = u.department?.branch || u.scopedBranch || null;
+            const assignedRoles = [...(branchRoleMap.get(u.id) || [])];
+            const { isHomeBranch, displayRoles } = resolveBranchDisplayRoles({
+                viewingBranchId: branchId,
+                baseRole: u.role,
+                originalBranch,
+                assignedRoles,
+            });
+            return { ...u, originalBranch, isHomeBranch, branchRoles: assignedRoles, displayRoles };
+        };
+
+        const finalUsers = [...merged.values()].map(annotate).sort((a, b) => {
             if (a.role !== b.role) return String(a.role).localeCompare(String(b.role));
             return String(a.name || "").localeCompare(String(b.name || ""));
         });

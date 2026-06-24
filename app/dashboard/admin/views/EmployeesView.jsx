@@ -233,6 +233,7 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
     const openEditModal = (emp) => {
         setEditEmp(emp);
         setEditForm({
+            name: emp.name || "",
             branchId: emp.departmentObj?.branchId || "",
             departmentId: emp.departmentObj?.id || "",
             role: emp.role || "EMPLOYEE",
@@ -257,6 +258,10 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
         const selDept = empDepartmentStats.find((d) => d.id === editForm.departmentId);
         const selBranchName = empBranches.find((b) => b.id === editForm.branchId)?.name;
 
+        const newName = (editForm.name || "").trim().toUpperCase();
+        if (newName && newName !== (editEmp.name || ""))
+            changes.push(`Name: "${editEmp.name || "—"}" → "${newName}"`);
+
         if (editForm.departmentId && editForm.departmentId !== origDeptId) {
             changes.push(`Department: "${origDeptName}" → "${selDept?.name || "—"}"`);
             const newBranch = selDept?.branch || selBranchName;
@@ -280,6 +285,9 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
     };
 
     const handleEditPreview = () => {
+        if (!(editForm.name || "").trim()) {
+            setEditMsg({ type: "error", text: "Name cannot be empty." }); return;
+        }
         const changes = buildChanges();
         if (changes.length === 0) { setEditMsg({ type: "error", text: "No changes made." }); return; }
         if (editForm.password && editForm.password.trim().length > 0 && editForm.password.trim().length < 6) {
@@ -295,6 +303,8 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
         setEditMsg({ type: "", text: "" });
         try {
             const body = {};
+            const newName = (editForm.name || "").trim().toUpperCase();
+            if (newName && newName !== (editEmp.name || "")) body.name = newName;
             const origDeptId = editEmp.departmentObj?.id || "";
             const origBranchId = editEmp.departmentObj?.branchId || "";
             // Branch follows the department: moving to a department in another
@@ -666,6 +676,13 @@ export default function EmployeesView({ user, initialSearch = "", pendingAddDept
                 ) : (
                     <div className="space-y-4">
                         {editMsg.text && <p className={`text-sm font-medium m-0 ${editMsg.type === "error" ? "text-[#D32F2F]" : "text-ap-green"}`}>{editMsg.text}</p>}
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-700 mb-1">Name</label>
+                            <input type="text" value={editForm.name || ""} onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                                placeholder="Full name"
+                                className="w-full h-10 px-3 bg-gray-50 border border-gray-300 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-ap-blue" />
+                            <p className="text-[11px] text-gray-400 mt-1 m-0">Corrects the spelling only — role assignments are preserved.</p>
+                        </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
                                 <label className="block text-xs font-semibold text-gray-700 mb-1">Branch</label>

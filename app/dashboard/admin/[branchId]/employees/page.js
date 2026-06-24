@@ -26,12 +26,31 @@ async function api(url, opts) {
 
 const ROLE_COLORS = {
     EMPLOYEE: "bg-blue-100 text-blue-700",
+    SUPERVISOR: "bg-teal-100 text-teal-700",
     HOD: "bg-purple-100 text-purple-700",
     BRANCH_MANAGER: "bg-emerald-100 text-emerald-700",
     CLUSTER_MANAGER: "bg-orange-100 text-orange-700",
     HR: "bg-sky-100 text-sky-700",
     COMMITTEE: "bg-amber-100 text-amber-700",
 };
+
+const ROLE_LABELS = {
+    EMPLOYEE: "Employee",
+    SUPERVISOR: "Supervisor",
+    HOD: "HOD",
+    BRANCH_MANAGER: "Branch Manager",
+    CLUSTER_MANAGER: "Cluster Manager",
+    HR: "HR",
+    COMMITTEE: "Committee",
+    ADMIN: "Admin",
+};
+
+// Roles this person wears in the branch currently being viewed. Falls back to
+// the raw User.role for any row the API didn't annotate (older cache / safety).
+function rolesFor(emp) {
+    if (Array.isArray(emp.displayRoles) && emp.displayRoles.length) return emp.displayRoles;
+    return [emp.role];
+}
 
 export default function BranchEmployeesPage() {
     const { branchId } = useParams();
@@ -177,6 +196,7 @@ export default function BranchEmployeesPage() {
         setEditMsg({ type: "", text: "" });
         try {
             const payload = {
+                name: editForm.name,
                 mobile: editForm.mobile,
                 role: editForm.role,
                 designation: editForm.designation,
@@ -614,8 +634,9 @@ export default function BranchEmployeesPage() {
                     )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div>
-                            <label className="block text-xs font-bold text-[#666666] mb-1">Name (locked)</label>
-                            <input type="text" value={editForm.name} disabled className="w-full h-10 px-3 bg-[#EEEEEE] border border-[#CCCCCC] rounded-lg text-sm text-[#666] cursor-not-allowed" />
+                            <label className="block text-xs font-bold text-[#666666] mb-1">Name <span className="text-[#003087]">(editable)</span></label>
+                            <input type="text" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} placeholder="Full name" className="w-full h-10 px-3 bg-[#F5F5F5] border border-[#CCCCCC] rounded-lg text-sm" />
+                            <p className="text-[10px] text-[#999] mt-1">Corrects the spelling only — role assignments are preserved.</p>
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-[#666666] mb-1">Employee Code (locked)</label>
@@ -686,11 +707,18 @@ export default function BranchEmployeesPage() {
                                     <div className="font-bold text-[#1a1a1a] text-sm break-words">
                                         {emp.name}
                                     </div>
+                                    {emp.isHomeBranch === false && (
+                                        <div className="text-[10px] text-[#F7941D] font-bold mt-0.5">
+                                            Role holder · home: {emp.originalBranch?.name || "—"}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="flex flex-col items-end gap-1 shrink-0">
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${ROLE_COLORS[emp.role] || "bg-gray-100 text-gray-700"}`}>
-                                        {emp.role}
-                                    </span>
+                                    {rolesFor(emp).map(r => (
+                                        <span key={r} className={`px-2 py-0.5 rounded text-[10px] font-bold ${ROLE_COLORS[r] || "bg-gray-100 text-gray-700"}`}>
+                                            {ROLE_LABELS[r] || r}
+                                        </span>
+                                    ))}
                                     {emp.collarType && (
                                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${emp.collarType === "WHITE_COLLAR" ? "bg-gray-100 text-gray-600" : "bg-blue-50 text-blue-600"}`}>
                                             {emp.collarType === "WHITE_COLLAR" ? "White Collar" : "Blue Collar"}
@@ -702,7 +730,7 @@ export default function BranchEmployeesPage() {
                             {/* Card body: labeled fields, all visible inline */}
                             <dl className="grid grid-cols-[88px_1fr] gap-x-3 gap-y-1.5 text-[12px] min-w-0">
                                 <dt className="text-[#999] font-bold uppercase tracking-wide text-[10px] self-center">Branch</dt>
-                                <dd className="text-[#333] break-words min-w-0">{emp.department?.branch?.name || emp.scopedBranch?.name || "—"}</dd>
+                                <dd className="text-[#333] break-words min-w-0">{emp.originalBranch?.name || emp.department?.branch?.name || emp.scopedBranch?.name || "—"}</dd>
 
                                 <dt className="text-[#999] font-bold uppercase tracking-wide text-[10px] self-center">Department</dt>
                                 <dd className="text-[#333] break-words min-w-0">{emp.department?.name || "—"}</dd>
@@ -761,12 +789,15 @@ export default function BranchEmployeesPage() {
                                 <div className="min-w-0">
                                     <div className="font-bold text-[#1a1a1a] break-words">{emp.name}</div>
                                     <div className="flex flex-wrap gap-1 mt-1">
-                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${ROLE_COLORS[emp.role] || "bg-gray-100 text-gray-700"}`}>
-                                            {emp.role}
-                                        </span>
-                                        {(emp.department?.branch?.name || emp.scopedBranch?.name) && (
-                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700">
-                                                {emp.department?.branch?.name || emp.scopedBranch?.name}
+                                        {rolesFor(emp).map(r => (
+                                            <span key={r} className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${ROLE_COLORS[r] || "bg-gray-100 text-gray-700"}`}>
+                                                {ROLE_LABELS[r] || r}
+                                            </span>
+                                        ))}
+                                        {(emp.originalBranch?.name || emp.department?.branch?.name || emp.scopedBranch?.name) && (
+                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700" title={emp.isHomeBranch === false ? "Original (home) branch" : "Branch"}>
+                                                {emp.originalBranch?.name || emp.department?.branch?.name || emp.scopedBranch?.name}
+                                                {emp.isHomeBranch === false ? " · home" : ""}
                                             </span>
                                         )}
                                         {emp.collarType && (
