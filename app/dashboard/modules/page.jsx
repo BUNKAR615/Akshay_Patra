@@ -7,6 +7,7 @@ import { Icon } from "../../../components/ui/Icons";
 import { Avatar } from "../../../components/ui";
 import { api } from "../../../lib/clientApi";
 import { AP } from "../../../components/ui/tokens";
+import BrandLogo from "../../../components/ui/BrandLogo";
 
 const TAG_PALETTE = {
     Live: { bg: "rgba(0,48,135,.18)", tx: "#9DBDF0" },
@@ -47,14 +48,9 @@ export default function ModuleLauncher() {
             {/* Header bar */}
             <header className="flex items-center justify-between px-6 sm:px-11 py-6">
                 <div className="flex items-center gap-3">
-                    <div style={{ background: AP.orange }} className="w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0">
-                        <svg width="17" height="17" fill="none" viewBox="0 0 24 24">
-                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                    </div>
+                    <BrandLogo height={30} />
                     <div className="leading-tight">
-                        <p className="text-white font-extrabold text-[15px] tracking-tight">Akshaya Patra</p>
-                        <p className="text-white/45 text-[10px] font-bold uppercase tracking-[0.14em]">Admin Console</p>
+                        <p className="text-white/55 text-[11px] font-bold uppercase tracking-[0.14em]">Admin Console</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 sm:gap-4">

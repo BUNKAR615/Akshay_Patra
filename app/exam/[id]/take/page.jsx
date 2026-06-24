@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { api } from "../../../../lib/clientApi";
+import BrandLogo from "../../../../components/ui/BrandLogo";
 
 const ACCENT = "#F7941D";
 const GREEN = "#00843D";
@@ -236,11 +237,7 @@ export default function TakeExamPage() {
 
 // ─────────────────────────── Brand bits ───────────────────────────
 function Logo({ size = 32 }) {
-    return (
-        <div style={{ background: ACCENT, width: size, height: size }} className="rounded-[10px] flex items-center justify-center shrink-0">
-            <svg width={size * 0.5} height={size * 0.5} fill="none" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </div>
-    );
+    return <BrandLogo height={Math.round(size * 0.82)} />;
 }
 function LoadingScreen() {
     return (
@@ -265,7 +262,7 @@ function WelcomeScreen({ exam, total, hasProgress, onStart, onExit }) {
     return (
         <div className="flex-1 flex flex-col" style={{ background: "radial-gradient(1100px 520px at 50% -10%, #0A3FA0 0%, #0D1B3E 55%, #081230 100%)" }}>
             <header className="flex items-center justify-between px-5 sm:px-8 py-5">
-                <div className="flex items-center gap-2.5"><Logo size={34} /><div className="leading-tight"><p className="text-white font-extrabold text-[14px]">Akshaya Patra</p><p className="text-white/45 text-[10px] font-bold uppercase tracking-[0.14em]">Online Exam</p></div></div>
+                <div className="flex items-center gap-2.5"><Logo size={34} /><div className="leading-tight"><p className="text-white/55 text-[11px] font-bold uppercase tracking-[0.14em]">Online Exam</p></div></div>
                 <button onClick={onExit} className="text-white/70 hover:text-white text-[13px] font-bold border border-white/15 hover:border-white/30 rounded-lg px-3.5 py-1.5 cursor-pointer transition-colors">Exit</button>
             </header>
 

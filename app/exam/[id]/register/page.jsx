@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import BrandLogo from "../../../../components/ui/BrandLogo";
 
 const ACCENT = "#F7941D";
 const GREEN = "#00843D";
@@ -56,10 +57,8 @@ export default function ExternalRegisterPage() {
     return (
         <div className="min-h-screen min-h-[100dvh] flex flex-col" style={{ background: "radial-gradient(1100px 520px at 50% -10%, #0A3FA0 0%, #0D1B3E 55%, #081230 100%)" }}>
             <header className="flex items-center gap-2.5 px-5 sm:px-8 py-5">
-                <div style={{ background: ACCENT }} className="w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0">
-                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                </div>
-                <div className="leading-tight"><p className="text-white font-extrabold text-[14px]">Akshaya Patra</p><p className="text-white/45 text-[10px] font-bold uppercase tracking-[0.14em]">Exam Registration</p></div>
+                <BrandLogo height={30} />
+                <div className="leading-tight"><p className="text-white/55 text-[11px] font-bold uppercase tracking-[0.14em]">Exam Registration</p></div>
             </header>
 
             <div className="flex-1 flex items-center justify-center px-5 py-8">

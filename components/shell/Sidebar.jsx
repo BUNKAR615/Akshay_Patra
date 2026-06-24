@@ -8,6 +8,7 @@ import { filterAdminNav } from "../../lib/permissions";
 import { Ic } from "../ui/Icons";
 import { AP, ROLE_LABEL } from "../ui/tokens";
 import { Avatar } from "../ui";
+import BrandLogo from "../ui/BrandLogo";
 
 const SECTIONS_KEY = "ap.sidebar.sections";
 
@@ -123,26 +124,15 @@ export default function Sidebar({
             >
                 <div
                     className="h-14 flex items-center border-b border-white/10 gap-3 shrink-0"
-                    style={{ padding: isCollapsed ? "0 17px" : "0 18px" }}
+                    style={{ padding: isCollapsed ? "0 8px" : "0 18px" }}
                 >
                     <Link
                         href={DASHBOARD_HOME[role] || "/login"}
                         onClick={isMobile ? onDrawerClose : undefined}
-                        className="flex items-center gap-3 no-underline flex-1 min-w-0"
+                        className={`flex items-center no-underline flex-1 min-w-0 ${isCollapsed ? "justify-center" : ""}`}
+                        aria-label="Akshaya Patra"
                     >
-                        <div
-                            style={{ background: AP.orange }}
-                            className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
-                        >
-                            <svg width="13" height="13" fill="none" viewBox="0 0 24 24">
-                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                        </div>
-                        {!isCollapsed && (
-                            <span className="text-[13.5px] font-extrabold text-white tracking-tight whitespace-nowrap">
-                                Akshaya Patra
-                            </span>
-                        )}
+                        {isCollapsed ? <BrandLogo height={18} padX={4} padY={3} /> : <BrandLogo height={26} />}
                     </Link>
                     {/* Mobile-only close button — gives users a clear affordance
                         to dismiss the drawer beyond just tapping the backdrop. */}
