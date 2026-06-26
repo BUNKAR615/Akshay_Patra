@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import prisma from "../../../../lib/prisma"
 import { updateStage1Shortlist, updateBranchStage1Shortlist } from "../../../../lib/shortlistManager"
 import { stageGate } from "../../../../lib/stageScheduler"
+import { runAfterResponse } from "../../../../lib/afterResponse"
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -12,7 +13,7 @@ export async function POST(request: Request) {
     const userId = request.headers.get("x-user-id");
     const role = request.headers.get("x-user-role");
 
-    if (!userId || role !== 'EMPLOYEE') 
+    if (!userId || role !== 'EMPLOYEE')
       return NextResponse.json(
         { success: false, message: 'Unauthorized' },
         { status: 401 }
@@ -22,8 +23,8 @@ export async function POST(request: Request) {
     const { answers, completionTimeSeconds = 0 } = body
     // answers = [{ questionId: string, score: number }]
 
-    // Validate answers array
-    if (!answers || !Array.isArray(answers) || 
+    // ── Cheap in-memory validation first (no DB round-trips) ──
+    if (!answers || !Array.isArray(answers) ||
         answers.length === 0) {
       return NextResponse.json({
         success: false,
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // Get active quarter
+    // Get active quarter (needed before the per-quarter lookups below)
     const quarter = await prisma.quarter.findFirst({
       where: { status: 'ACTIVE' },
       select: { id: true, name: true }
@@ -52,36 +53,41 @@ export async function POST(request: Request) {
       message: 'No active quarter found.'
     }, { status: 404 })
 
-    // Stage 1 must be the active stage. Scheduled/paused/completed all close
-    // submissions with a friendly message. Quarters that predate stage control
-    // backfill on first read; any error fails open so they keep working.
-    const gate = await stageGate(quarter.id, 1)
+    // ── Fire every independent pre-check in ONE round-trip wave instead of
+    //    round-tripping to Neon one query at a time. ──
+    const [gate, existing, assignedQs, empUser] = await Promise.all([
+      // Stage 1 must be the active stage. Scheduled/paused/completed all close
+      // submissions with a friendly message. Fails OPEN on any DB hiccup.
+      stageGate(quarter.id, 1),
+      // Duplicate-submission early exit (the DB unique index is the real guard).
+      prisma.selfAssessment.findFirst({
+        where: { userId, quarterId: quarter.id },
+        select: { id: true }
+      }),
+      // Per-employee assigned questions (preferred validation set).
+      prisma.employeeQuarterQuestions.findMany({
+        where: { employeeId: userId, quarterId: quarter.id },
+        select: { questionId: true }
+      }),
+      // Department + branch — needed for the (deferred) shortlist recompute.
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { departmentId: true, department: { select: { branchId: true } } }
+      }),
+    ])
+
     if (!gate.open) return NextResponse.json({
       success: false,
       message: gate.message
     }, { status: 403 })
 
-    // Check duplicate submission
-    const existing = await prisma.selfAssessment.findFirst({
-      where: { 
-        userId: userId, 
-        quarterId: quarter.id 
-      }
-    })
     if (existing) return NextResponse.json({
       success: false,
       message: 'Assessment already submitted for this quarter.'
     }, { status: 409 })
 
     // Validate questionIds belong to this employee's assigned set (or quarter pool as fallback)
-    let validIds: string[] = [];
-
-    // Try per-employee assigned questions first
-    const assignedQs = await prisma.employeeQuarterQuestions.findMany({
-      where: { employeeId: userId, quarterId: quarter.id },
-      select: { questionId: true }
-    })
-
+    let validIds: string[]
     if (assignedQs.length > 0) {
       validIds = assignedQs.map(q => q.questionId)
     } else {
@@ -93,8 +99,9 @@ export async function POST(request: Request) {
       validIds = quarterQuestionIds.map(q => q.questionId)
     }
 
+    const validIdSet = new Set(validIds)
     for (const ans of answers) {
-      if (!validIds.includes(ans.questionId)) {
+      if (!validIdSet.has(ans.questionId)) {
         return NextResponse.json({
           success: false,
           message: 'Invalid question in submission. You must answer only your assigned questions.'
@@ -111,55 +118,52 @@ export async function POST(request: Request) {
       (rawScore / maxScore) * 100 * 100
     ) / 100
 
-    // Get employee department + branch info
-    const empUser = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { departmentId: true, department: { select: { branchId: true } } }
+    // ── CRITICAL PATH: persist the evaluation and nothing else. ──
+    // A single create is atomic on its own; the self_assessments_userId_quarterId
+    // unique index guarantees only ONE record can ever be saved for this
+    // employee + quarter, so concurrent double-submits collapse safely (P2002).
+    await prisma.selfAssessment.create({
+      data: {
+        userId,
+        quarterId: quarter.id,
+        answers,
+        rawScore,
+        maxScore,
+        normalizedScore,
+        completionTimeSeconds,
+        submittedAt: new Date()
+      }
     })
 
-    // Save in transaction
-    await prisma.$transaction(async (tx) => {
-      // Save assessment
-      await tx.selfAssessment.create({
-        data: {
-          userId: userId,
-          quarterId: quarter.id,
-          answers: answers,
-          rawScore,
-          maxScore,
-          normalizedScore,
-          completionTimeSeconds,
-          submittedAt: new Date()
+    const branchId = empUser?.department?.branchId
+    const departmentId = empUser?.departmentId
+
+    // ── DEFERRED: derived work that the user does not need to wait for. ──
+    // Shortlist ranking is recomputed-from-scratch + idempotent, so running it
+    // just after the response is both faster (perceived-instant submit) AND more
+    // correct under concurrency — by the time it runs, every racing insert has
+    // already committed and is included in the ranking.
+    runAfterResponse(async () => {
+      await prisma.$transaction(async (tx) => {
+        // Branch-level Stage 1 ranking (top N%)
+        if (branchId) {
+          await updateBranchStage1Shortlist(tx, branchId, quarter.id)
         }
-      })
+        // Legacy department-level shortlist (backward compatibility)
+        if (departmentId) {
+          await updateStage1Shortlist(tx, departmentId, quarter.id)
+        }
+      }, { timeout: 20000 })
 
-      // Update branch-level stage 1 ranking
-      if (empUser?.department?.branchId) {
-        await updateBranchStage1Shortlist(
-          tx,
-          empUser.department.branchId,
-          quarter.id
-        )
-      }
-
-      // Also update legacy department-level shortlist for backward compatibility
-      if (empUser?.departmentId) {
-        await updateStage1Shortlist(
-          tx,
-          empUser.departmentId,
-          quarter.id
-        )
-      }
-
-      // Create notification
-      await tx.notification.create({
+      // Submission-confirmation notification (non-critical).
+      await prisma.notification.create({
         data: {
-          userId: userId,
+          userId,
           message: `Your self-assessment for ${quarter.name} has been submitted successfully.`,
           isRead: false
         }
       })
-    }, { timeout: 20000 })
+    })
 
     return NextResponse.json({
       success: true,

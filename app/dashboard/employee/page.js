@@ -68,10 +68,11 @@ export default function EmployeeDashboard() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ answers, completionTimeSeconds }),
             });
-            try {
-                const st = await api("/api/employee/current-status");
-                setStatus(st);
-            } catch { /* ignore */ }
+            // The submit response already confirms success — flip to the
+            // "submitted" view locally instead of round-tripping for status
+            // again. This keeps the transition instant and avoids re-fetching
+            // data we already know.
+            setStatus((prev) => (prev ? { ...prev, submitted: true } : prev));
             setQuestions([]);
             setSuccessMsg("Assessment submitted successfully! मूल्यांकन सफलतापूर्वक जमा किया गया।");
             window.scrollTo({ top: 0, behavior: "smooth" });
