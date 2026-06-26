@@ -10,7 +10,7 @@ import { normalizeScore, calculateFinalScore, calculateBranchStage3Score } from 
 import { getEvaluatorPool } from "../../../../lib/evaluatorPool";
 import { regenerateBranchStage3 } from "../../../../lib/branchPromotion";
 import { collarPrismaFilter, effectiveCollar } from "../../../../lib/questionCollar";
-import { isStageOpen } from "../../../../lib/stageControl";
+import { stageGate } from "../../../../lib/stageScheduler";
 
 /**
  * POST /api/cluster-manager/evaluate
@@ -26,10 +26,9 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         const activeQuarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
         if (!activeQuarter) return notFound("No active quarter. Evaluations are closed.");
 
-        // Stage 3 must be the active stage (paused → submissions closed).
-        if (!(await isStageOpen(activeQuarter.id, 3))) {
-            return fail("Stage 3 (Cluster Manager evaluation) is paused. Submissions are currently closed.", 403);
-        }
+        // Stage 3 must be the active stage (scheduled/paused/completed → closed).
+        const gate = await stageGate(activeQuarter.id, 3);
+        if (!gate.open) return fail(gate.message, 403);
 
         const employee = await prisma.user.findUnique({
             where: { id: data.employeeId },

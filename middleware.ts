@@ -12,6 +12,9 @@ const PUBLIC_PATHS = [
   '/api/auth/select-branch',
   '/api/auth/select-role',
   '/api/health',
+  // Cron jobs carry a Vercel-issued Authorization header (not a session JWT),
+  // so they bypass JWT verification here and self-authenticate with CRON_SECRET.
+  '/api/cron/',
 ]
 
 // Maps a /dashboard/<segment> URL prefix to the role permitted to access it.

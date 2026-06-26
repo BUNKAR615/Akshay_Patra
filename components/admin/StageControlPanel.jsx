@@ -1,113 +1,136 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "../../lib/clientApi";
 
 /**
- * Stage Control panel — lives on the Start Quarter page (QuarterView).
+ * Stage Scheduling panel — the admin workflow console on the Quarter page.
  *
- * Lets the admin run the four evaluation stages sequentially: start the
- * quarter (done by the parent), pause the active stage to unlock the next,
- * resume any unlocked stage, and close the quarter (done by the parent).
+ * Renders one management card per stage (§12) showing status, scheduled and
+ * actual times, response progress, and the action buttons. The schedule engine
+ * lives server-side (lib/stageScheduler.js); this panel is a thin, polling
+ * client over GET/POST /api/admin/quarters/stages. It re-fetches every 20s so
+ * automatic open/close/advance transitions appear without a manual refresh.
  *
- * Self-contained and AUTHORITATIVE: it derives everything it shows from its
- * own GET /api/admin/quarters/stage-state (which always resolves the active
- * quarter), so it can never display a stage state that belongs to a different
- * quarter than the one it controls. The `quarter` prop is used only as a
- * refetch trigger — when the parent starts or closes a quarter, the prop's
- * id/status changes and the panel reloads.
- *
- * The per-stage status logic below mirrors lib/stageControl.js. It is
- * duplicated (not imported) on purpose — that module imports prisma and must
- * never be pulled into a client bundle.
+ * Authoritative source of truth is the server response — the panel never
+ * computes status locally, so it can't drift from the engine.
  */
 
-// Kept in sync with STAGE_META in lib/stageControl.js.
-const STAGES = [
-    { stage: 1, label: "Self Assessment", who: "Employees submit self-assessments" },
-    { stage: 2, label: "BM / HOD Evaluation", who: "Branch Managers & HODs evaluate" },
-    { stage: 3, label: "Cluster Manager", who: "Cluster Managers evaluate" },
-    { stage: 4, label: "HR Evaluation", who: "HR completes the final round" },
-];
+const STATUS_STYLE = {
+    SCHEDULED: { chip: "bg-gray-100 text-gray-600 border-gray-300", dot: "bg-gray-400", label: "Scheduled" },
+    ACTIVE: { chip: "bg-[#E8F5E9] text-[#00843D] border-[#A5D6A7]", dot: "bg-[#00843D]", label: "Active" },
+    PAUSED: { chip: "bg-[#FFF8E1] text-[#F57C00] border-[#FFE082]", dot: "bg-[#F57C00]", label: "Paused" },
+    COMPLETED: { chip: "bg-[#E3F2FD] text-ap-blue border-[#90CAF9]", dot: "bg-ap-blue", label: "Completed" },
+};
 
-// "ACTIVE" | "PAUSED" for a stage given the live state. No stage is ever
-// locked — every stage can be paused/resumed in any order (mirrors
-// stageStatus in lib/stageControl.js).
-function statusOf(state, stage) {
-    return state?.activeStage === stage ? "ACTIVE" : "PAUSED";
+// ── datetime-local ⇄ ISO helpers ──
+// datetime-local works in the browser's local timezone; the engine stores
+// absolute instants. new Date(localValue) interprets the value as local time,
+// so round-tripping through toISOString is timezone-correct.
+function toLocalInput(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fromLocalInput(value) {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+function fmt(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function StatusChip({ status }) {
-    const map = {
-        ACTIVE: "bg-[#E8F5E9] text-[#00843D] border-[#A5D6A7]",
-        PAUSED: "bg-[#FFF8E1] text-[#F57C00] border-[#FFE082]",
-        LOCKED: "bg-gray-100 text-gray-500 border-gray-200",
-        CLOSED: "bg-[#FFEBEE] text-[#D32F2F] border-[#EF9A9A]",
-    };
-    const label = { ACTIVE: "Active", PAUSED: "Paused", LOCKED: "Locked", CLOSED: "Closed" }[status];
+    const s = STATUS_STYLE[status] || STATUS_STYLE.SCHEDULED;
     return (
-        <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border whitespace-nowrap ${map[status]}`}>
-            {label}
+        <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border whitespace-nowrap ${s.chip}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+            {s.label}
         </span>
     );
 }
 
 export default function StageControlPanel({ quarter: quarterProp, onChanged }) {
-    const [data, setData] = useState(null); // { quarter, state, enabled } from GET
+    const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [busy, setBusy] = useState(0); // stage number being mutated, -1 for INIT, 0 idle
+    const [busy, setBusy] = useState({ stage: 0, action: "" });
     const [msg, setMsg] = useState({ type: "", text: "" });
+    const [editing, setEditing] = useState(0); // stageNumber whose schedule form is open
+    const [draft, setDraft] = useState({ scheduledStart: "", scheduledEnd: "" });
+    const pollRef = useRef(null);
 
-    const load = useCallback(async () => {
-        setLoading(true);
+    const load = useCallback(async (showSpinner = true) => {
+        if (showSpinner) setLoading(true);
         try {
-            const d = await api("/api/admin/quarters/stage-state");
+            const d = await api("/api/admin/quarters/stages");
             setData(d);
         } catch (e) {
-            setMsg({ type: "error", text: e.message || "Could not load stage control." });
+            setMsg({ type: "error", text: e.message || "Could not load stage scheduling." });
         }
-        setLoading(false);
+        if (showSpinner) setLoading(false);
     }, []);
 
-    // Reload when the parent's quarter changes (start / close / switch).
-    useEffect(() => {
-        load();
-    }, [quarterProp?.id, quarterProp?.status, load]);
+    // Reload when the parent quarter changes (start / close / switch).
+    useEffect(() => { load(true); }, [quarterProp?.id, quarterProp?.status, load]);
 
-    const act = async (action, stage) => {
-        setBusy(action === "INIT" ? -1 : stage);
+    // Poll for automatic transitions while the panel is mounted and the quarter
+    // is active. Silent refresh — no spinner, no clobbering an open edit form.
+    useEffect(() => {
+        if (pollRef.current) clearInterval(pollRef.current);
+        if (data?.quarter?.status === "ACTIVE") {
+            pollRef.current = setInterval(() => { if (!editing) load(false); }, 20000);
+        }
+        return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    }, [data?.quarter?.status, editing, load]);
+
+    const act = async (action, stage, extra = {}) => {
+        setBusy({ stage, action });
         setMsg({ type: "", text: "" });
         try {
-            const d = await api("/api/admin/quarters/stage-state", {
+            const d = await api("/api/admin/quarters/stages", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action, stage }),
+                body: JSON.stringify({ action, stage, ...extra }),
             });
-            setData((prev) => ({ ...prev, ...d }));
+            setData(d);
             setMsg({ type: "success", text: d.message || "Updated." });
+            if (action === "SCHEDULE") setEditing(0);
             onChanged?.();
         } catch (e) {
             setMsg({ type: "error", text: e.message || "Action failed." });
         }
-        setBusy(0);
+        setBusy({ stage: 0, action: "" });
+    };
+
+    const openEdit = (s) => {
+        setDraft({ scheduledStart: toLocalInput(s.scheduledStart), scheduledEnd: toLocalInput(s.scheduledEnd) });
+        setEditing(s.stageNumber);
+        setMsg({ type: "", text: "" });
+    };
+
+    const saveSchedule = (stageNumber) => {
+        act("SCHEDULE", stageNumber, {
+            scheduledStart: fromLocalInput(draft.scheduledStart),
+            scheduledEnd: fromLocalInput(draft.scheduledEnd),
+        });
     };
 
     const quarter = data?.quarter || null;
-    const state = data?.state || null;
-    const enabled = !!data?.enabled;
     const closed = quarter?.status === "CLOSED";
+    const stages = data?.stages || [];
 
-    // No quarter to control (none ever started) — show nothing; the Start form
-    // on the page is what matters in that case.
     if (!loading && !quarter) return null;
-
-    const activeStage = state?.activeStage || 0;
-    const activeMeta = STAGES.find((s) => s.stage === activeStage);
 
     return (
         <div className="bg-white border border-ap-border shadow-card rounded-card p-6">
             <div className="flex items-center justify-between gap-3 mb-1">
-                <h3 className="text-lg font-semibold text-ap-blue">Stage Control</h3>
+                <h3 className="text-lg font-semibold text-ap-blue">Stage Scheduling</h3>
                 {quarter && (
                     <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border whitespace-nowrap ${closed ? "bg-[#FFEBEE] text-[#D32F2F] border-[#EF9A9A]" : "bg-[#E3F2FD] text-ap-blue border-[#90CAF9]"}`}>
                         {quarter.name} · {closed ? "Closed" : "Active"}
@@ -115,7 +138,7 @@ export default function StageControlPanel({ quarter: quarterProp, onChanged }) {
                 )}
             </div>
             <p className="text-sm text-gray-500 mb-4">
-                Pause or resume any stage at any time. Only the active stage accepts submissions — resuming a stage makes it the active one and pauses the others.
+                Schedule each stage to open and close automatically, or take manual control at any time. Only one stage is active at a time — starting or resuming a stage pauses the others.
             </p>
 
             {msg.text && (
@@ -125,87 +148,171 @@ export default function StageControlPanel({ quarter: quarterProp, onChanged }) {
             )}
 
             {loading ? (
-                <div className="py-6 text-center text-sm text-gray-500">Loading stage control…</div>
-            ) : closed ? (
-                <div className="space-y-2.5">
-                    <div className="bg-[#FFEBEE] border border-[#EF9A9A] text-[#D32F2F] rounded-lg px-4 py-2.5 text-[13px]">
-                        This quarter is closed. Stage control is locked and no further submissions are accepted.
-                    </div>
-                    <StageList state={state} closed busy={busy} onAct={act} />
-                </div>
-            ) : !enabled ? (
-                // In-flight quarter that predates stage control — opt in explicitly.
-                <div className="bg-ap-blue-50 border border-[#90CAF9] rounded-lg px-4 py-4">
-                    <p className="text-[13px] text-gray-700 mb-3">
-                        Sequential stage control isn&apos;t enabled for this quarter yet. Enabling it sets <span className="font-bold">Stage 1</span> as the active stage; you can then pause forward through the stages. Until enabled, all stages keep accepting submissions as before.
-                    </p>
-                    <button
-                        onClick={() => act("INIT")}
-                        disabled={busy !== 0}
-                        className="min-h-[40px] px-5 py-2 bg-ap-blue hover:bg-ap-green text-white text-sm font-bold rounded-lg disabled:bg-gray-300 disabled:text-gray-500 cursor-pointer disabled:cursor-not-allowed transition-colors"
-                    >
-                        {busy === -1 ? "Enabling…" : "Enable Stage Control"}
-                    </button>
-                </div>
+                <div className="py-6 text-center text-sm text-gray-500">Loading stage scheduling…</div>
             ) : (
                 <>
-                    <div className="mb-3 text-[13px] text-gray-700">
-                        {activeMeta
-                            ? <>Active stage: <span className="font-bold text-ap-blue">Stage {activeMeta.stage} — {activeMeta.label}</span></>
-                            : <span className="text-gray-500">No stage is currently active. Resume a stage to reopen submissions.</span>}
-                    </div>
-                    <StageList state={state} busy={busy} onAct={act} />
+                    {closed && (
+                        <div className="mb-4 bg-[#FFEBEE] border border-[#EF9A9A] text-[#D32F2F] rounded-lg px-4 py-2.5 text-[13px]">
+                            This quarter is closed. Stage scheduling is locked and no further submissions are accepted.
+                        </div>
+                    )}
+                    <ol className="space-y-3">
+                        {stages.map((s) => (
+                            <StageCard
+                                key={s.stageNumber}
+                                stage={s}
+                                closed={closed}
+                                busy={busy}
+                                editing={editing === s.stageNumber}
+                                draft={draft}
+                                setDraft={setDraft}
+                                onEdit={() => openEdit(s)}
+                                onCancelEdit={() => setEditing(0)}
+                                onSave={() => saveSchedule(s.stageNumber)}
+                                onAct={act}
+                            />
+                        ))}
+                    </ol>
                 </>
             )}
         </div>
     );
 }
 
-function StageList({ state, closed = false, busy, onAct }) {
-    return (
-        <ol className="space-y-2.5">
-            {STAGES.map((s) => {
-                const status = closed ? "CLOSED" : statusOf(state, s.stage);
-                const isActive = status === "ACTIVE";
-                const rowBusy = busy === s.stage;
-                // Single toggle per stage: Pause when active, otherwise Resume.
-                // Every stage is always controllable unless the quarter is
-                // closed or this row's request is in flight.
-                const canToggle = !closed && !rowBusy;
-                const badgeColor = isActive
-                    ? "bg-[#00843D] text-white"
-                    : status === "PAUSED"
-                        ? "bg-[#F57C00] text-white"
-                        : "bg-gray-200 text-gray-500";
+function StageCard({ stage: s, closed, busy, editing, draft, setDraft, onEdit, onCancelEdit, onSave, onAct }) {
+    const style = STATUS_STYLE[s.status] || STATUS_STYLE.SCHEDULED;
+    const isBusy = busy.stage === s.stageNumber;
+    const m = s.metrics || { submitted: 0, total: 0, remaining: 0, percentage: 0 };
 
-                return (
-                    <li key={s.stage} className="flex flex-col sm:flex-row sm:items-center gap-3 border border-ap-border rounded-xl px-4 py-3">
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <span className={`w-7 h-7 shrink-0 rounded-full grid place-items-center text-[13px] font-bold ${badgeColor}`}>
-                                {s.stage}
-                            </span>
-                            <div className="min-w-0">
-                                <p className="font-semibold text-gray-900 text-sm">Stage {s.stage} — {s.label}</p>
-                                <p className="text-[12px] text-gray-500 truncate">{s.who}</p>
-                            </div>
+    // Intelligent enable/disable (§12). Everything is locked once the quarter
+    // is closed or this card has a request in flight.
+    const lock = closed || isBusy;
+    const canStart = !lock && s.status !== "ACTIVE";
+    const canPause = !lock && s.status === "ACTIVE";
+    const canResume = !lock && s.status === "PAUSED";
+    const canComplete = !lock && s.status !== "COMPLETED";
+    const canMoveNext = !lock && s.stageNumber < 5;
+
+    const confirmAct = (action, label) => {
+        if (typeof window !== "undefined" && !window.confirm(label)) return;
+        onAct(action, s.stageNumber);
+    };
+
+    return (
+        <li className="border border-ap-border rounded-xl overflow-hidden">
+            <div className="flex flex-col gap-3 px-4 py-3.5">
+                {/* Header row */}
+                <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <span className={`w-8 h-8 shrink-0 rounded-full grid place-items-center text-[13px] font-bold text-white ${style.dot}`}>{s.stageNumber}</span>
+                        <div className="min-w-0">
+                            <p className="font-semibold text-gray-900 text-sm">Stage {s.stageNumber} — {s.label}</p>
+                            <p className="text-[12px] text-gray-500 truncate">{s.who}</p>
                         </div>
-                        <div className="flex items-center gap-2.5 shrink-0">
-                            <StatusChip status={status} />
-                            <button
-                                onClick={() => onAct(isActive ? "PAUSE" : "RESUME", s.stage)}
-                                disabled={!canToggle}
-                                className={`min-h-[36px] min-w-[112px] px-4 py-1.5 text-[13px] font-bold rounded-lg cursor-pointer disabled:cursor-not-allowed transition-colors ${
-                                    isActive
-                                        ? "bg-white border border-[#F57C00] text-[#F57C00] hover:bg-[#FFF8E1] disabled:opacity-50"
-                                        : "bg-ap-blue text-white hover:bg-ap-green disabled:bg-gray-200 disabled:text-gray-500"
-                                }`}
-                            >
-                                {rowBusy ? "…" : isActive ? `Pause Stage ${s.stage}` : `Resume Stage ${s.stage}`}
+                    </div>
+                    <StatusChip status={s.status} />
+                </div>
+
+                {/* Schedule + actuals + progress grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 text-[12px]">
+                    <Field label="Scheduled start" value={fmt(s.scheduledStart)} />
+                    <Field label="Scheduled end" value={fmt(s.scheduledEnd)} />
+                    <Field label="Actual start" value={fmt(s.actualStart)} />
+                    <Field label="Actual end" value={fmt(s.actualEnd)} />
+                </div>
+
+                {/* Progress (submission stages only) */}
+                {s.submission && (
+                    <div>
+                        <div className="flex items-center justify-between text-[12px] mb-1">
+                            <span className="text-gray-500">Responses</span>
+                            <span className="text-gray-700 font-semibold">
+                                {m.submitted} / {m.total} · {m.remaining} remaining · {m.percentage}%
+                            </span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                            <div className={`h-full ${style.dot}`} style={{ width: `${Math.min(m.percentage, 100)}%` }} />
+                        </div>
+                    </div>
+                )}
+
+                {/* Inline schedule editor */}
+                {editing ? (
+                    <div className="bg-ap-blue-50 border border-[#90CAF9] rounded-lg p-3 space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <label className="block">
+                                <span className="block text-[12px] text-gray-700 font-medium mb-1">Start date &amp; time</span>
+                                <input
+                                    type="datetime-local"
+                                    value={draft.scheduledStart}
+                                    onChange={(e) => setDraft((d) => ({ ...d, scheduledStart: e.target.value }))}
+                                    className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ap-blue"
+                                />
+                            </label>
+                            <label className="block">
+                                <span className="block text-[12px] text-gray-700 font-medium mb-1">End date &amp; time</span>
+                                <input
+                                    type="datetime-local"
+                                    value={draft.scheduledEnd}
+                                    onChange={(e) => setDraft((d) => ({ ...d, scheduledEnd: e.target.value }))}
+                                    className="w-full px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ap-blue"
+                                />
+                            </label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button onClick={onSave} disabled={isBusy} className="min-h-[36px] px-4 py-1.5 text-[13px] font-bold rounded-lg bg-ap-blue text-white hover:bg-ap-green disabled:bg-gray-300 disabled:text-gray-500 cursor-pointer disabled:cursor-not-allowed transition-colors">
+                                {isBusy && busy.action === "SCHEDULE" ? "Saving…" : "Save Schedule"}
+                            </button>
+                            <button onClick={() => setDraft((d) => ({ ...d, scheduledStart: "", scheduledEnd: "" }))} disabled={isBusy} className="min-h-[36px] px-3 py-1.5 text-[13px] font-medium rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
+                                Clear
+                            </button>
+                            <button onClick={onCancelEdit} disabled={isBusy} className="min-h-[36px] px-3 py-1.5 text-[13px] font-medium rounded-lg text-gray-500 hover:text-gray-700 cursor-pointer transition-colors ml-auto">
+                                Cancel
                             </button>
                         </div>
-                    </li>
-                );
-            })}
-        </ol>
+                    </div>
+                ) : (
+                    /* Action buttons */
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                        <ActionBtn disabled={closed || isBusy} onClick={onEdit} variant="ghost">Edit Schedule</ActionBtn>
+                        <ActionBtn disabled={!canStart} onClick={() => onAct("START_NOW", s.stageNumber)} variant="primary" busy={isBusy && busy.action === "START_NOW"}>
+                            {s.status === "COMPLETED" ? "Reopen / Start Now" : "Start Now"}
+                        </ActionBtn>
+                        <ActionBtn disabled={!canPause} onClick={() => onAct("PAUSE", s.stageNumber)} variant="warn" busy={isBusy && busy.action === "PAUSE"}>Pause</ActionBtn>
+                        <ActionBtn disabled={!canResume} onClick={() => onAct("RESUME", s.stageNumber)} variant="primary" busy={isBusy && busy.action === "RESUME"}>Resume</ActionBtn>
+                        <ActionBtn disabled={!canComplete} onClick={() => confirmAct("COMPLETE", `Complete Stage ${s.stageNumber} now? Submissions will be locked.`)} variant="ghost" busy={isBusy && busy.action === "COMPLETE"}>Complete Stage</ActionBtn>
+                        {canMoveNext && (
+                            <ActionBtn disabled={!canMoveNext} onClick={() => confirmAct("MOVE_NEXT", `Move to Stage ${s.stageNumber + 1}? Stage ${s.stageNumber} will be completed and Stage ${s.stageNumber + 1} activated.`)} variant="primary" busy={isBusy && busy.action === "MOVE_NEXT"}>Move to Next Stage</ActionBtn>
+                        )}
+                    </div>
+                )}
+            </div>
+        </li>
+    );
+}
+
+function Field({ label, value }) {
+    return (
+        <div className="min-w-0">
+            <p className="text-gray-400 uppercase tracking-wide text-[10px] font-semibold">{label}</p>
+            <p className="text-gray-700 truncate">{value}</p>
+        </div>
+    );
+}
+
+function ActionBtn({ children, onClick, disabled, variant = "ghost", busy = false }) {
+    const styles = {
+        primary: "bg-ap-blue text-white hover:bg-ap-green disabled:bg-gray-200 disabled:text-gray-400",
+        warn: "bg-white border border-[#F57C00] text-[#F57C00] hover:bg-[#FFF8E1] disabled:opacity-40 disabled:border-gray-200 disabled:text-gray-400",
+        ghost: "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:text-gray-400",
+    };
+    return (
+        <button
+            onClick={onClick}
+            disabled={disabled}
+            className={`min-h-[36px] px-3.5 py-1.5 text-[13px] font-bold rounded-lg cursor-pointer disabled:cursor-not-allowed transition-colors ${styles[variant]}`}
+        >
+            {busy ? "…" : children}
+        </button>
     );
 }

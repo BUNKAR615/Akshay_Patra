@@ -11,7 +11,7 @@ import { notifyAllEmployees, createNotification } from "../../../../../lib/notif
 import { getDepartmentSize, logSmallDepartmentRule } from "../../../../../lib/department-rules";
 import { assignQuestionsToEmployees } from "../../../../../lib/questionAssigner";
 import { resetHodStateForQuarters } from "../../../../../lib/auth/quarterReset";
-import { writeStageState, initialStageState } from "../../../../../lib/stageControl";
+import { ensureStages } from "../../../../../lib/stageScheduler";
 
 // ── Fisher-Yates (Knuth) shuffle — true O(n) randomness ──
 function fisherYatesShuffle(arr) {
@@ -156,6 +156,12 @@ export const POST = withPermission("quarter.edit", async (request, { user }) => 
             // ── Assign per-employee randomized SELF question sets ──
             const stats = await assignQuestionsToEmployees(tx, q.id, selfPoolForAssignment, selfPerEmployee);
 
+            // ── Initialise the 5 stage rows (Stage 1 active immediately). ──
+            // Done inside the same transaction so the quarter is never committed
+            // without its stage schedule. Stage 1 seeds its scheduled window from
+            // the quarter dates; the admin can edit every stage afterwards.
+            await ensureStages(q.id, { tx, actorId: user.userId, activeStage: 1, quarterStart: start, quarterEnd: end });
+
             return { quarter: q, assignmentStats: stats };
         }, { maxWait: 8000, timeout: 20000 });
 
@@ -170,17 +176,8 @@ export const POST = withPermission("quarter.edit", async (request, { user }) => 
             data: { userId: user.userId, action: "QUARTER_STARTED", details: { quarterId: quarter.id, name: quarter.name, questionSelectionMode: mode, questionCount: selectedSelf.length, totalLocked: allSelectedIds.length, selfCount: selectedSelf.length, bmCount: selectedBm.length, cmCount: selectedCm.length, priorHodReset } },
         }).catch((e) => { console.error("[QUARTER-START] Audit log failed:", e); });
 
-        // ── Initialize sequential stage control ──
-        // Stage 1 opens immediately; Stages 2-4 stay locked until the admin
-        // pauses their way forward from the Quarter page. Best-effort: if this
-        // write fails, submission gating falls back to permissive (readStageState
-        // returns null), so the quarter is never left in a broken state.
-        try {
-            await writeStageState(quarter.id, user.userId, initialStageState(), { event: "START" });
-        } catch (e) {
-            console.error("[QUARTER-START] Stage-state init failed:", e);
-            warnings.push("Stage control could not be initialized; enable it from the Quarter page.");
-        }
+        // Stage rows were initialised inside the start transaction above
+        // (Stage 1 active immediately, Stages 2-5 scheduled). Nothing to do here.
 
         // Notify all employees
         try {

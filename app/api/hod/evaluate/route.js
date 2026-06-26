@@ -8,7 +8,7 @@ import { evaluateSchema } from "../../../../lib/validators";
 import { normalizeScore, calculateBranchStage2Score } from "../../../../lib/scoreCalculator";
 import { regenerateBranchStage2 } from "../../../../lib/branchPromotion";
 import { createNotification } from "../../../../lib/notifications";
-import { isStageOpen } from "../../../../lib/stageControl";
+import { stageGate } from "../../../../lib/stageScheduler";
 
 /**
  * POST /api/hod/evaluate
@@ -26,10 +26,9 @@ export const POST = withRole(["HOD"], async (request, { user }) => {
         const quarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
         if (!quarter) return fail("No active quarter");
 
-        // Stage 2 must be the active stage (paused → submissions closed).
-        if (!(await isStageOpen(quarter.id, 2))) {
-            return fail("Stage 2 (BM / HOD evaluation) is paused. Submissions are currently closed.", 403);
-        }
+        // Stage 2 must be the active stage (scheduled/paused/completed → closed).
+        const gate = await stageGate(quarter.id, 2);
+        if (!gate.open) return fail(gate.message, 403);
 
         // Verify HOD has this employee assigned
         const employee = await prisma.user.findUnique({

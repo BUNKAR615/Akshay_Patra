@@ -71,6 +71,7 @@ model User {
   updatedAt             DateTime                   @updatedAt
   designation           String?
   mobile                String?
+  email                 String?
   auditLogs             AuditLog[]
   bestEmployees         BestEmployee[]
   bmReceived            BranchManagerEvaluation[]  @relation("EmployeeBMEval")
@@ -163,6 +164,9 @@ model Quarter {
   branchShortlist4    BranchShortlistStage4[]
   branchBestEmployees BranchBestEmployee[]
   empHodAssignments   EmployeeHodAssignment[]
+
+  // Stage Scheduling System — per-stage schedule, status & history.
+  stages              QuarterStage[]
 
   @@index([status])
   @@map("quarters")
@@ -858,6 +862,62 @@ model UserPermission {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  STAGE SCHEDULING SYSTEM
+//
+//  Per-stage schedule + status for the 5-stage evaluation workflow:
+//    1 Self · 2 BM/HOD · 3 Cluster Manager · 4 HR · 5 Results (display-only).
+//  Effective status is reconciled lazily from the schedule on every read
+//  (lib/stageScheduler.js): a stage auto-opens at scheduledStart, auto-closes
+//  at scheduledEnd, and the next stage auto-advances when the current one
+//  ends. The admin retains full manual control (Start Now / Pause / Resume /
+//  Complete / Move to Next). At most ONE stage is ACTIVE at a time.
+// ═══════════════════════════════════════════════════════════════
+
+/// QuarterStage — one row per (quarter, stageNumber 1..5).
+model QuarterStage {
+  id             String               @id @default(cuid())
+  quarterId      String
+  stageNumber    Int //                1..5
+  status         StageStatus          @default(SCHEDULED)
+  scheduledStart DateTime?
+  scheduledEnd   DateTime?
+  actualStart    DateTime? //          first time the stage actually opened
+  actualEnd      DateTime? //          time the stage completed/closed
+  pausedAt       DateTime?
+  resumedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  quarter        Quarter              @relation(fields: [quarterId], references: [id], onDelete: Cascade)
+  history        StageStatusHistory[]
+
+  @@unique([quarterId, stageNumber])
+  @@index([quarterId])
+  @@map("quarter_stages")
+}
+
+/// StageStatusHistory — append-only audit trail of every stage status change
+/// (manual or automatic), for the auditing requirement.
+model StageStatusHistory {
+  id          String       @id @default(cuid())
+  stageId     String
+  quarterId   String //      denormalised for fast per-quarter queries
+  stageNumber Int
+  fromStatus  StageStatus?
+  toStatus    StageStatus
+  event       String //      START_NOW | PAUSE | RESUME | COMPLETE | MOVE_NEXT | AUTO_OPEN | AUTO_CLOSE | SCHEDULE_EDIT | INIT | ...
+  trigger     String       @default("manual") // manual | auto | system
+  actorId     String? //     null for automatic transitions
+  detail      Json?
+  createdAt   DateTime     @default(now())
+  stage       QuarterStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  @@index([quarterId, stageNumber])
+  @@index([stageId])
+  @@map("stage_status_history")
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  ENUMS
 // ═══════════════════════════════════════════════════════════════
 
@@ -885,6 +945,13 @@ enum CollarType {
 enum QuarterStatus {
   ACTIVE
   CLOSED
+}
+
+enum StageStatus {
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  COMPLETED
 }
 
 enum QuestionCategory {
