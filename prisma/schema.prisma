@@ -71,7 +71,6 @@ model User {
   updatedAt             DateTime                   @updatedAt
   designation           String?
   mobile                String?
-  email                 String?
   auditLogs             AuditLog[]
   bestEmployees         BestEmployee[]
   bmReceived            BranchManagerEvaluation[]  @relation("EmployeeBMEval")
