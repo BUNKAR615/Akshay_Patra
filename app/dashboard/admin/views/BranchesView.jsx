@@ -133,7 +133,8 @@ export default function BranchesView({ branches, branchLoading, refetchBranches,
                 )}
                 {importResult && (
                     <div className="border border-ap-border rounded-lg overflow-hidden">
-                        <table className="w-full text-xs">
+                        <div className="overflow-x-auto">
+                        <table className="w-full text-xs min-w-[460px]">
                             <thead className="bg-gray-50 text-gray-700">
                                 <tr>
                                     <th className="text-left px-3 py-2 font-bold">Branch</th>
@@ -153,6 +154,7 @@ export default function BranchesView({ branches, branchLoading, refetchBranches,
                                 ))}
                             </tbody>
                         </table>
+                        </div>
                         {(importResult.errors?.length > 0 || importResult.skipped?.length > 0) && (
                             <div className="px-3 py-2 text-[11px] text-gray-500 bg-gray-50 border-t border-ap-border">
                                 {importResult.skipped?.length || 0} row(s) skipped, {importResult.errors?.length || 0} error(s), {importResult.duplicatesInFile || 0} duplicate(s) in file.
