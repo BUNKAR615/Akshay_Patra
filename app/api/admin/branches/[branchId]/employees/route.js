@@ -8,6 +8,7 @@ import { ok, fail, notFound, forbidden, conflict, created, handleApiError } from
 import { requireBranchScope } from "../../../../../../lib/auth/requireBranchScope";
 import { resolveBranch } from "../../../../../../lib/resolveBranch";
 import { resolveBranchDisplayRoles } from "../../../../../../lib/branchRoleDisplay";
+import { compareForSheet } from "../../../../../../lib/employeeSheetOrder";
 import { defaultPasswordFor } from "../../../../../../lib/auth/defaultPassword";
 
 // Only these two empCodes can add employees (mirrors /api/admin/employees POST)
@@ -189,10 +190,11 @@ export const GET = withPermission("branches.employees", async (request, { params
             return { ...u, originalBranch, isHomeBranch, branchRoles: assignedRoles, displayRoles };
         };
 
-        const finalUsers = [...merged.values()].map(annotate).sort((a, b) => {
-            if (a.role !== b.role) return String(a.role).localeCompare(String(b.role));
-            return String(a.name || "").localeCompare(String(b.name || ""));
-        });
+        // Spec rule 7 — every branch sheet begins with Branch Manager, then
+        // Cluster Manager, HR Personnel, Committee, HODs, then regular employees
+        // (ties broken by name). Ranking uses each row's branch-relative
+        // displayRoles so a visiting role-holder sorts by the hat they wear HERE.
+        const finalUsers = [...merged.values()].map(annotate).sort(compareForSheet);
 
         return ok({ employees: finalUsers, branch: { id: branch.id, name: branch.name, branchType: branch.branchType } });
     } catch (err) {

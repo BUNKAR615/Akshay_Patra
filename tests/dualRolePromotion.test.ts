@@ -1,20 +1,24 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import bcrypt from "bcryptjs";
 
 /**
- * Detach-on-promote contract for dual-role users.
+ * Promote-to-Branch-Manager contract for `applyBmAssignment`.
  *
- * Scenario the system must support:
- *   Rajesh exists as a regular EMPLOYEE in Jaipur (User.role=EMPLOYEE,
- *   User.departmentId=<jaipur-dept>, User.branchId=<jaipur>). Admin promotes
- *   him to Cluster Manager of Jodhpur via the Org Structure page. After
- *   promotion, his User row must be detached from the Jaipur anchors so:
- *     1. He no longer appears in the Jaipur employee list.
- *     2. A re-upload of the Jaipur Excel cannot silently demote him back.
- *     3. Login resolves him exclusively as the Jodhpur CM.
+ * An employee always has ONE original (home) branch; a role is an assignment,
+ * not a move. So promoting someone to Branch Manager must behave by case:
  *
- * This file exercises the BM detach contract through `applyBmAssignment`
- * (a pure helper that takes a tx mock). The CM/HR/Committee assign routes
- * follow the same shape — see route handlers for the equivalent block.
+ *   (1) EXISTING EMPLOYEE (has a department) → PRESERVE their home-branch
+ *       identity and set up DUAL-LOGIN:
+ *         - departmentId / collarType are left untouched (they stay in their
+ *           home branch's employee list — spec rule 5);
+ *         - password    = empCode      → employee dashboard (spec rule 3);
+ *         - passwordHod = Firstname_## → Branch Manager dashboard.
+ *
+ *   (2) PURE STAFF (no department) → original detach-on-promote: staff formula
+ *       is the primary password and the employee anchors stay null.
+ *
+ * The CM/HR/Committee assign routes follow the same shape — see those route
+ * handlers for the equivalent block.
  */
 
 // Mock prisma BEFORE importing the helpers. syncLegacyBmDepartmentCache runs
@@ -61,40 +65,69 @@ function makeTx() {
     };
 }
 
-describe("applyBmAssignment — detach-on-promote", () => {
+describe("applyBmAssignment — promote to Branch Manager", () => {
     let ctx: ReturnType<typeof makeTx>;
 
     beforeEach(() => {
         ctx = makeTx();
     });
 
-    it("nulls departmentId, passwordHod, collarType when promoting an existing employee to BM", async () => {
+    it("PRESERVES employee identity + sets dual-login when promoting an existing employee to BM", async () => {
         // Rajesh is currently an EMPLOYEE with a Jaipur department anchor.
-        ctx.spies.userFindUnique.mockResolvedValueOnce({ departmentId: "dept-jaipur-ops" });
+        ctx.spies.userFindUnique.mockResolvedValueOnce({
+            departmentId: "dept-jaipur-ops",
+            empCode: "1800012",
+            name: "Rajesh Kumar Sharma",
+        });
         ctx.spies.deptFindUnique.mockResolvedValueOnce(null); // dept lookup ignored — diff branch
 
         await applyBmAssignment(ctx.tx, {
             userId: "u-rajesh",
             branchId: "branch-jodhpur",
             assignedBy: "admin-1",
-            passwordHash: "hash-rajesh-12",
+            passwordHash: "hash-rajesh-12", // the staff-format ("Firstname_##") hash
         });
 
         expect(ctx.spies.userUpdate).toHaveBeenCalledTimes(1);
         const updateArgs = ctx.spies.userUpdate.mock.calls[0][0];
         expect(updateArgs.where).toEqual({ id: "u-rajesh" });
+        // Home-branch identity preserved — departmentId / collarType NOT nulled.
+        expect(updateArgs.data.departmentId).toBeUndefined();
+        expect(updateArgs.data.collarType).toBeUndefined();
+        // Role + managed branch set; staff hash routed to the SECONDARY password.
+        expect(updateArgs.data.role).toBe("BRANCH_MANAGER");
+        expect(updateArgs.data.branchId).toBe("branch-jodhpur");
+        expect(updateArgs.data.passwordHod).toBe("hash-rajesh-12");
+        // PRIMARY password is reset to a real bcrypt hash of the empCode so the
+        // employee login keeps working.
+        expect(typeof updateArgs.data.password).toBe("string");
+        expect(updateArgs.data.password).not.toBe("hash-rajesh-12");
+        expect(await bcrypt.compare("1800012", updateArgs.data.password)).toBe(true);
+    });
+
+    it("DETACHES a pure-staff BM (no department): staff formula is the primary password", async () => {
+        ctx.spies.userFindUnique.mockResolvedValueOnce({ departmentId: null, empCode: "BM001", name: "Pure Staff" });
+
+        await applyBmAssignment(ctx.tx, {
+            userId: "u-rajesh",
+            branchId: "branch-jodhpur",
+            assignedBy: "admin-1",
+            passwordHash: "hash-staff-01",
+        });
+
+        const updateArgs = ctx.spies.userUpdate.mock.calls[0][0];
         expect(updateArgs.data).toMatchObject({
             role: "BRANCH_MANAGER",
             branchId: "branch-jodhpur",
             departmentId: null,
             passwordHod: null,
             collarType: null,
-            password: "hash-rajesh-12",
+            password: "hash-staff-01",
         });
     });
 
     it("creates the BranchManagerAssignment row keyed by branchId", async () => {
-        ctx.spies.userFindUnique.mockResolvedValueOnce({ departmentId: null });
+        ctx.spies.userFindUnique.mockResolvedValueOnce({ departmentId: null, empCode: "BM001", name: "Pure Staff" });
 
         await applyBmAssignment(ctx.tx, {
             userId: "u-rajesh",
@@ -109,7 +142,11 @@ describe("applyBmAssignment — detach-on-promote", () => {
     });
 
     it("returns the prior departmentId so the caller can drive the legacy sync", async () => {
-        ctx.spies.userFindUnique.mockResolvedValueOnce({ departmentId: "dept-jaipur-ops" });
+        ctx.spies.userFindUnique.mockResolvedValueOnce({
+            departmentId: "dept-jaipur-ops",
+            empCode: "1800012",
+            name: "Rajesh Kumar Sharma",
+        });
 
         const result = await applyBmAssignment(ctx.tx, {
             userId: "u-rajesh",
@@ -124,8 +161,8 @@ describe("applyBmAssignment — detach-on-promote", () => {
         expect(ctx.spies.deptRoleMappingUpsert).not.toHaveBeenCalled();
     });
 
-    it("skips password reset when no passwordHash is supplied (still detaches)", async () => {
-        ctx.spies.userFindUnique.mockResolvedValueOnce({ departmentId: null });
+    it("skips primary-password reset for a pure-staff BM when no passwordHash is supplied (still detaches)", async () => {
+        ctx.spies.userFindUnique.mockResolvedValueOnce({ departmentId: null, empCode: "BM001", name: "Pure Staff" });
 
         await applyBmAssignment(ctx.tx, {
             userId: "u-rajesh",
