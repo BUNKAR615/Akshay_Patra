@@ -28,6 +28,12 @@ export default function UsersView({ currentUser }) {
     // every user when granting access to someone new.
     const [operatorsOnly, setOperatorsOnly] = useState(true);
 
+    // Stable "people with special access" roster — fetched independently of the
+    // master list's search/filter so the landing roster + stats never change as
+    // the admin types in the search box.
+    const [operators, setOperators] = useState([]);
+    const [operatorsLoading, setOperatorsLoading] = useState(true);
+
     const [selectedId, setSelectedId] = useState(null);
     const [selectedUser, setSelectedUser] = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
@@ -70,6 +76,25 @@ export default function UsersView({ currentUser }) {
         loadUsers(search, operatorsOnly);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [search, operatorsOnly]);
+
+    // Roster of everyone with special access (admin grant or any key), kept
+    // separate from the filterable master list so it's a steady source of truth.
+    const loadOperators = async () => {
+        setOperatorsLoading(true);
+        try {
+            const d = await api(`/api/admin/users?operators=1`);
+            setOperators(d.users || []);
+        } catch (err) {
+            console.error("[Users] operators failed:", err);
+        }
+        setOperatorsLoading(false);
+    };
+    useEffect(() => {
+        loadOperators();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const adminGrantCount = useMemo(() => operators.filter((o) => o.isAdminGrant).length, [operators]);
 
     // ── Detail ──
     const selectUser = async (id) => {
@@ -140,6 +165,7 @@ export default function UsersView({ currentUser }) {
             setSaveMsg({ type: "success", text: "Access saved. Page-level changes apply on the user's next sign-in." });
             toast.success("Access saved");
             loadUsers(); // refresh Operator badges in the list
+            loadOperators(); // refresh the special-access roster + stats
         } catch (err) {
             setSaveMsg({ type: "error", text: err.message || "Failed to save" });
         }
@@ -153,9 +179,22 @@ export default function UsersView({ currentUser }) {
 
     return (
         <div className="space-y-4">
-            <div>
-                <h2 className="text-xl font-bold text-ap-blue">User Management</h2>
-                <p className="text-sm text-gray-500">Grant individual users a slice of admin access. Admins always have full access.</p>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <h2 className="text-xl font-bold text-ap-blue">User Management</h2>
+                    <p className="text-sm text-gray-500">Grant individual users a slice of admin access. Admins always have full access.</p>
+                </div>
+                {/* At-a-glance stats for special access */}
+                <div className="flex gap-2.5">
+                    <div className="rounded-xl border border-ap-border bg-white px-4 py-2 text-center shadow-card">
+                        <p className="m-0 text-[20px] font-extrabold leading-none text-ap-blue tabular-nums">{operatorsLoading ? "—" : operators.length}</p>
+                        <p className="m-0 mt-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">Special access</p>
+                    </div>
+                    <div className="rounded-xl border border-ap-orange/30 bg-ap-orange-50/60 px-4 py-2 text-center shadow-card">
+                        <p className="m-0 text-[20px] font-extrabold leading-none text-ap-orange tabular-nums">{operatorsLoading ? "—" : adminGrantCount}</p>
+                        <p className="m-0 mt-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">Full admins</p>
+                    </div>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 items-start">
@@ -183,10 +222,15 @@ export default function UsersView({ currentUser }) {
                                         onClick={() => selectUser(u.id)}
                                         className={`w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors cursor-pointer border ${active ? "bg-ap-blue-50 border-ap-blue/30" : "bg-white border-transparent hover:bg-gray-50"}`}
                                     >
-                                        <Avatar name={u.name} size={32} />
+                                        <Avatar name={u.name} size={32} color={u.isAdminGrant ? "#F7941D" : undefined} />
                                         <span className="flex-1 min-w-0">
                                             <span className="block text-[13px] font-bold text-gray-900 truncate">{u.name}</span>
-                                            <span className="block text-[11px] text-gray-400 truncate">{u.empCode || "—"} · {u.role}</span>
+                                            <span className="block text-[11px] text-gray-400 truncate">
+                                                {u.empCode || "—"} · {u.role}
+                                                {u.isOperator && !u.isAdminGrant && (u.modules?.length || u.grantCount)
+                                                    ? ` · ${u.modules?.length ? `${u.modules.length} module${u.modules.length === 1 ? "" : "s"}` : `${u.grantCount} perm${u.grantCount === 1 ? "" : "s"}`}`
+                                                    : ""}
+                                            </span>
                                         </span>
                                         {u.isAdminGrant ? (
                                             <Badge label={u.operatorTitle || "Admin"} color="orange" />
@@ -203,9 +247,12 @@ export default function UsersView({ currentUser }) {
                 {/* ── Detail panel ── */}
                 <Card className="p-4 sm:p-5">
                     {!selectedId ? (
-                        <div className="py-16 text-center text-gray-400">
-                            <p className="text-sm font-semibold">Select a user to manage their access</p>
-                        </div>
+                        <AccessRoster
+                            operators={operators}
+                            loading={operatorsLoading}
+                            onSelect={selectUser}
+                            onBrowseAll={() => setOperatorsOnly(false)}
+                        />
                     ) : detailLoading ? (
                         <p className="text-sm text-gray-400 py-10 text-center">Loading access…</p>
                     ) : !selectedUser ? (
@@ -277,6 +324,68 @@ export default function UsersView({ currentUser }) {
                         </>
                     )}
                 </Card>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Landing roster — every user the admin has granted special access to, shown as
+ * cards with their access role, what modules they can reach, and a click-to-
+ * manage affordance. This is the page's answer to "who has special access?".
+ */
+function AccessRoster({ operators, loading, onSelect, onBrowseAll }) {
+    if (loading) {
+        return <p className="text-sm text-gray-400 py-16 text-center">Loading people with special access…</p>;
+    }
+    if (operators.length === 0) {
+        return (
+            <div className="py-16 text-center">
+                <div className="text-4xl mb-2" aria-hidden="true">🔑</div>
+                <p className="text-sm font-bold text-gray-700 mb-1">No one has special access yet</p>
+                <p className="text-xs text-gray-400 mb-4">Grant a user a slice of admin access and they’ll appear here.</p>
+                <Btn variant="ghost" size="sm" onClick={onBrowseAll}>Browse all users</Btn>
+            </div>
+        );
+    }
+    return (
+        <div>
+            <div className="flex items-center justify-between mb-3">
+                <div>
+                    <p className="m-0 text-base font-extrabold text-gray-900">People with special access</p>
+                    <p className="m-0 text-xs text-gray-400">{operators.length} {operators.length === 1 ? "person has" : "people have"} been granted admin-area access. Select anyone to manage it.</p>
+                </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {operators.map((u) => (
+                    <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => onSelect(u.id)}
+                        className="text-left rounded-xl border border-ap-border bg-white p-3 hover:border-ap-blue/40 hover:shadow-card-hover transition-all cursor-pointer flex flex-col gap-2"
+                    >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                            <Avatar name={u.name} size={36} color={u.isAdminGrant ? "#F7941D" : undefined} />
+                            <div className="min-w-0 flex-1">
+                                <p className="m-0 text-[13px] font-bold text-gray-900 truncate">{u.name}</p>
+                                <p className="m-0 text-[11px] text-gray-400 truncate">{u.empCode || "—"} · {u.role}</p>
+                            </div>
+                            <Badge label={u.operatorTitle || (u.isAdminGrant ? "Full admin" : "Operator")} color={u.isAdminGrant ? "orange" : "blue"} />
+                        </div>
+                        {/* What they can reach */}
+                        <div className="flex flex-wrap gap-1">
+                            {u.isAdminGrant ? (
+                                <span className="text-[10px] font-bold text-ap-orange bg-ap-orange-50 border border-ap-orange/20 rounded-full px-2 py-0.5">Full admin access</span>
+                            ) : (u.modules || []).length === 0 ? (
+                                <span className="text-[10px] text-gray-400">{u.grantCount} permission{u.grantCount === 1 ? "" : "s"}</span>
+                            ) : (
+                                (u.modules || []).map((mod) => (
+                                    <span key={mod} className="text-[10px] font-semibold text-gray-600 bg-gray-100 border border-ap-border rounded-full px-2 py-0.5">{mod}</span>
+                                ))
+                            )}
+                        </div>
+                    </button>
+                ))}
             </div>
         </div>
     );

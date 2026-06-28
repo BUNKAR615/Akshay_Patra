@@ -6,6 +6,26 @@ import { withRole } from "../../../../lib/withRole";
 import { ok, handleApiError } from "../../../../lib/api-response";
 
 /**
+ * Map a granted-key list to the human module labels it touches, in
+ * PERMISSION_TREE order. Pure presentation — derived from the same keys the
+ * detail screen already exposes; no permission logic is changed here.
+ */
+function summarizeModules(keys = []) {
+    const has = (pred) => keys.some(pred);
+    const mods = [];
+    if (has((k) => k.startsWith("employees."))) mods.push("Employees");
+    if (has((k) => k.startsWith("departments."))) mods.push("Departments");
+    if (has((k) => k.startsWith("branch:") || k.startsWith("branches."))) mods.push("Branches");
+    if (has((k) => k.startsWith("org.assign."))) mods.push("Org Structure");
+    if (has((k) => k.startsWith("pipeline."))) mods.push("Pipeline");
+    if (has((k) => k.startsWith("quarter."))) mods.push("Quarters");
+    if (has((k) => k.startsWith("questions."))) mods.push("Questions");
+    if (has((k) => k.startsWith("audit."))) mods.push("Audit Logs");
+    if (has((k) => k.startsWith("reports."))) mods.push("Reports");
+    return mods;
+}
+
+/**
  * GET /api/admin/users
  *
  * Lightweight, searchable user directory for the User Management screen.
@@ -67,6 +87,9 @@ export const GET = withRole(["ADMIN"], async (request) => {
                 isAdminGrant,
                 grantCount,
                 isOperator,
+                // Human module labels this user can reach — for the at-a-glance
+                // "special access" roster. Empty for admin-grant (they get all).
+                modules: isAdminGrant ? [] : summarizeModules(u.permission?.permissions || []),
                 // Admin-named "page role" (e.g. "HR Admin"), shown alongside the user.
                 operatorTitle: isOperator ? (u.permission?.operatorTitle || null) : null,
             };
