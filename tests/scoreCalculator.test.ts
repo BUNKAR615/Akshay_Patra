@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
     normalizeScore,
     calculateBranchStage2Score,
+    calculateBranchStage3Score,
     calculateBranchFinalScore,
 } from "../lib/scoreCalculator";
 
@@ -32,6 +33,52 @@ describe("calculateBranchStage2Score (60 self / 40 evaluator)", () => {
         const r = calculateBranchStage2Score(50, 80);
         // 50 * 0.6 = 30, 80 * 0.4 = 32, total 62
         expect(r.combined).toBe(62);
+    });
+});
+
+describe("fixed stage weightage — independent of question count", () => {
+    // The admin may configure any number of questions per stage; the total
+    // stage weightage must not change. Each question automatically carries
+    // stageWeight/questionCount marks.
+    const COUNTS = [5, 8, 10, 12, 15, 20];
+
+    it("identical per-question performance yields the same normalized score at any count", () => {
+        for (const n of COUNTS) {
+            expect(normalizeScore(2 * n, n)).toBe(100); // all "Strongly Agree" (+2)
+            expect(normalizeScore(1 * n, n)).toBe(50);  // all "Agree" (+1)
+            expect(normalizeScore(0, n)).toBe(0);       // all "Neutral" (0)
+            expect(normalizeScore(-2 * n, n)).toBe(-100); // all "Strongly Disagree" (-2)
+        }
+    });
+
+    it("Stage 2 total stays at its fixed 60/40 weightage for any question count", () => {
+        for (const selfN of COUNTS) {
+            for (const evalN of COUNTS) {
+                const r = calculateBranchStage2Score(
+                    normalizeScore(2 * selfN, selfN),
+                    normalizeScore(2 * evalN, evalN)
+                );
+                expect(r.combined).toBe(100); // 60 + 40, regardless of counts
+            }
+        }
+    });
+
+    it("Stage 3 total stays at its fixed 40/30/30 weightage for any question count", () => {
+        for (const n of COUNTS) {
+            const full = normalizeScore(2 * n, n);
+            const r = calculateBranchStage3Score(full, full, full);
+            expect(r.combined).toBe(100); // 40 + 30 + 30, regardless of counts
+        }
+    });
+
+    it("a single answered question is worth exactly stageWeight/questionCount marks", () => {
+        // One "+2" answer among n questions (rest Neutral) → the self stage's
+        // 60-mark Stage-2 share contributes 60/n marks.
+        for (const n of COUNTS) {
+            const selfNorm = normalizeScore(2, n); // one +2, rest 0
+            const r = calculateBranchStage2Score(selfNorm, 0);
+            expect(r.selfContribution).toBeCloseTo(60 / n, 1);
+        }
     });
 });
 

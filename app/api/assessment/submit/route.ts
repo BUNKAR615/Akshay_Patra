@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import prisma from "../../../../lib/prisma"
 import { updateStage1Shortlist, updateBranchStage1Shortlist } from "../../../../lib/shortlistManager"
+import { normalizeScore } from "../../../../lib/scoreCalculator"
 import { stageGate } from "../../../../lib/stageScheduler"
 import { runAfterResponse } from "../../../../lib/afterResponse"
 
@@ -100,6 +101,7 @@ export async function POST(request: Request) {
     }
 
     const validIdSet = new Set(validIds)
+    const seenIds = new Set<string>()
     for (const ans of answers) {
       if (!validIdSet.has(ans.questionId)) {
         return NextResponse.json({
@@ -107,16 +109,37 @@ export async function POST(request: Request) {
           message: 'Invalid question in submission. You must answer only your assigned questions.'
         }, { status: 400 })
       }
+      // A duplicated questionId would double that question's share of the
+      // stage weight — every question must carry exactly stageWeight/count.
+      if (seenIds.has(ans.questionId)) {
+        return NextResponse.json({
+          success: false,
+          message: 'Duplicate answer in submission. Each question can only be answered once.'
+        }, { status: 400 })
+      }
+      seenIds.add(ans.questionId)
     }
 
-    // CALCULATE SCORE — simple addition
+    // When a per-employee assigned set exists, ALL of it must be answered —
+    // a partial submission would silently shift the per-question weight
+    // (the form auto-records 0 for timed-out questions, so a full set is
+    // always sent by the real client). The quarter-pool fallback has no
+    // fixed expected count, so it keeps the membership-only validation.
+    if (assignedQs.length > 0 && answers.length !== assignedQs.length) {
+      return NextResponse.json({
+        success: false,
+        message: `Incomplete submission. All ${assignedQs.length} assigned questions must be answered.`
+      }, { status: 400 })
+    }
+
+    // CALCULATE SCORE — raw sum, then the count-independent percentage that
+    // keeps the total stage weightage fixed for any question count (the
+    // shared normalizeScore is the single source of truth for this).
     const rawScore = answers.reduce(
       (sum: number, ans: any) => sum + ans.score, 0
     )
     const maxScore = answers.length * 2
-    const normalizedScore = Math.round(
-      (rawScore / maxScore) * 100 * 100
-    ) / 100
+    const normalizedScore = normalizeScore(rawScore, answers.length)
 
     // ── CRITICAL PATH: persist the evaluation and nothing else. ──
     // A single create is atomic on its own; the self_assessments_userId_quarterId

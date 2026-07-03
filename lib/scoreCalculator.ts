@@ -1,3 +1,15 @@
+// ═══════════════════════════════════════════════════════════════
+//  Fixed stage weightage — the core invariant of the scoring engine.
+//
+//  Every questionnaire stage (self / BM / HOD / CM) is first normalized here
+//  to a question-count-independent percentage: rawScore is the sum of the
+//  -2..+2 Likert answers, maxPossible = questionCount × 2. The stage
+//  combiners below then apply FIXED weights to that percentage, so the total
+//  weightage of a stage never depends on how many questions the admin
+//  configured — each question automatically carries stageWeight/questionCount
+//  marks. 10 questions → each worth W/10; 20 questions → each worth W/20.
+//  Adding, removing, or reordering questions never changes a stage's total.
+// ═══════════════════════════════════════════════════════════════
 function normalizeScore(rawScore: number, questionCount: number): number {
     const maxPossible = questionCount * 2
     if (maxPossible === 0) return 0

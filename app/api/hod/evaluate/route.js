@@ -9,6 +9,7 @@ import { normalizeScore, calculateBranchStage2Score } from "../../../../lib/scor
 import { regenerateBranchStage2 } from "../../../../lib/branchPromotion";
 import { createNotification } from "../../../../lib/notifications";
 import { stageGate } from "../../../../lib/stageScheduler";
+import { collarPrismaFilter } from "../../../../lib/questionCollar";
 
 /**
  * POST /api/hod/evaluate
@@ -87,20 +88,30 @@ export const POST = withRole(["HOD"], async (request, { user }) => {
         // app/api/admin/quarters/start/route.js and the comment on
         // app/api/hod/questions/route.js). Validating against `level: "HOD"`
         // here was rejecting every submission because no HOD-level rows
-        // exist in QuarterQuestion. Align with the questions route so the
-        // IDs the dashboard renders are the IDs we accept.
+        // exist in QuarterQuestion. Mirror the questions route exactly —
+        // including its BLUE_COLLAR restriction (HODs only evaluate BC
+        // staff) — so the IDs the dashboard renders are the IDs we accept.
         const hodQuestions = await prisma.quarterQuestion.findMany({
-            where: { quarterId: quarter.id, question: { level: "BRANCH_MANAGER" } },
+            where: { quarterId: quarter.id, question: { level: "BRANCH_MANAGER", ...collarPrismaFilter("BLUE_COLLAR") } },
             select: { questionId: true },
         });
         const validQIds = new Set(hodQuestions.map(q => q.questionId));
+        // The whole set must be answered exactly once — a partial or duplicated
+        // submission would silently shift the per-question weight, breaking the
+        // fixed-stage-weightage invariant. Same guards as the BM and CM routes.
+        if (answers.length !== validQIds.size) {
+            return fail(`Must answer all ${validQIds.size} questions. Received ${answers.length}.`);
+        }
+        const seen = new Set();
         for (const ans of answers) {
             if (!validQIds.has(ans.questionId)) return fail("Invalid question in submission");
+            if (seen.has(ans.questionId)) return fail("Duplicate answer in submission");
+            seen.add(ans.questionId);
         }
 
         // Calculate scores
         const rawScore = answers.reduce((sum, a) => sum + a.score, 0);
-        const hodNormalized = normalizeScore(rawScore, answers.length);
+        const hodNormalized = normalizeScore(rawScore, validQIds.size);
 
         // Get self-assessment score
         const selfAssessment = await prisma.selfAssessment.findUnique({
