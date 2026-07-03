@@ -12,12 +12,14 @@ const CATEGORY_COLORS = {
     INTEGRITY: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
 };
 
+// Display labels are numeric (1-5) but the submitted score values are unchanged:
+// 1 = Strongly Disagree (-2), 2 = Disagree (-1), 3 = Neutral (0), 4 = Agree (+1), 5 = Strongly Agree (+2)
 const SCALE = [
-    { value: -2, label: "Strongly Disagree", labelHindi: "पूर्णतः असहमत", short: "-2", color: "bg-[#D32F2F] text-white border-[#D32F2F]", idle: "bg-white border border-[#D32F2F] text-[#D32F2F] hover:bg-[#D32F2F]/10" },
-    { value: -1, label: "Disagree", labelHindi: "असहमत", short: "-1", color: "bg-[#F57C00] text-white border-[#F57C00]", idle: "bg-white border border-[#F57C00] text-[#F57C00] hover:bg-[#F57C00]/10" },
-    { value: 0, label: "Neutral", labelHindi: "तटस्थ", short: "0", color: "bg-[#616161] text-white border-[#616161]", idle: "bg-white border border-[#616161] text-[#616161] hover:bg-[#616161]/10" },
-    { value: 1, label: "Agree", labelHindi: "सहमत", short: "+1", color: "bg-[#388E3C] text-white border-[#388E3C]", idle: "bg-white border border-[#388E3C] text-[#388E3C] hover:bg-[#388E3C]/10" },
-    { value: 2, label: "Strongly Agree", labelHindi: "पूर्णतः सहमत", short: "+2", color: "bg-[#1B5E20] text-white border-[#1B5E20]", idle: "bg-white border border-[#1B5E20] text-[#1B5E20] hover:bg-[#1B5E20]/10" },
+    { value: -2, label: "1", short: "-2", color: "bg-[#D32F2F] text-white border-[#D32F2F]", idle: "bg-white border border-[#D32F2F] text-[#D32F2F] hover:bg-[#D32F2F]/10" },
+    { value: -1, label: "2", short: "-1", color: "bg-[#F57C00] text-white border-[#F57C00]", idle: "bg-white border border-[#F57C00] text-[#F57C00] hover:bg-[#F57C00]/10" },
+    { value: 0, label: "3", short: "0", color: "bg-[#616161] text-white border-[#616161]", idle: "bg-white border border-[#616161] text-[#616161] hover:bg-[#616161]/10" },
+    { value: 1, label: "4", short: "+1", color: "bg-[#388E3C] text-white border-[#388E3C]", idle: "bg-white border border-[#388E3C] text-[#388E3C] hover:bg-[#388E3C]/10" },
+    { value: 2, label: "5", short: "+2", color: "bg-[#1B5E20] text-white border-[#1B5E20]", idle: "bg-white border border-[#1B5E20] text-[#1B5E20] hover:bg-[#1B5E20]/10" },
 ];
 
 const LANG_MODES = ["Both", "English", "हिंदी"];
@@ -290,7 +292,7 @@ export default function TimedEvaluationForm({
                                 ${s.idle} hover:border-${s.color.split(' ')[0].replace('bg-', '')}
                             `}
                         >
-                            <span className="block text-[14px] sm:text-[13px] md:text-[15px] font-bold opacity-90 leading-tight text-center px-1 break-words w-full">{langMode === "हिंदी" ? s.labelHindi : langMode === "English" ? s.label : `${s.label} / ${s.labelHindi}`}</span>
+                            <span className="block text-[18px] sm:text-[17px] md:text-[20px] font-bold opacity-90 leading-tight text-center px-1 break-words w-full">{s.label}</span>
                         </button>
                     ))}
                 </div>

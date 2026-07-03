@@ -156,7 +156,7 @@ export default function EmployeeDashboard() {
                     <div className="bg-[#E3F2FD] border border-[#90CAF9] rounded-xl p-5 mb-6">
                         <h3 className="text-[18px] font-bold text-[#003087] mb-2">Self Assessment</h3>
                         <p className="text-[#333333] text-[15px] leading-relaxed">
-                            Please rate your performance honestly on each question below from -2 (Strongly Disagree) to +2 (Strongly Agree).
+                            Please rate your performance honestly on each question below from 1 (lowest) to 5 (highest).
                         </p>
                     </div>
                     <TimedEvaluationForm
