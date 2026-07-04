@@ -33,6 +33,16 @@ function shuffle(arr) {
     return a;
 }
 
+// Short human date for assignment timestamps ("4 Jul 2026").
+function fmtDate(d) {
+    if (!d) return "";
+    try {
+        return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+    } catch {
+        return "";
+    }
+}
+
 // ── Shared status vocabulary (spec §7 — keep it to four elegant colors) ──
 //   Assigned → green · Pending → orange · HOD → blue · Not eligible → grey
 function CollarBadge({ collar }) {
@@ -77,73 +87,92 @@ const drawerApi = async (url, opts) => {
 };
 
 /**
- * ManageEmployeesDrawer — assign blue-collar employees to an HOD.
- * Workflow (spec §5): pick a department → see its Stage-1-cleared blue-collar
- * employees → multi-select with checkboxes → Assign. A compact search filters
- * the loaded department list by name/code. Employees already under another HOD
- * show that, and the API enforces the "one HOD per BC at a time" rule.
- * All network calls are identical to the previous inline panel.
+ * AssignEmployeesDrawer — assign blue-collar employees to an HOD.
+ * Two-panel picker: the left panel lists EVERY department in the branch; the
+ * right panel lists the selected department's Stage-1-qualified blue-collar
+ * employees with multi-select checkboxes. Typing in the search switches the
+ * right panel to branch-wide results (name/code across ALL departments).
+ * Every department's pool is fetched once per open and cached client-side, so
+ * switching departments, searching, and selecting across departments are all
+ * instant. Endpoints are unchanged — GET blue-collar-pool (±departmentId) and
+ * POST hod/employees, which enforces the one-HOD-per-employee rule.
  */
-function ManageEmployeesDrawer({ open, hodUserId, hodName, onClose, onChanged }) {
+function AssignEmployeesDrawer({ open, hodUserId, hodName, onClose, onChanged }) {
     const toast = useToast();
-    const [bcDepts, setBcDepts] = useState([]);
-    const [bcDeptsLoading, setBcDeptsLoading] = useState(false);
-    const [openDeptId, setOpenDeptId] = useState("");
-    const [deptEmployees, setDeptEmployees] = useState([]);
-    const [deptEmployeesLoading, setDeptEmployeesLoading] = useState(false);
-    const [selectedIds, setSelectedIds] = useState(new Set());
-    const [currentEmployees, setCurrentEmployees] = useState([]);
-    const [currentLoading, setCurrentLoading] = useState(false);
+    const [depts, setDepts] = useState([]);
+    const [poolByDept, setPoolByDept] = useState({});
+    const [loading, setLoading] = useState(false);
+    const [activeDeptId, setActiveDeptId] = useState("");
+    const [selectedIds, setSelectedIds] = useState(() => new Set());
     const [search, setSearch] = useState("");
     const [busy, setBusy] = useState(false);
 
-    const loadBcDepts = useCallback(async () => {
-        setBcDeptsLoading(true);
-        try {
-            const data = await drawerApi("/api/branch-manager/hod/blue-collar-pool");
-            setBcDepts(data.departments || []);
-        } catch (e) {
-            toast.error(e.message);
-        } finally {
-            setBcDeptsLoading(false);
-        }
-    }, [toast]);
+    const firstName = (hodName || "").split(" ")[0] || "this HOD";
 
-    const loadCurrentEmployees = useCallback(async () => {
-        setCurrentLoading(true);
-        try {
-            const data = await drawerApi(`/api/branch-manager/hod/employees?hodUserId=${encodeURIComponent(hodUserId)}`);
-            setCurrentEmployees(data.employees || []);
-        } catch (e) {
-            toast.error(e.message);
-        } finally {
-            setCurrentLoading(false);
-        }
-    }, [hodUserId, toast]);
-
-    const loadDeptEmployees = useCallback(async (deptId) => {
-        setDeptEmployeesLoading(true);
-        setSelectedIds(new Set());
-        try {
-            const data = await drawerApi(`/api/branch-manager/hod/blue-collar-pool?departmentId=${encodeURIComponent(deptId)}`);
-            setDeptEmployees(data.employees || []);
-        } catch (e) {
-            toast.error(e.message);
-            setDeptEmployees([]);
-        } finally {
-            setDeptEmployeesLoading(false);
-        }
-    }, [toast]);
-
-    // Lazy load — only when the drawer opens (avoids duplicate queries while closed).
+    // One load per open: the department list, then every non-empty department's
+    // pool in parallel. All later filtering happens client-side — no refetch on
+    // every department click, and search can span the whole branch.
     useEffect(() => {
         if (!open) return;
-        setOpenDeptId("");
-        setDeptEmployees([]);
+        let cancelled = false;
         setSearch("");
-        loadBcDepts();
-        loadCurrentEmployees();
-    }, [open, loadBcDepts, loadCurrentEmployees]);
+        setSelectedIds(new Set());
+        setActiveDeptId("");
+        setDepts([]);
+        setPoolByDept({});
+        setLoading(true);
+        (async () => {
+            try {
+                const base = await drawerApi("/api/branch-manager/hod/blue-collar-pool");
+                if (cancelled) return;
+                const list = base.departments || [];
+                setDepts(list);
+                const first = list.find((d) => d.employeeCount > 0) || list[0];
+                if (first) setActiveDeptId(first.id);
+                const entries = await Promise.all(list.map(async (d) => {
+                    if (!d.employeeCount) return [d.id, []];
+                    try {
+                        const data = await drawerApi(`/api/branch-manager/hod/blue-collar-pool?departmentId=${encodeURIComponent(d.id)}`);
+                        return [d.id, (data.employees || []).map((e) => ({ ...e, departmentId: d.id, departmentName: d.name }))];
+                    } catch {
+                        return [d.id, []];
+                    }
+                }));
+                if (!cancelled) setPoolByDept(Object.fromEntries(entries));
+            } catch (e) {
+                if (!cancelled) toast.error(e.message);
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [open, toast]);
+
+    const allEmployees = useMemo(() => Object.values(poolByDept).flat(), [poolByDept]);
+    const searching = search.trim().length > 0;
+
+    // Right-panel rows: department view by default, branch-wide when searching.
+    const visible = useMemo(() => {
+        if (searching) {
+            const q = search.trim().toLowerCase();
+            return allEmployees.filter((e) =>
+                e.name.toLowerCase().includes(q) || (e.empCode || "").toLowerCase().includes(q)
+            );
+        }
+        return poolByDept[activeDeptId] || [];
+    }, [searching, search, allEmployees, poolByDept, activeDeptId]);
+
+    const mineTotal = useMemo(
+        () => allEmployees.filter((e) => e.currentHod?.id === hodUserId).length,
+        [allEmployees, hodUserId]
+    );
+    const mineByDept = useMemo(() => {
+        const m = {};
+        for (const [deptId, emps] of Object.entries(poolByDept)) {
+            m[deptId] = emps.filter((e) => e.currentHod?.id === hodUserId).length;
+        }
+        return m;
+    }, [poolByDept, hodUserId]);
 
     const handleToggle = (id) => {
         setSelectedIds(prev => {
@@ -156,9 +185,8 @@ function ManageEmployeesDrawer({ open, hodUserId, hodName, onClose, onChanged })
     const handleAssignSelected = async () => {
         const ids = Array.from(selectedIds);
         if (ids.length === 0) return;
-        const collisions = deptEmployees.filter(e =>
-            ids.includes(e.id) && e.currentHod && e.currentHod.id !== hodUserId
-        );
+        const byId = new Map(allEmployees.map((e) => [e.id, e]));
+        const collisions = ids.map((id) => byId.get(id)).filter((e) => e?.currentHod && e.currentHod.id !== hodUserId);
         if (collisions.length > 0) {
             const names = collisions.map(e => `${e.name} (currently under ${e.currentHod.name})`).join("\n");
             if (!window.confirm(`Reassign these employees to ${hodName}?\n\n${names}`)) return;
@@ -171,33 +199,19 @@ function ManageEmployeesDrawer({ open, hodUserId, hodName, onClose, onChanged })
                 body: JSON.stringify({ hodUserId, employeeIds: ids }),
             });
             toast.success(data?.message || "Assigned.");
-            setSelectedIds(new Set());
-            await Promise.all([
-                openDeptId ? loadDeptEmployees(openDeptId) : Promise.resolve(),
-                loadCurrentEmployees(),
-            ]);
-            if (typeof onChanged === "function") onChanged();
-        } catch (e) {
-            toast.error(e.message);
-        } finally {
-            setBusy(false);
-        }
-    };
-
-    const handleUnassign = async (employeeId, employeeName) => {
-        if (!window.confirm(`Return ${employeeName} to the Branch Manager's evaluation queue?`)) return;
-        setBusy(true);
-        try {
-            const data = await drawerApi("/api/branch-manager/hod/employees", {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ employeeId }),
+            // Flip statuses in the client cache so assignment feels instant;
+            // the parent refreshes stats/queue in the background via onChanged.
+            const assignedSet = new Set(ids);
+            setPoolByDept((prev) => {
+                const next = {};
+                for (const [deptId, emps] of Object.entries(prev)) {
+                    next[deptId] = emps.map((e) =>
+                        assignedSet.has(e.id) ? { ...e, currentHod: { id: hodUserId, name: hodName } } : e
+                    );
+                }
+                return next;
             });
-            toast.success(data?.message || "Removed.");
-            await Promise.all([
-                openDeptId ? loadDeptEmployees(openDeptId) : Promise.resolve(),
-                loadCurrentEmployees(),
-            ]);
+            setSelectedIds(new Set());
             if (typeof onChanged === "function") onChanged();
         } catch (e) {
             toast.error(e.message);
@@ -206,148 +220,151 @@ function ManageEmployeesDrawer({ open, hodUserId, hodName, onClose, onChanged })
         }
     };
 
-    const visibleDeptEmployees = useMemo(() => {
-        const q = search.trim().toLowerCase();
-        if (!q) return deptEmployees;
-        return deptEmployees.filter(e =>
-            e.name.toLowerCase().includes(q) || (e.empCode || "").toLowerCase().includes(q)
-        );
-    }, [deptEmployees, search]);
+    const activeDeptName = depts.find((d) => d.id === activeDeptId)?.name || "";
 
     return (
         <Drawer
             open={open}
             onClose={onClose}
-            title={`Manage Employees · ${hodName}`}
-            width={520}
-            footer={openDeptId ? (
+            title={`Assign Blue-collar · ${hodName}`}
+            width={860}
+            footer={
                 <div className="flex items-center gap-2">
                     <Btn variant="primary" full disabled={busy || selectedIds.size === 0} loading={busy} onClick={handleAssignSelected}>
-                        {selectedIds.size === 0 ? "Select employees to assign" : `Assign ${selectedIds.size} to ${hodName.split(" ")[0]}`}
+                        {selectedIds.size === 0
+                            ? "Select employees to assign"
+                            : `Assign ${selectedIds.size} selected employee${selectedIds.size === 1 ? "" : "s"}`}
                     </Btn>
                     {selectedIds.size > 0 && (
                         <Btn variant="ghost" disabled={busy} onClick={() => setSelectedIds(new Set())}>Clear</Btn>
                     )}
                 </div>
-            ) : null}
+            }
         >
-            {/* Currently-under-this-HOD list */}
-            <section className="mb-5">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">
-                    Assigned to {hodName.split(" ")[0]} ({currentEmployees.length})
-                </p>
-                {currentLoading ? (
-                    <p className="text-[12px] text-gray-500">Loading…</p>
-                ) : currentEmployees.length === 0 ? (
-                    <p className="text-[12px] text-gray-400 italic">None yet — pick a department below to attach blue-collar employees.</p>
-                ) : (
-                    <div className="flex flex-wrap gap-2">
-                        {currentEmployees.map(e => (
-                            <span key={e.id} className="inline-flex items-center gap-2 bg-ap-green-50 border border-ap-green/30 rounded-full pl-3 pr-1.5 py-1 text-[12px]">
-                                <span className="font-bold text-ap-green-700">{e.name}</span>
-                                <span className="text-ap-green-700/70">({e.empCode})</span>
-                                <button
-                                    type="button"
-                                    disabled={busy}
-                                    onClick={() => handleUnassign(e.id, e.name)}
-                                    className="ml-0.5 w-5 h-5 rounded-full bg-white border border-ap-green/30 text-ap-green-700 hover:bg-red-600 hover:text-white hover:border-red-600 cursor-pointer flex items-center justify-center disabled:opacity-50"
-                                    title="Remove from this HOD"
-                                >
-                                    ×
-                                </button>
-                            </span>
-                        ))}
+            <div className="h-full flex flex-col">
+                {/* Search — spans ALL departments by name or employee code */}
+                <div className="shrink-0 pb-3">
+                    <SearchInput value={search} onChange={setSearch} delay={150} placeholder="Search all departments by name or employee code…" />
+                    <div className="flex items-center gap-x-3 gap-y-1 mt-2 flex-wrap">
+                        <span className="text-[11px] font-bold text-gray-600">{mineTotal} assigned to {firstName}</span>
+                        <span className="inline-flex items-center gap-1 text-[11px] text-gray-500"><span className="w-2 h-2 rounded-full bg-ap-green inline-block" /> Assigned</span>
+                        <span className="inline-flex items-center gap-1 text-[11px] text-gray-500"><span className="w-2 h-2 rounded-full bg-ap-orange inline-block" /> Under another HOD</span>
+                        <span className="inline-flex items-center gap-1 text-[11px] text-gray-500"><span className="w-2 h-2 rounded-full bg-[#B45309] inline-block" /> Pending assignment</span>
                     </div>
-                )}
-            </section>
+                </div>
 
-            {/* Department picker */}
-            <section className="mb-4">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">Add from a department</p>
-                {bcDeptsLoading ? (
-                    <p className="text-[12px] text-gray-500">Loading departments…</p>
-                ) : bcDepts.length === 0 ? (
-                    <p className="text-[12px] text-gray-400 italic">No departments found in your branch.</p>
-                ) : (
-                    <div className="flex flex-wrap gap-2">
-                        {bcDepts.map(d => (
-                            <button
-                                key={d.id}
-                                type="button"
-                                onClick={() => { setOpenDeptId(d.id); setSearch(""); loadDeptEmployees(d.id); }}
-                                className={`min-h-[34px] px-3 py-1.5 text-[12px] font-bold rounded-lg border transition-colors cursor-pointer ${
-                                    openDeptId === d.id
-                                        ? "bg-ap-blue text-white border-ap-blue"
-                                        : "bg-white text-ap-blue border-ap-blue/30 hover:bg-ap-blue hover:text-white"
-                                }`}
-                            >
-                                {d.name} <span className="font-normal opacity-80">({d.employeeCount})</span>
-                            </button>
-                        ))}
-                    </div>
-                )}
-            </section>
-
-            {/* Per-dept employee picker */}
-            {openDeptId && (
-                <section className="border border-ap-border rounded-xl bg-[#FAFAFA] p-3">
-                    <div className="mb-3">
-                        <SearchInput value={search} onChange={setSearch} delay={150} placeholder="Filter by name or code…" />
-                    </div>
-                    {deptEmployeesLoading ? (
-                        <p className="text-[12px] text-gray-500">Loading employees…</p>
-                    ) : visibleDeptEmployees.length === 0 ? (
-                        <p className="text-[12px] text-gray-400 italic">
-                            {deptEmployees.length === 0
-                                ? "No blue-collar employees in this department have cleared Stage 1 yet."
-                                : "No employees match your search."}
-                        </p>
-                    ) : (
-                        <div className="space-y-1.5 max-h-[40vh] overflow-y-auto">
-                            {visibleDeptEmployees.map(e => {
-                                const checked = selectedIds.has(e.id);
-                                const underThis = e.currentHod && e.currentHod.id === hodUserId;
-                                const underOther = e.currentHod && e.currentHod.id !== hodUserId;
-                                return (
-                                    <label
-                                        key={e.id}
-                                        className={`flex items-center gap-3 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
-                                            checked ? "bg-ap-blue-50 border-ap-blue/40" : "bg-white border-ap-border hover:border-ap-blue/40"
-                                        } ${underThis ? "opacity-70" : ""}`}
+                <div className="flex-1 min-h-0 flex flex-col sm:flex-row gap-3">
+                    {/* Left panel — every department, always visible */}
+                    <div className={`shrink-0 sm:w-52 sm:flex sm:flex-col sm:min-h-0 ${searching ? "opacity-40 pointer-events-none" : ""}`}>
+                        <p className="hidden sm:block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5 shrink-0">Departments</p>
+                        {loading && depts.length === 0 ? (
+                            <p className="text-[12px] text-gray-500">Loading…</p>
+                        ) : depts.length === 0 ? (
+                            <p className="text-[12px] text-gray-400 italic">No departments found.</p>
+                        ) : (
+                            <div className="flex sm:flex-col gap-1.5 overflow-x-auto sm:overflow-x-visible sm:flex-1 sm:min-h-0 sm:overflow-y-auto pb-1 sm:pb-0 sm:pr-1">
+                                {depts.map((d) => (
+                                    <button
+                                        key={d.id}
+                                        type="button"
+                                        onClick={() => setActiveDeptId(d.id)}
+                                        className={`shrink-0 sm:w-full flex items-center justify-between gap-2 min-h-[38px] px-3 py-2 text-[12px] font-bold rounded-lg border text-left transition-colors cursor-pointer ${
+                                            activeDeptId === d.id
+                                                ? "bg-ap-blue text-white border-ap-blue"
+                                                : "bg-white text-gray-700 border-ap-border hover:border-ap-blue/50"
+                                        }`}
                                     >
-                                        <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={() => handleToggle(e.id)}
-                                            disabled={underThis}
-                                            className="w-4 h-4 accent-ap-blue"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-[13px] font-bold text-gray-800 truncate">{e.name} <span className="text-gray-500 font-medium">({e.empCode})</span></p>
-                                            {e.designation && <p className="text-[11px] text-gray-500 truncate">{e.designation}</p>}
-                                        </div>
-                                        {underThis && <Badge label="Already assigned" color="green" />}
-                                        {underOther && (
-                                            <span title={`Currently under ${e.currentHod.name}`}>
-                                                <Badge label={`Under ${e.currentHod.name.split(" ")[0]}`} color="orange" />
+                                        <span className="truncate">{d.name}</span>
+                                        <span className="flex items-center gap-1 shrink-0">
+                                            {(mineByDept[d.id] || 0) > 0 && (
+                                                <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 ${activeDeptId === d.id ? "bg-white/20 text-white" : "bg-ap-green-50 text-ap-green-700 border border-ap-green/30"}`}>
+                                                    {mineByDept[d.id]} ✓
+                                                </span>
+                                            )}
+                                            <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 ${activeDeptId === d.id ? "bg-white/20 text-white" : "bg-gray-100 text-gray-600"}`}>
+                                                {d.employeeCount}
                                             </span>
-                                        )}
-                                    </label>
-                                );
-                            })}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Right panel — eligible employees, multi-select */}
+                    <div className="flex-1 min-h-0 flex flex-col border border-ap-border rounded-xl bg-[#FAFAFA]">
+                        <div className="shrink-0 px-3 pt-2.5 pb-2 border-b border-ap-border/60">
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                                {searching
+                                    ? `Search results · all departments (${visible.length})`
+                                    : `${activeDeptName || "Department"} · qualified blue-collar (${visible.length})`}
+                            </p>
                         </div>
-                    )}
-                </section>
-            )}
+                        <div className="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-1.5">
+                            {loading ? (
+                                <p className="text-[12px] text-gray-500 px-1 py-2">Loading employees…</p>
+                            ) : visible.length === 0 ? (
+                                <p className="text-[12px] text-gray-400 italic px-1 py-2">
+                                    {searching
+                                        ? "No qualified blue-collar employees match your search."
+                                        : "No blue-collar employees in this department have qualified for Stage 2 yet."}
+                                </p>
+                            ) : (
+                                visible.map((e) => {
+                                    const checked = selectedIds.has(e.id);
+                                    const underThis = e.currentHod && e.currentHod.id === hodUserId;
+                                    const underOther = e.currentHod && e.currentHod.id !== hodUserId;
+                                    return (
+                                        <label
+                                            key={e.id}
+                                            className={`flex items-center gap-3 min-h-[44px] px-3 py-2 rounded-lg border transition-colors ${
+                                                underThis
+                                                    ? "bg-ap-green-50/60 border-ap-green/20 cursor-default"
+                                                    : checked
+                                                        ? "bg-ap-blue-50 border-ap-blue/40 cursor-pointer"
+                                                        : "bg-white border-ap-border hover:border-ap-blue/40 cursor-pointer"
+                                            }`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => handleToggle(e.id)}
+                                                disabled={underThis || busy}
+                                                className="w-4 h-4 accent-ap-blue shrink-0"
+                                            />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-[13px] font-bold text-gray-800 truncate">
+                                                    {e.name} <span className="text-gray-500 font-medium">({e.empCode})</span>
+                                                </p>
+                                                <p className="text-[11px] text-gray-500 truncate">
+                                                    {e.departmentName}{e.designation ? ` · ${e.designation}` : ""}
+                                                </p>
+                                            </div>
+                                            {underThis && <Badge label="Assigned ✓" color="green" />}
+                                            {underOther && (
+                                                <span title={`Currently under ${e.currentHod.name}`}>
+                                                    <Badge label={`Under ${e.currentHod.name.split(" ")[0]}`} color="orange" />
+                                                </span>
+                                            )}
+                                            {!e.currentHod && <Badge label="Pending" color="amber" />}
+                                        </label>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
         </Drawer>
     );
 }
 
 /**
  * AssignedEmployeesDrawer — review the blue-collar employees under one HOD
- * (spec §6). Each row supports Remove (back to the BM queue) and Move to
- * another HOD. Both reuse the existing /hod/employees endpoint — a move is a
- * POST to the target HOD, which the unique constraint resolves as a reassign.
+ * (spec §6): name, code, department, assignment date, and evaluation status.
+ * Each row supports Remove Assignment (back to the BM queue) and Reassign to
+ * another HOD. Both reuse the existing /hod/employees endpoint — a reassign is
+ * a POST to the target HOD, which the unique constraint resolves as a move.
  */
 function AssignedEmployeesDrawer({ open, hod, otherHods, onClose, onChanged }) {
     const toast = useToast();
@@ -443,7 +460,7 @@ function AssignedEmployeesDrawer({ open, hod, otherHods, onClose, onChanged }) {
                 <EmptyState
                     icon="👥"
                     title={employees.length === 0 ? "No employees assigned yet" : "No matches"}
-                    sub={employees.length === 0 ? "Use “Manage Employees” to attach blue-collar staff to this HOD." : "Try a different search."}
+                    sub={employees.length === 0 ? "Use “Assign Employees” on the HOD card to attach blue-collar staff to this HOD." : "Try a different search."}
                 />
             ) : (
                 <div className="space-y-2">
@@ -454,10 +471,14 @@ function AssignedEmployeesDrawer({ open, hod, otherHods, onClose, onChanged }) {
                                     <Avatar name={e.name} size={36} color="#00843D" />
                                     <div className="min-w-0">
                                         <p className="text-[13px] font-bold text-gray-800 truncate">{e.name} <span className="text-gray-500 font-medium">({e.empCode})</span></p>
-                                        <p className="text-[11px] text-gray-500 truncate">{e.departmentName || "—"}</p>
+                                        <p className="text-[11px] text-gray-500 truncate">
+                                            {e.departmentName || "—"}{e.assignedAt ? ` · Assigned ${fmtDate(e.assignedAt)}` : ""}
+                                        </p>
                                     </div>
                                 </div>
-                                <Badge label="Assigned" color="green" />
+                                {e.evaluated
+                                    ? <Badge label="Evaluated ✓" color="green" />
+                                    : <Badge label="Awaiting evaluation" color="sky" />}
                             </div>
                             <div className="flex items-center gap-2 mt-2.5 flex-wrap">
                                 {movingId === e.id ? (
@@ -468,7 +489,7 @@ function AssignedEmployeesDrawer({ open, hod, otherHods, onClose, onChanged }) {
                                             onChange={(ev) => handleMove(e.id, e.name, ev.target.value)}
                                             className="border-[1.5px] border-gray-300 focus:border-ap-blue rounded-lg px-2.5 py-1.5 text-[12px] bg-white text-gray-900 outline-none"
                                         >
-                                            <option value="">Move to…</option>
+                                            <option value="">Reassign to…</option>
                                             {otherHods.filter(h => h.hodUserId !== hodUserId).map(h => (
                                                 <option key={h.hodUserId} value={h.hodUserId}>{h.hod?.name}</option>
                                             ))}
@@ -482,12 +503,12 @@ function AssignedEmployeesDrawer({ open, hod, otherHods, onClose, onChanged }) {
                                             size="sm"
                                             disabled={busyId === e.id || otherHods.filter(h => h.hodUserId !== hodUserId).length === 0}
                                             onClick={() => setMovingId(e.id)}
-                                            title={otherHods.filter(h => h.hodUserId !== hodUserId).length === 0 ? "No other HODs to move to" : undefined}
+                                            title={otherHods.filter(h => h.hodUserId !== hodUserId).length === 0 ? "No other HODs to reassign to" : undefined}
                                         >
-                                            Move to another HOD
+                                            Reassign to another HOD
                                         </Btn>
                                         <Btn variant="danger" size="sm" disabled={busyId === e.id} loading={busyId === e.id} onClick={() => handleRemove(e.id, e.name)}>
-                                            Remove
+                                            Remove Assignment
                                         </Btn>
                                     </>
                                 )}
@@ -831,7 +852,7 @@ export default function BranchManagerDashboard() {
     const pageTitle = {
         evaluate: "Stage 2 Evaluation",
         shortlist: "Branch Overview",
-        departments: isBigBranch ? "Delegate to HODs" : "Departments",
+        departments: isBigBranch ? "HOD Management" : "Departments",
         history: "Evaluation History",
     }[activeView] || "Branch Manager Evaluation";
 
@@ -878,7 +899,7 @@ export default function BranchManagerDashboard() {
                 tabs={[
                     { id: "evaluate", label: "Evaluation", count: shortlistMeta.remainingCount ?? undefined },
                     { id: "shortlist", label: "Branch Overview" },
-                    { id: "departments", label: isBigBranch ? "Delegate to HODs" : "Departments" },
+                    { id: "departments", label: isBigBranch ? "HOD Management" : "Departments" },
                     { id: "history", label: "History" },
                 ]}
                 active={activeView}
@@ -953,44 +974,120 @@ export default function BranchManagerDashboard() {
                 </div>
             )}
 
-            {/* ═══════ DELEGATE TO HODs (BIG branches) ═══════ */}
+            {/* ═══════ HOD MANAGEMENT (BIG branches) ═══════ */}
             {activeView === "departments" && isBigBranch && (
                 <div className="space-y-6 mb-8">
-                    {/* Delegation summary cards */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-                        <SummaryTile label="White-collar Qualified" value={bmStats?.stage1?.shortlistedWhite} color="#003087" />
-                        <SummaryTile label="Current HODs" value={hodCount} color="#0369A1" />
+                    {/* Quick statistics (spec) — refreshed after every nomination/assignment */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2 sm:gap-3">
+                        <SummaryTile label="Qualified White-collar" value={bmStats?.stage1?.shortlistedWhite} color="#003087" />
+                        <SummaryTile label="Qualified Blue-collar" value={bcQualified} color="#0369A1" />
+                        <SummaryTile label="Current HODs" value={hodCount} color="#6A1B9A" />
                         <SummaryTile label="Blue-collar Assigned" value={bcAssigned} color="#00843D" />
-                        <SummaryTile label="Blue-collar Pending" value={bcPending} color="#F7941D" accent={bcPending > 0} />
+                        <SummaryTile label="Pending Assignment" value={bcPending} color="#F7941D" accent={bcPending > 0} />
                     </div>
 
-                    {/* How it works callout */}
-                    <div className="bg-[#FFF8E1] border border-[#FFE082] rounded-card p-4 sm:p-5 shadow-card flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-full bg-ap-orange/10 flex items-center justify-center shrink-0 border border-[#FFE082]">
-                            <svg className="w-5 h-5 text-ap-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                        </div>
-                        <p className="text-[13px] sm:text-[14px] text-gray-600 leading-relaxed">
-                            <span className="font-bold text-ap-blue">White-collar</span> employees are evaluated by you directly.{" "}
-                            <span className="font-bold text-ap-green">Blue-collar</span> employees are evaluated by an HOD — nominate a white-collar
-                            HOD below, then use <span className="font-semibold">Manage Employees</span> to assign blue-collar staff to them.
-                        </p>
-                    </div>
-
-                    {/* ── Step 1: Nominate an HOD ── */}
+                    {/* ── Section 1: HOD Management ── */}
                     <div className="bg-white border border-ap-border rounded-card p-4 sm:p-6 shadow-card">
+                        <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+                            <div className="min-w-0">
+                                <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Section 1 · Manage</p>
+                                <p className="text-[17px] font-bold text-gray-800 leading-tight">HOD Management ({hodCount})</p>
+                                <p className="text-[12px] text-gray-500 mt-1">
+                                    You evaluate <span className="font-bold text-ap-blue">white-collar</span> employees; each HOD evaluates the{" "}
+                                    <span className="font-bold text-ap-green">blue-collar</span> employees you assign to them.
+                                </p>
+                            </div>
+                            <Btn
+                                variant="primary"
+                                size="sm"
+                                onClick={() => document.getElementById("nominate-hod")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                                icon={<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>}
+                            >
+                                Nominate HOD
+                            </Btn>
+                        </div>
+
+                        {uniqueHods.length === 0 ? (
+                            <EmptyState icon="🧑‍💼" title="No HODs nominated yet" sub="Use “Nominate HOD” to pick a qualified white-collar employee below, then assign blue-collar employees to them." />
+                        ) : (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+                                {uniqueHods.map((a) => {
+                                    const st = hodStatsById.get(a.hodUserId);
+                                    const assigned = st?.assigned ?? 0;
+                                    const evaluated = st?.evaluated ?? 0;
+                                    const pendingEval = Math.max(0, assigned - evaluated);
+                                    const pct = assigned > 0 ? Math.round((evaluated / assigned) * 100) : 0;
+                                    const isRemoving = removingHodId === a.hodUserId;
+                                    return (
+                                        <div key={a.hodUserId} className="border border-ap-border rounded-xl p-4 bg-[#FAFCFF] flex flex-col gap-3 transition-all duration-200 hover:border-ap-blue/40 hover:shadow-md">
+                                            <div className="flex items-start gap-3">
+                                                <Avatar name={a.hod?.name || "H"} size={40} color="#00843D" />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[15px] font-bold text-gray-800 truncate">{a.hod?.name || "Unknown"}</p>
+                                                    <p className="text-[12px] text-gray-500 truncate">
+                                                        {a.hod?.empCode ? `${a.hod.empCode} · ` : ""}{a.departments.join(", ") || "Department"}
+                                                    </p>
+                                                </div>
+                                                <Badge label="HOD" color="blue" />
+                                            </div>
+
+                                            {/* Assigned / pending-evaluation summary */}
+                                            <div>
+                                                <div className="flex items-center justify-between gap-2 text-[11px] font-bold mb-1.5">
+                                                    <span className="text-ap-blue">{assigned} assigned</span>
+                                                    <span className={pendingEval > 0 ? "text-[#C2410C]" : "text-ap-green"}>
+                                                        {assigned === 0
+                                                            ? "No employees yet"
+                                                            : pendingEval > 0
+                                                                ? `${pendingEval} pending evaluation`
+                                                                : "All evaluated ✓"}
+                                                    </span>
+                                                </div>
+                                                <ProgressBar value={pct} color={assigned > 0 && pct === 100 ? "#00843D" : "#F7941D"} />
+                                            </div>
+
+                                            {/* Actions (spec: assign · view · remove — nothing else) */}
+                                            <div className="flex items-center gap-2 flex-wrap mt-auto">
+                                                <Btn variant="primary" size="sm" onClick={() => setManageHod(a)} title="Assign blue-collar employees to this HOD">
+                                                    Assign Employees
+                                                </Btn>
+                                                <Btn variant="ghost" size="sm" onClick={() => setViewHod(a)}>
+                                                    View Assigned{assigned > 0 ? ` (${assigned})` : ""}
+                                                </Btn>
+                                                <Btn variant="danger" size="sm" disabled={isRemoving} loading={isRemoving} onClick={() => handleRemoveHod(a)}
+                                                    title="Remove HOD — their assigned employees return to your queue">
+                                                    Remove HOD
+                                                </Btn>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* ── Section 2: Nominate an HOD (both methods preserved) ── */}
+                    <div id="nominate-hod" className="bg-white border border-ap-border rounded-card p-4 sm:p-6 shadow-card scroll-mt-24">
                         <div className="flex items-center gap-3 mb-4">
-                            <div className="w-8 h-8 rounded-lg bg-ap-blue text-white flex items-center justify-center font-black text-[14px] shrink-0">1</div>
+                            <div className="w-8 h-8 rounded-lg bg-ap-blue text-white flex items-center justify-center font-black text-[16px] shrink-0">+</div>
                             <div>
-                                <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Nominate</p>
+                                <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Section 2 · Nominate</p>
                                 <p className="text-[17px] font-bold text-gray-800 leading-tight">Nominate a Head of Department</p>
                             </div>
                         </div>
 
-                        {/* Department picker — every department shown, none hidden */}
-                        <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">Select a department</p>
-                        <div className="flex flex-wrap gap-2 mb-4">
+                        {/* Method 1 — direct search by employee name or code (branch-wide) */}
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">Search white-collar employees by name or code</p>
+                        <SearchInput
+                            value={hodSearchQuery}
+                            onChange={(v) => { setHodSearchQuery(v); setHodSelected(null); }}
+                            delay={300}
+                            placeholder="Search by employee name or code…"
+                        />
+
+                        {/* Method 2 — pick a department, browse its qualified white-collar staff */}
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mt-4 mb-2">Or select a department to browse</p>
+                        <div className="flex flex-wrap gap-2">
                             {hodDepartments.map(dept => (
                                 <button
                                     key={dept.id}
@@ -1007,15 +1104,6 @@ export default function BranchManagerDashboard() {
                             ))}
                             {hodDepartments.length === 0 && <p className="text-[12px] text-gray-400 italic">No departments found in your branch.</p>}
                         </div>
-
-                        {/* Search by name/code — works any time, with or without a department */}
-                        <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">Or search white-collar employees by name or code</p>
-                        <SearchInput
-                            value={hodSearchQuery}
-                            onChange={(v) => { setHodSearchQuery(v); setHodSelected(null); }}
-                            delay={300}
-                            placeholder="Search by employee name or code…"
-                        />
 
                         {/* Candidate list */}
                         {(hodDeptId || hodSearchQuery.trim()) && !hodSelected && (
@@ -1077,70 +1165,6 @@ export default function BranchManagerDashboard() {
                         )}
 
                         <p className="text-[11px] text-gray-400 mt-2">Only white-collar employees can be nominated as HOD.</p>
-                    </div>
-
-                    {/* ── Step 2: HOD Management ── */}
-                    <div className="bg-white border border-ap-border rounded-card p-4 sm:p-6 shadow-card">
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="w-8 h-8 rounded-lg bg-ap-green text-white flex items-center justify-center font-black text-[14px] shrink-0">2</div>
-                            <div>
-                                <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Manage</p>
-                                <p className="text-[17px] font-bold text-gray-800 leading-tight">Heads of Department ({hodCount})</p>
-                            </div>
-                        </div>
-
-                        {uniqueHods.length === 0 ? (
-                            <EmptyState icon="🧑‍💼" title="No HODs nominated yet" sub="Nominate a white-collar employee above to start delegating blue-collar evaluations." />
-                        ) : (
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                                {uniqueHods.map((a) => {
-                                    const st = hodStatsById.get(a.hodUserId);
-                                    const assigned = st?.assigned ?? 0;
-                                    const evaluated = st?.evaluated ?? 0;
-                                    const pendingEval = Math.max(0, assigned - evaluated);
-                                    const isRemoving = removingHodId === a.hodUserId;
-                                    return (
-                                        <div key={a.hodUserId} className="border border-ap-border rounded-xl p-4 bg-[#FAFCFF] flex flex-col gap-3">
-                                            <div className="flex items-start gap-3">
-                                                <Avatar name={a.hod?.name || "H"} size={40} color="#00843D" />
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-[15px] font-bold text-gray-800 truncate">{a.hod?.name || "Unknown"}</p>
-                                                    <p className="text-[12px] text-gray-500 truncate">
-                                                        {a.hod?.empCode ? `${a.hod.empCode} · ` : ""}{a.departments.join(", ") || "Department"}
-                                                    </p>
-                                                </div>
-                                                <Badge label="HOD" color="blue" />
-                                            </div>
-
-                                            {/* Mini metrics */}
-                                            <div className="grid grid-cols-3 gap-2 text-center">
-                                                <div className="rounded-lg bg-white border border-ap-border py-1.5">
-                                                    <p className="text-[16px] font-black text-ap-blue leading-none tabular-nums">{assigned}</p>
-                                                    <p className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mt-1">Assigned</p>
-                                                </div>
-                                                <div className="rounded-lg bg-white border border-ap-border py-1.5">
-                                                    <p className="text-[16px] font-black text-ap-green leading-none tabular-nums">{evaluated}</p>
-                                                    <p className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mt-1">Evaluated</p>
-                                                </div>
-                                                <div className="rounded-lg bg-white border border-ap-border py-1.5">
-                                                    <p className="text-[16px] font-black text-ap-orange leading-none tabular-nums">{pendingEval}</p>
-                                                    <p className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mt-1">Pending</p>
-                                                </div>
-                                            </div>
-
-                                            {/* Actions */}
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <Btn variant="primary" size="sm" onClick={() => setManageHod(a)}>Manage Employees</Btn>
-                                                <Btn variant="ghost" size="sm" onClick={() => setViewHod(a)}>View Assigned</Btn>
-                                                <Btn variant="danger" size="sm" disabled={isRemoving} loading={isRemoving} onClick={() => handleRemoveHod(a)}>
-                                                    Remove
-                                                </Btn>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
                     </div>
                 </div>
             )}
@@ -1350,7 +1374,7 @@ export default function BranchManagerDashboard() {
 
             {/* ═══════ DRAWERS — blue-collar management & assigned review ═══════ */}
             {manageHod && (
-                <ManageEmployeesDrawer
+                <AssignEmployeesDrawer
                     open={!!manageHod}
                     hodUserId={manageHod.hodUserId}
                     hodName={manageHod.hod?.name || ""}

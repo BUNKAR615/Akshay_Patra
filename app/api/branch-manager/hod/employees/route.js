@@ -86,6 +86,18 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
             orderBy: { assignedAt: "desc" },
         });
 
+        // Additive, read-only enrichment: whether this HOD has already submitted
+        // a Stage-2 evaluation for each assigned employee this quarter. Powers
+        // the evaluation-status badge in the BM's "View Assigned" panel.
+        const empIds = rows.map((r) => r.employee.id);
+        const evalRows = empIds.length > 0
+            ? await prisma.hodEvaluation.findMany({
+                where: { hodId: hodUserId, quarterId, employeeId: { in: empIds } },
+                select: { employeeId: true },
+            })
+            : [];
+        const evaluatedSet = new Set(evalRows.map((e) => e.employeeId));
+
         return ok({
             hodUserId,
             employees: rows.map((r) => ({
@@ -96,6 +108,7 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
                 departmentId: r.employee.department?.id || null,
                 departmentName: r.employee.department?.name || "",
                 assignedAt: r.assignedAt,
+                evaluated: evaluatedSet.has(r.employee.id),
             })),
             total: rows.length,
         });
