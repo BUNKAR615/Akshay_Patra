@@ -23,7 +23,8 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
 
         const { employeeId, attendancePct, punctualityPct, presentDays, punctualDays, workingDays, attendancePdfUrl, punctualityPdfUrl, referenceSheetUrl, notes } = data;
         // HR's 20-mark round = attendance (10) + punctuality (10). Each half is
-        // banded from its percentage (≥90→10, 80→8, 70→6, …) and summed.
+        // banded from its percentage in 10-point bands, dropping 1 mark per band
+        // (≥90→10, 80s→9, 70s→8, …, <10→1; see hrBandMarks) and summed.
         const attendanceMarks = hrBandMarks(attendancePct);
         const punctualityMarks = hrBandMarks(punctualityPct);
         const hrScore = attendanceMarks + punctualityMarks; // 0..20

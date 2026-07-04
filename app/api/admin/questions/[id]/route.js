@@ -19,8 +19,6 @@ export const PATCH = withPermission("questions.editdelete", async (request, { pa
             data: { isActive: !question.isActive },
         });
 
-        console.log("Saved to DB:", updated);
-
         await prisma.auditLog.create({
             data: { userId: user.userId, action: question.isActive ? "QUESTION_DEACTIVATED" : "QUESTION_ACTIVATED", details: { questionId: updated.id, previousState: question.isActive, newState: updated.isActive } },
         });
@@ -58,8 +56,6 @@ export const PUT = withPermission("questions.editdelete", async (request, { para
         if (data.includedInQuarter !== undefined) updateData.includedInQuarter = data.includedInQuarter;
 
         const updated = await prisma.question.update({ where: { id }, data: updateData });
-
-        console.log("Saved to DB:", updated);
 
         await prisma.auditLog.create({
             data: { userId: user.userId, action: "QUESTION_UPDATED", details: { questionId: updated.id, changes: updateData } },

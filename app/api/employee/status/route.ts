@@ -30,7 +30,6 @@ const SAFE_DEFAULT = {
 export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
   try {
     const userId = user.userId;
-    console.log("Employee status called for userId:", userId);
 
     // ── 1. Find active quarter ──
     const activeQuarter = await prisma.quarter.findFirst({
@@ -43,8 +42,6 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
         startDate: true,
       },
     });
-
-    console.log("Active quarter:", activeQuarter?.name ?? "none");
 
     // If no active quarter, return safe default — never crash
     if (!activeQuarter) {
@@ -64,8 +61,6 @@ export const GET = withRole(["EMPLOYEE"], async (request, { user }) => {
         },
       })
       .catch(() => null); // never crash if table missing
-
-    console.log("Assessment submitted:", !!assessment);
 
     // ── 3. Shortlist queries (each wrapped individually) ──
     let isShortlistedStage2 = false;

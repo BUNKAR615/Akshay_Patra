@@ -19,10 +19,13 @@ export async function GET() {
       counts: { users, questions, quarters }
     })
   } catch (error) {
+    // Log the full error server-side, but never echo it to the (public,
+    // unauthenticated) /api/health response — the raw Prisma error can include
+    // the database host/connection string.
+    console.error('[HEALTH] Database check failed:', error)
     return NextResponse.json({
       status: 'error',
-      database: 'disconnected',
-      error: String(error)
+      database: 'disconnected'
     }, { status: 500 })
   }
 }
