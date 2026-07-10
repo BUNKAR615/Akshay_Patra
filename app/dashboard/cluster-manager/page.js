@@ -355,6 +355,7 @@ export default function ClusterManagerDashboard() {
                         onSubmit={handleEvaluate}
                         submitLabel={`Submit Final Evaluation for ${selectedEmployee.name.split(" ")[0]}`}
                         draftKey={user?.id && selectedBranchId ? `draft_eval_${user.id}_${selectedEmployee.userId}_${selectedBranchId}` : null}
+                        numericLabels
                     />
                 </div>
             ) : (

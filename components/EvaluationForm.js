@@ -23,6 +23,12 @@ const SCALE = [
 
 const LANG_MODES = ["Both", "English", "हिंदी"];
 
+// Numeric display labels (opt-in via the `numericLabels` prop, e.g. the Cluster
+// Manager Stage 3 form). Only the visible text changes — the submitted score
+// values stay -2..+2: 1 = Strongly Disagree (-2), 2 = Disagree (-1),
+// 3 = Neutral (0), 4 = Agree (+1), 5 = Strongly Agree (+2).
+const NUMERIC_LABELS = { "-2": "1", "-1": "2", "0": "3", "1": "4", "2": "5" };
+
 export default function EvaluationForm({
     questions,
     onSubmit,
@@ -30,6 +36,7 @@ export default function EvaluationForm({
     confirmMessage = "Are you sure you want to submit this evaluation? This action cannot be undone.",
     disabled = false,
     draftKey = null,
+    numericLabels = false,
 }) {
     const [scores, setScores] = useState({});
     const [submitting, setSubmitting] = useState(false);
@@ -203,7 +210,7 @@ export default function EvaluationForm({
                     {SCALE.map((s) => (
                         <span key={s.value} className="text-[12px] text-[#333333] flex items-center gap-1.5 font-medium">
                             <span className={`inline-block w-3 h-3 rounded-full ${s.color.split(' ')[0]}`} />
-                            <span>{langMode === "हिंदी" ? s.labelHindi : langMode === "English" ? s.label : `${s.label} / ${s.labelHindi}`}</span>
+                            <span>{numericLabels ? NUMERIC_LABELS[String(s.value)] : langMode === "हिंदी" ? s.labelHindi : langMode === "English" ? s.label : `${s.label} / ${s.labelHindi}`}</span>
                         </span>
                     ))}
                 </div>
@@ -261,7 +268,7 @@ export default function EvaluationForm({
                                                 key={s.value}
                                                 onClick={() => handleScore(q.id, s.value)}
                                                 disabled={disabled}
-                                                title={s.label}
+                                                title={numericLabels ? NUMERIC_LABELS[String(s.value)] : s.label}
                                                 className={`min-h-[44px] sm:min-h-[48px] sm:min-w-[48px] p-2 sm:p-2 rounded-lg text-[14px] transition-all cursor-pointer box-border flex items-center justify-center sm:flex-col shadow-sm hover:shadow
                                                     ${scores[q.id] === s.value
                                                         ? `${s.color} ring-2 ring-offset-1 ring-${s.color.split(' ')[0].replace('bg-', '')}`
@@ -270,7 +277,11 @@ export default function EvaluationForm({
                                                     ${disabled ? "opacity-50 !bg-[#CCCCCC] !text-[#666666] !border-transparent cursor-not-allowed shadow-none" : ""}
                                                 `}
                                             >
-                                                <span className="block text-[13px] sm:text-[12px] sm:text-[13px] font-bold opacity-90 leading-tight text-center px-1">{langMode === "हिंदी" ? s.labelHindi : langMode === "English" ? s.label : `${s.label} / ${s.labelHindi}`}</span>
+                                                {numericLabels ? (
+                                                    <span className="block text-[18px] sm:text-[17px] font-bold opacity-90 leading-tight text-center px-1">{NUMERIC_LABELS[String(s.value)]}</span>
+                                                ) : (
+                                                    <span className="block text-[13px] sm:text-[12px] sm:text-[13px] font-bold opacity-90 leading-tight text-center px-1">{langMode === "हिंदी" ? s.labelHindi : langMode === "English" ? s.label : `${s.label} / ${s.labelHindi}`}</span>
+                                                )}
                                             </button>
                                         ))}
                                     </div>
