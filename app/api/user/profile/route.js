@@ -45,17 +45,12 @@ export async function GET(request) {
             rolesSet.add(dr.role);
         }
 
-        // Check if user is ADMIN (empCode 1800349 = RISHPAL KUMAWAT)
-        if (user.empCode === '1800349') {
-            rolesSet.add('ADMIN');
-        }
-
         return ok({
             empCode: user.empCode,
             name: user.name,
             designation: user.designation || '',
             department: user.department?.name || '',
-            branch: user.department?.branch?.name || 'Jaipur',
+            branch: user.department?.branch?.name || '',
             mobile: user.mobile || '',
             roles: Array.from(rolesSet),
             departmentRoles: user.departmentRoles.map(dr => ({

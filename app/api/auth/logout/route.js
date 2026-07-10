@@ -8,20 +8,23 @@ import { getClientIp } from "../../../../lib/http";
 
 /**
  * POST /api/auth/logout
- * Blacklists the current access token and clears both cookies.
+ * Blacklists the current refresh token and clears both cookies.
  */
 export async function POST(request) {
     try {
-        const token = request.cookies.get("token")?.value;
+        const refreshToken = request.cookies.get("refreshToken")?.value;
         const userId = request.headers.get("x-user-id");
         const ip = getClientIp(request);
 
-        // Blacklist the token so it can't be reused
-        if (token) {
-            const expiresAt = getTokenExpiry(token);
+        // Blacklist the REFRESH token so it can't mint new access tokens after
+        // logout — /api/auth/refresh checks this table before issuing one. The
+        // row's expiresAt matches the refresh cookie's 7-day lifetime, so
+        // prune-blacklist can clear it once it could no longer be replayed.
+        if (refreshToken) {
+            const expiresAt = getTokenExpiry(7 * 24);
             await prisma.blacklistedToken.create({
-                data: { token, expiresAt },
-            }).catch(() => { }); // non-critical
+                data: { token: refreshToken, expiresAt },
+            }).catch(() => { }); // non-critical (e.g. double logout: token already blacklisted)
         }
 
         // Audit the logout

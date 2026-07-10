@@ -76,8 +76,11 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         });
         const lockedIds = new Set(locked.map((q) => q.questionId));
         if (data.answers.length !== lockedIds.size) return fail(`Must answer all ${lockedIds.size} questions. Received ${data.answers.length}.`);
+        const seen = new Set();
         for (const a of data.answers) {
+            if (seen.has(a.questionId)) return fail(`Duplicate answer for question ${a.questionId}`);
             if (!lockedIds.has(a.questionId)) return fail(`Question "${a.questionId}" is not part of this quarter's CM questions`);
+            seen.add(a.questionId);
         }
 
         const cmRawScore = data.answers.reduce((s, a) => s + a.score, 0);

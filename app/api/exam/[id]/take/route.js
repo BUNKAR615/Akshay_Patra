@@ -148,6 +148,12 @@ export const POST = withRole(ALL_ROLES, async (request, { params, user }) => {
             return fail("This exam has closed. Submissions are no longer accepted.", 403);
         }
 
+        // A submitted response is final unless the exam allows reattempts —
+        // otherwise a re-POST would overwrite the graded marks.
+        if (already?.submittedAt && !exam.allowReattempts) {
+            return fail("You have already submitted this exam.", 409);
+        }
+
         const { data, error } = await validateBody(request, submitSchema);
         if (error) return error;
 
