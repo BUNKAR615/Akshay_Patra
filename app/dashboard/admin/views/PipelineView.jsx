@@ -16,12 +16,15 @@ export default function PipelineView({ quarterProgress, progressLoading, branche
     const [pipelineWinners, setPipelineWinners] = useState(null);
     const [pipelineWinnersLoading, setPipelineWinnersLoading] = useState(false);
 
-    // Branch winners — identical data the committee sees via /api/committee/results.
+    // Branch winners — same payload shape the committee sees, but through the
+    // admin route: permission-gated (pipeline.winners) and NEVER scoped to a
+    // committee member's branch assignments, so an operator whose base role
+    // happens to be COMMITTEE still sees every branch's winners here.
     useEffect(() => {
         if (!selectedQuarterId) return;
         let alive = true;
         setPipelineWinnersLoading(true);
-        api(`/api/committee/results?quarterId=${encodeURIComponent(selectedQuarterId)}`)
+        api(`/api/admin/winners?quarterId=${encodeURIComponent(selectedQuarterId)}`)
             .then(d => { if (alive) setPipelineWinners(d); })
             .catch(() => { if (alive) setPipelineWinners(null); })
             .finally(() => { if (alive) setPipelineWinnersLoading(false); });

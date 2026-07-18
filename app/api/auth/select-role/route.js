@@ -48,6 +48,9 @@ export async function POST(request) {
             where: { id: userId },
             select: {
                 id: true, empCode: true, name: true, role: true,
+                // passwordHod (hash, never returned) marks dual-login accounts —
+                // needed to re-validate an offered EMPLOYEE identity below.
+                passwordHod: true,
                 departmentId: true, designation: true, collarType: true,
                 department: {
                     select: {
@@ -114,7 +117,7 @@ export async function POST(request) {
             },
         }).catch(() => { });
 
-        const { department: _dept, ...safeUser } = user;
+        const { department: _dept, passwordHod: _ph, ...safeUser } = user;
         const response = ok({
             token,
             // For an operator pick, `role` is the real base role; `operator` tells
@@ -183,8 +186,17 @@ async function roleStillAvailable(userId, role, user) {
             return !!(await prisma.committeeBranchAssignment.findFirst({
                 where: { memberUserId: userId }, select: { id: true },
             }));
+        case "EMPLOYEE":
+            // Plain employees hold the role directly. Additionally, an HOD or a
+            // dual-login staff member (BM/CM/HR/COMMITTEE with a departmentId +
+            // secondary password) who signed in with their PRIMARY (empCode)
+            // password resolves to EMPLOYEE at login — that employee identity is
+            // backed by their department membership, not User.role, so checking
+            // `user.role === "EMPLOYEE"` alone wrongly 403'd their picks (e.g.
+            // choosing "HR Admin" from an employee-password login).
+            return user.role === "EMPLOYEE" || (!!user.departmentId && !!user.passwordHod);
         default:
-            // ADMIN / EMPLOYEE — backed by the stored primary role.
+            // ADMIN — backed by the stored primary role.
             return user.role === role;
     }
 }

@@ -125,15 +125,16 @@ export default function StageDetailModal({ branch, stage, quarterId, onClose }) 
         return () => { alive = false; };
     }, [branch.branchId, quarterId, isWinners]);
 
-    // Load THIS branch's declared winners (same data the committee sees) — for
-    // both the Stage 4 view and the dedicated Winners view. ADMIN may target any
-    // branch via ?branchId=.
+    // Load THIS branch's declared winners — for both the Stage 4 view and the
+    // dedicated Winners view. Uses the admin route (pipeline.winners guard) so
+    // any branch can be targeted regardless of the caller's base role /
+    // committee branch assignments.
     useEffect(() => {
         if (stage !== 4 && !isWinners) return;
         let alive = true;
         const qs = new URLSearchParams({ branchId: branch.branchId });
         if (quarterId) qs.set("quarterId", quarterId);
-        api(`/api/committee/results?${qs.toString()}`)
+        api(`/api/admin/winners?${qs.toString()}`)
             .then(d => {
                 if (!alive) return;
                 setWinners(d?.branches?.[0]?.winners || []);
