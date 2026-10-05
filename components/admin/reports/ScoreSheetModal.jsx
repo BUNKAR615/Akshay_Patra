@@ -59,10 +59,10 @@ function SheetBody({ emp, quarter }) {
                 <div className="text-[11px] font-bold uppercase tracking-wide text-[#888] mb-1.5">Evaluators</div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {[
-                        { role: "BM", name: emp.stage2?.bmEval?.evaluatorName },
+                        { role: emp.stage2?.bmEval?.viaDelegation ? "BM · Dept POA" : "BM", name: emp.stage2?.bmEval?.evaluatorName },
                         { role: "HOD", name: emp.stage2?.hodEval?.evaluatorName },
-                        { role: "CM", name: emp.stage3?.cmEval?.evaluatorName },
-                        { role: "HR", name: emp.stage4?.hrEval?.evaluatorName },
+                        { role: emp.stage3?.cmEval?.viaDelegation ? "CM · Dept POA" : "CM", name: emp.stage3?.cmEval?.evaluatorName },
+                        { role: emp.stage4?.hrEval?.viaDelegation ? "HR · Dept POA" : "HR", name: emp.stage4?.hrEval?.evaluatorName },
                     ].map(c => (
                         <div key={c.role} className="rounded-lg bg-[#F6F8FC] px-3 py-2">
                             <div className="text-[10px] font-bold uppercase tracking-wide text-[#888]">{c.role}</div>
@@ -84,7 +84,7 @@ function SheetBody({ emp, quarter }) {
 
             {/* Stage 2 · BM / HOD */}
             <StageCard title="Stage 2 · Branch Manager / HOD" reached={!!(emp.stage2?.bmEval || emp.stage2?.hodEval)}>
-                {emp.stage2?.bmEval && <EvalBlock label="Branch Manager" ev={emp.stage2.bmEval} />}
+                {emp.stage2?.bmEval && <EvalBlock label={emp.stage2.bmEval.evaluatorType || "Branch Manager"} ev={emp.stage2.bmEval} />}
                 {emp.stage2?.hodEval && <EvalBlock label="HOD" ev={emp.stage2.hodEval} />}
                 <Grid>
                     <Cell label="Self Contribution" value={fmtScore(emp.stage2?.bmEval?.selfContribution ?? emp.stage2?.hodEval?.selfContribution)} />
@@ -96,7 +96,7 @@ function SheetBody({ emp, quarter }) {
 
             {/* Stage 3 · CM */}
             <StageCard title="Stage 3 · Cluster Manager" reached={!!emp.stage3?.cmEval}>
-                {emp.stage3?.cmEval && <EvalBlock label="Cluster Manager" ev={emp.stage3.cmEval} />}
+                {emp.stage3?.cmEval && <EvalBlock label={emp.stage3.cmEval.evaluatorType || "Cluster Manager"} ev={emp.stage3.cmEval} />}
                 <Grid>
                     <Cell label="CM Contribution" value={fmtScore(emp.stage3?.cmEval?.evaluatorContribution)} />
                     <Cell label="Final / Combined" value={fmtScore(emp.stage3?.shortlistCombinedScore ?? emp.stage3?.cmEval?.finalScore)} strong />
@@ -111,6 +111,7 @@ function SheetBody({ emp, quarter }) {
                     <div className="text-[12px] text-[#555] mb-2">
                         Evaluated by <span className="font-bold text-[#222]">{emp.stage4.hrEval.evaluatorName || "—"}</span>
                         {emp.stage4.hrEval.evaluatorEmpCode ? ` (${emp.stage4.hrEval.evaluatorEmpCode})` : ""}
+                        {emp.stage4.hrEval.viaDelegation ? ` · ${emp.stage4.hrEval.evaluatorType}` : ""}
                         {emp.stage4.hrEval.submittedAt ? ` · ${fmtDate(emp.stage4.hrEval.submittedAt)}` : ""}
                     </div>
                 )}

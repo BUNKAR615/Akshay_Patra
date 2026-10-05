@@ -3,6 +3,7 @@ export const runtime = 'nodejs'
 
 import prisma from "../../../../lib/prisma";
 import { withPermission } from "../../../../lib/withPermission";
+import { evaluatorTypeLabel } from "../../../../lib/evaluatorDelegation";
 import { REPORTS_ANY } from "../../../../lib/permissions";
 import { ok, fail, notFound, serverError } from "../../../../lib/api-response";
 
@@ -98,6 +99,7 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
                     employeeId: true, submittedAt: true,
                     bmRawScore: true, bmNormalized: true, bmContribution: true,
                     selfContribution: true, stage3CombinedScore: true,
+                    viaDelegation: true,
                     manager: userPick,
                 },
             }),
@@ -119,7 +121,7 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
                 select: {
                     employeeId: true, submittedAt: true,
                     cmRawScore: true, cmNormalized: true, cmContribution: true,
-                    finalScore: true, cluster: userPick,
+                    finalScore: true, viaDelegation: true, cluster: userPick,
                 },
             }),
             prisma.branchShortlistStage3.findMany({
@@ -131,7 +133,7 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
                 select: {
                     employeeId: true, submittedAt: true,
                     hrScore: true, attendancePct: true, workingHours: true,
-                    stage4CombinedScore: true, hr: userPick,
+                    stage4CombinedScore: true, viaDelegation: true, hr: userPick,
                 },
             }).catch(() => []),
             prisma.branchShortlistStage4.findMany({
@@ -171,10 +173,10 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
                 evaluatorMap.set(key, { id: u.id, name: u.name || "", empCode: u.empCode || "", stage });
             }
         };
-        bmEvals.forEach(r => addEvaluator(r.manager, "Stage 2 (BM)"));
+        bmEvals.forEach(r => addEvaluator(r.manager, r.viaDelegation ? "Stage 2 (Delegated BM)" : "Stage 2 (BM)"));
         hodEvals.forEach(r => addEvaluator(r.hod, "Stage 2 (HOD)"));
-        cmEvals.forEach(r => addEvaluator(r.cluster, "Stage 3 (CM)"));
-        hrEvals.forEach(r => addEvaluator(r.hr, "Stage 4 (HR)"));
+        cmEvals.forEach(r => addEvaluator(r.cluster, r.viaDelegation ? "Stage 3 (Delegated CM)" : "Stage 3 (CM)"));
+        hrEvals.forEach(r => addEvaluator(r.hr, r.viaDelegation ? "Stage 4 (Delegated HR)" : "Stage 4 (HR)"));
 
         const rows = employees.map(emp => {
             const s = selfMap.get(emp.id) || null;
@@ -221,6 +223,10 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
                     bmEval: bm ? {
                         evaluatorEmpCode: bm.manager?.empCode || "",
                         evaluatorName: bm.manager?.name || "",
+                        // The ACTUAL evaluator above; this is the capacity
+                        // (branch default vs department POA) they acted in.
+                        evaluatorType: evaluatorTypeLabel("BRANCH_MANAGER", bm.viaDelegation),
+                        viaDelegation: !!bm.viaDelegation,
                         rawScore: bm.bmRawScore,
                         normalizedScore: bm.bmNormalized,
                         evaluatorContribution: bm.bmContribution,
@@ -247,6 +253,8 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
                     cmEval: cm ? {
                         evaluatorEmpCode: cm.cluster?.empCode || "",
                         evaluatorName: cm.cluster?.name || "",
+                        evaluatorType: evaluatorTypeLabel("CLUSTER_MANAGER", cm.viaDelegation),
+                        viaDelegation: !!cm.viaDelegation,
                         rawScore: cm.cmRawScore,
                         normalizedScore: cm.cmNormalized,
                         evaluatorContribution: cm.cmContribution,
@@ -262,6 +270,8 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
                     hrEval: hr ? {
                         evaluatorEmpCode: hr.hr?.empCode || "",
                         evaluatorName: hr.hr?.name || "",
+                        evaluatorType: evaluatorTypeLabel("HR", hr.viaDelegation),
+                        viaDelegation: !!hr.viaDelegation,
                         hrScore: hr.hrScore,
                         attendancePct: hr.attendancePct,
                         workingHours: hr.workingHours,

@@ -6,6 +6,7 @@ import { withPermission } from "../../../../lib/withPermission";
 import { REPORTS_ANY } from "../../../../lib/permissions";
 import { ok, fail, notFound, serverError } from "../../../../lib/api-response";
 import { SELF_MAX_SCORE, evaluatorScaleMax } from "../../../../lib/scoreCalculator";
+import { evaluatorTypeLabel } from "../../../../lib/evaluatorDelegation";
 
 /**
  * GET /api/admin/answer-sheet?employeeId=&stage=1|2|3|4&quarterId=
@@ -126,7 +127,7 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
             const [bm, hod] = await Promise.all([
                 prisma.branchManagerEvaluation.findFirst({
                     where: { employeeId, quarterId },
-                    select: { answers: true, submittedAt: true, bmRawScore: true, bmNormalized: true, manager: userPick },
+                    select: { answers: true, submittedAt: true, bmRawScore: true, bmNormalized: true, viaDelegation: true, manager: userPick },
                 }).catch(() => null),
                 prisma.hodEvaluation.findFirst({
                     where: { employeeId, quarterId },
@@ -135,7 +136,8 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
             ]);
             if (bm) {
                 sheets.push({
-                    role: "Branch Manager",
+                    // Capacity the ACTUAL evaluator acted in (department POA → "Delegated …").
+                    role: evaluatorTypeLabel("BRANCH_MANAGER", bm.viaDelegation),
                     evaluatorName: bm.manager?.name || "—",
                     evaluatorEmpCode: bm.manager?.empCode || "",
                     submittedAt: bm.submittedAt,
@@ -158,11 +160,11 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
         } else if (stage === 3) {
             const cm = await prisma.clusterManagerEvaluation.findFirst({
                 where: { employeeId, quarterId },
-                select: { answers: true, submittedAt: true, cmRawScore: true, cmNormalized: true, finalScore: true, cluster: userPick },
+                select: { answers: true, submittedAt: true, cmRawScore: true, cmNormalized: true, finalScore: true, viaDelegation: true, cluster: userPick },
             }).catch(() => null);
             if (cm) {
                 sheets.push({
-                    role: "Cluster Manager",
+                    role: evaluatorTypeLabel("CLUSTER_MANAGER", cm.viaDelegation),
                     evaluatorName: cm.cluster?.name || "—",
                     evaluatorEmpCode: cm.cluster?.empCode || "",
                     submittedAt: cm.submittedAt,
@@ -178,12 +180,13 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
                     submittedAt: true, attendancePct: true, workingHours: true,
                     presentDays: true, punctualDays: true, workingDays: true,
                     hrScore: true, notes: true, attendancePdfUrl: true, punctualityPdfUrl: true,
-                    referenceSheetUrl: true, hr: userPick,
+                    referenceSheetUrl: true, viaDelegation: true, hr: userPick,
                 },
             }).catch(() => null);
             if (hr) {
                 attendance = {
                     evaluatorName: hr.hr?.name || "—",
+                    evaluatorType: evaluatorTypeLabel("HR", hr.viaDelegation),
                     evaluatorEmpCode: hr.hr?.empCode || "",
                     submittedAt: hr.submittedAt,
                     attendancePct: hr.attendancePct,

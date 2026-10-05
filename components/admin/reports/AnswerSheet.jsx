@@ -263,7 +263,7 @@ function AttendanceSheet({ a }) {
     return (
         <div className="bg-white border border-[#E0E0E0] shadow-sm rounded-xl overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-[#F6F8FC] border-b border-[#E6ECF6]">
-                <span className="text-[13px] font-black text-[#003087]">HR · Attendance & Punctuality</span>
+                <span className="text-[13px] font-black text-[#003087]">{a.evaluatorType && a.evaluatorType !== "HR Personnel" ? a.evaluatorType : "HR"} · Attendance & Punctuality</span>
                 <div className="flex items-center gap-3 text-[12px]">
                     <span className="text-[#666]">By <span className="font-bold text-[#333]">{a.evaluatorName}</span>{a.evaluatorEmpCode ? ` (${a.evaluatorEmpCode})` : ""}</span>
                     {a.submittedAt && <span className="text-[#888]">{fmtDate(a.submittedAt)}</span>}

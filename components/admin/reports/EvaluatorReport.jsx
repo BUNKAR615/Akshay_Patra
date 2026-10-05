@@ -44,7 +44,8 @@ export default function EvaluatorReport({ employees, quarter, filters, onSelect 
             for (const g of groups.filter(x => x.short === def.short)) {
                 for (const e of g.employees) {
                     out.push({
-                        role: def.role,
+                        // Capacity (e.g. "Delegated Branch Manager" under a department POA).
+                        role: def.evalOf(e)?.evaluatorType || def.role,
                         evaluator: g.name,
                         evaluatorCode: g.empCode || "—",
                         stage: `Stage ${def.stage}`,
@@ -90,6 +91,7 @@ export default function EvaluatorReport({ employees, quarter, filters, onSelect 
                                                 <span className={`text-[#003087] transition-transform ${isOpen ? "rotate-90" : ""}`}>▶</span>
                                                 <span className="font-bold text-[#222] truncate">{g.name}</span>
                                                 {g.empCode && <span className="text-[12px] text-[#999]">{g.empCode}</span>}
+                                                {g.delegated && <span className="px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200 text-[10px] font-bold">Dept POA</span>}
                                             </div>
                                             <span className="shrink-0 flex items-center gap-1.5">
                                                 <span className="px-2.5 py-1 rounded-full bg-[#E8EEF9] text-[#003087] text-[11px] font-bold">{g.employees.length} evaluated</span>
@@ -146,6 +148,7 @@ function buildEvaluatorGroups(employees) {
         const key = `${def.short}|${code || name}`;
         if (!map.has(key)) map.set(key, { key, short: def.short, role: def.role, name, empCode: code, employees: [], branches: new Set(), pending: 0 });
         const g = map.get(key);
+        if (ev.viaDelegation) g.delegated = true;
         g.employees.push(e);
         if (e.branchName) g.branches.add(e.branchName);
     };

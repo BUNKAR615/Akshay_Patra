@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import DashboardShell from "../../../components/DashboardShell";
+import DelegationBanner from "../../../components/DelegationBanner";
 import { Card, Stat, Badge, Empty, Alert } from "../../../components/ui";
 import { AP, ROLE_COLOR } from "../../../components/ui/tokens";
 
@@ -43,6 +44,8 @@ export default function CommitteeDashboard() {
     // results in this quarter. Spec: "the dropdown should show only the
     // branches assigned to that role".
     const [assignedBranches, setAssignedBranches] = useState([]);
+    // Department POAs (Committee) this user holds — banner only; scoping is server-side.
+    const [delegations, setDelegations] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     // "ALL" === Total mode (combined across every assigned branch).
@@ -66,6 +69,7 @@ export default function CommitteeDashboard() {
                 setQuarter(data.quarter);
                 setBranches(data.branches || []);
                 setAssignedBranches(data.assignedBranches || data.branches || []);
+                setDelegations(data.delegations || []);
             } else {
                 setError(resultsResult.reason?.message || "Unable to load committee results.");
             }
@@ -124,6 +128,10 @@ export default function CommitteeDashboard() {
 
             {!loading && !error && (
                 <div className="space-y-5">
+                    <DelegationBanner
+                        delegations={delegations}
+                        message="You also handle the Committee stage for these departments under a department POA. Results for those departments are shown alongside your branches."
+                    />
                     {/* Quarter header */}
                     {quarter && (
                         <Card style={{ padding: "16px 22px" }}>

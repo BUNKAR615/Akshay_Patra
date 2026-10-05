@@ -84,6 +84,7 @@ export const GET = withPermission("departments.view", async () => {
                     id: dept.id,
                     name: dept.name,
                     branch: dept.branch.name,
+                    branchId: dept.branch.id,
                     branchType: dept.branch.branchType,
                     employeeCount: dept._count.users,
                     branchManager: branchManagers[0] || null,

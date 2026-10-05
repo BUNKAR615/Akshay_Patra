@@ -4,7 +4,7 @@ export const runtime = 'nodejs'
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { ok, notFound, fail, serverError } from "../../../../lib/api-response";
-import { resolveScopeBranch } from "../../../../lib/auth/resolveScopeBranch";
+import { buildBmQueue } from "../../../../lib/bmEvaluationQueue";
 
 function shuffleArray(array) {
     for (let i = array.length - 1; i > 0; i--) {
@@ -16,7 +16,8 @@ function shuffleArray(array) {
 
 /**
  * GET /api/branch-manager/shortlist
- * Branch-wide Stage 2 evaluation queue for the Branch Manager.
+ * Stage 2 evaluation queue for the Branch Manager — and for anyone holding a
+ * department-level Branch Manager POA (EvaluatorDelegation).
  *
  * Rules (per Project_Documentation.md §7):
  *   - BIG branches: BM evaluates WHITE_COLLAR employees PLUS any BLUE_COLLAR
@@ -26,9 +27,12 @@ function shuffleArray(array) {
  *     automatically go back to the Branch Manager."
  *   - SMALL branches: BM evaluates every Stage 1 shortlisted employee
  *     regardless of collar type.
+ *   - Department POA: a delegated department is evaluated by its delegate
+ *     instead of the branch BM (the delegate's own record stays with the BM).
+ *     See lib/bmEvaluationQueue.js.
  *
  * Returns the shuffled list for blind evaluation and flags which employees
- * the current BM has already evaluated.
+ * have already been evaluated.
  */
 export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
     try {
@@ -38,69 +42,22 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         });
         if (!activeQuarter) return notFound("No active quarter found");
 
-        const { branch } = await resolveScopeBranch(user);
-        if (!branch) return fail("No branch is assigned to this Branch Manager. Please contact admin.");
+        const { bmBranch, delegations, branches, rows } = await buildBmQueue(user.userId, activeQuarter.id);
+        if (branches.length === 0) return fail("No branch is assigned to this Branch Manager. Please contact admin.");
 
-        const stage1 = await prisma.branchShortlistStage1.findMany({
-            where: { branchId: branch.id, quarterId: activeQuarter.id },
-            select: {
-                userId: true,
-                collarType: true,
-                user: {
-                    select: {
-                        id: true,
-                        name: true,
-                        empCode: true,
-                        designation: true,
-                        collarType: true,
-                        department: { select: { id: true, name: true } },
-                    },
-                },
-            },
-        });
-
-        // BIG branches: BC employees only count as the BM's responsibility when
-        // they're orphaned (no active EmployeeHodAssignment). HOD-covered BCs
-        // are filtered out so the BM doesn't double-evaluate them.
-        let assignedBcIds = new Set();
-        if (branch.branchType === "BIG") {
-            const empHodRows = await prisma.employeeHodAssignment.findMany({
-                where: {
-                    quarterId: activeQuarter.id,
-                    employee: { department: { branchId: branch.id } },
-                },
+        // "Done" means the employee already has a Stage 2 BM-type evaluation
+        // this quarter (one evaluation per employee — see the evaluate route).
+        const evaluated = rows.length
+            ? await prisma.branchManagerEvaluation.findMany({
+                where: { quarterId: activeQuarter.id, employeeId: { in: rows.map((c) => c.userId) } },
                 select: { employeeId: true },
-            });
-            assignedBcIds = new Set(empHodRows.map((r) => r.employeeId));
-        }
+            })
+            : [];
+        const evaluatedIds = new Set(evaluated.map((e) => e.employeeId));
+        const multiBranch = branches.length > 1;
 
-        const candidates = stage1.filter((s) => {
-            if (branch.branchType === "BIG") {
-                // Collar from the employee's stored category. The live
-                // User.collarType (sourced from the uploaded sheet) is the
-                // source of truth and ALWAYS wins; the Stage-1 snapshot is only
-                // a fallback for the rare case where User.collarType is null.
-                // Stage logic must never override the sheet — never the dept.
-                const collar = s.user.collarType || s.collarType;
-                if (collar === "WHITE_COLLAR") return true;
-                // Blue-collar (or unknown) — only include orphaned ones (no active HOD).
-                return !assignedBcIds.has(s.userId);
-            }
-            return true;
-        });
-
-        const evaluated = await prisma.branchManagerEvaluation.findMany({
-            where: {
-                managerId: user.userId,
-                quarterId: activeQuarter.id,
-                employeeId: { in: candidates.map((c) => c.userId) },
-            },
-            select: { employeeId: true, bmNormalized: true, bmRawScore: true, submittedAt: true },
-        });
-        const evalMap = new Map(evaluated.map((e) => [e.employeeId, e]));
-
-        const employees = shuffleArray(candidates.map((s) => {
-            const ev = evalMap.get(s.userId);
+        const employees = shuffleArray(rows.map((s) => {
+            const done = evaluatedIds.has(s.userId);
             // Source-of-truth-first: live User.collarType (from the sheet) wins
             // over the Stage-1 snapshot so the BM page can never show a collar
             // that disagrees with the uploaded sheet.
@@ -113,10 +70,19 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
                 designation: s.user.designation || "",
                 collarType: collar,
                 department: s.user.department
-                    ? { id: s.user.department.id, name: s.user.department.name }
+                    ? {
+                        id: s.user.department.id,
+                        // Disambiguate same-named departments when the queue
+                        // spans branches (e.g. a POA in another branch).
+                        name: multiBranch ? `${s.user.department.name} · ${s.branch?.name || ""}` : s.user.department.name,
+                    }
                     : null,
-                alreadyEvaluated: !!ev,
-                isEvaluated: !!ev,
+                branchId: s.branchId,
+                branchName: s.branch?.name || "",
+                // true → evaluated under a department POA, not as branch BM.
+                delegated: !!s.viaDelegation,
+                alreadyEvaluated: done,
+                isEvaluated: done,
                 // Scores are intentionally NOT returned — only the Committee
                 // may see evaluation scores. The boolean flags above are
                 // enough for the dashboard's "Done" state.
@@ -125,10 +91,19 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
 
         return ok({
             quarter: activeQuarter,
-            branch,
-            totalShortlisted: candidates.length,
-            evaluatedCount: evaluated.length,
-            remainingCount: candidates.length - evaluated.length,
+            branch: bmBranch || branches[0],
+            // Pure delegate (no branch BM assignment): evaluation-only dashboard.
+            delegateOnly: !bmBranch,
+            delegations: delegations.map((d) => ({
+                id: d.id,
+                branchId: d.branchId,
+                branchName: d.branch?.name || "",
+                departmentId: d.departmentId,
+                departmentName: d.department?.name || "",
+            })),
+            totalShortlisted: employees.length,
+            evaluatedCount: employees.filter((e) => e.alreadyEvaluated).length,
+            remainingCount: employees.filter((e) => !e.alreadyEvaluated).length,
             employees,
         });
     } catch (err) {

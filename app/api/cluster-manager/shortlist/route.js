@@ -4,7 +4,7 @@ export const runtime = 'nodejs'
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { ok, notFound, fail, serverError } from "../../../../lib/api-response";
-import { resolveAllScopeBranches } from "../../../../lib/auth/resolveScopeBranch";
+import { getEvaluatorBranchScope, loadDelegationIndex, filterRowsForEvaluator } from "../../../../lib/evaluatorDelegation";
 
 // Fisher-Yates shuffle
 function shuffleArray(array) {
@@ -32,7 +32,9 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         // Resolve the CM's branch scope. New-model CMs are assigned to a whole
         // branch (ClusterManagerBranchAssignment), legacy CMs to specific
         // departments (DepartmentRoleMapping). Either path should work.
-        const cmBranches = await resolveAllScopeBranches({ userId: user.userId, role: "CLUSTER_MANAGER" });
+        // Department POA branches are included; rows are filtered per
+        // employee below (lib/evaluatorDelegation).
+        const { branches: cmBranches, defaultBranchIds } = await getEvaluatorBranchScope(user.userId, "CLUSTER_MANAGER");
         const cmBranchIds = cmBranches.map((b) => b.id);
 
         if (requestedDeptId) {
@@ -98,7 +100,7 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         });
         if (!targetDept) return fail("Department not found", 404);
 
-        const shortlist = await prisma.branchShortlistStage2.findMany({
+        const deptRows = await prisma.branchShortlistStage2.findMany({
             where: {
                 branchId: targetDept.branchId,
                 quarterId: activeQuarter.id,
@@ -110,6 +112,17 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
             },
             orderBy: { rank: "asc" },
         });
+        // Keep only the employees this user is the resolved Stage 3 evaluator
+        // for (branch default minus POA-delegated departments, or POA scope).
+        // Legacy DRM-only CMs keep their department view unfiltered.
+        const shortlist = cmBranchIds.includes(targetDept.branchId)
+            ? filterRowsForEvaluator({
+                userId: user.userId,
+                rows: deptRows.map((s) => ({ ...s, employeeId: s.userId, departmentId: deptId })),
+                index: await loadDelegationIndex("CLUSTER_MANAGER", [targetDept.branchId]),
+                isBranchDefault: defaultBranchIds.has(targetDept.branchId),
+            })
+            : deptRows;
 
         if (shortlist.length === 0) {
             return ok({

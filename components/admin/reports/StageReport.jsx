@@ -58,7 +58,7 @@ export default function StageReport({ employees, quarter, filters, onSelect }) {
             name: e.name,
             branchName: e.branchName,
             department: e.department,
-            evaluatedBy: ev ? `${ev.evaluatorName || "—"}${ev.evaluatorEmpCode ? ` (${ev.evaluatorEmpCode})` : ""}` : "—",
+            evaluatedBy: ev ? `${ev.evaluatorName || "—"}${ev.evaluatorEmpCode ? ` (${ev.evaluatorEmpCode})` : ""}${ev.viaDelegation ? ` — ${ev.evaluatorType}` : ""}` : "—",
             score: fmtScore(stageScore(e, stage)) || "—",
             shortlisted: stageShortlisted(e, stage) ? "Yes" : "No",
             date: fmtDate(stageDate(e, stage)) || "—",
@@ -112,7 +112,7 @@ export default function StageReport({ employees, quarter, filters, onSelect }) {
                                             <td className="px-3 py-2 font-bold text-[#003087] underline decoration-dotted">{e.name}</td>
                                             <td className="px-3 py-2 text-[#555]">{e.branchName}</td>
                                             <td className="px-3 py-2 text-[#555]">{e.department}</td>
-                                            {stage > 1 && <td className="px-3 py-2 text-[#555]">{ev?.evaluatorName || "—"}{ev?.evaluatorEmpCode ? ` (${ev.evaluatorEmpCode})` : ""}</td>}
+                                            {stage > 1 && <td className="px-3 py-2 text-[#555]">{ev?.evaluatorName || "—"}{ev?.evaluatorEmpCode ? ` (${ev.evaluatorEmpCode})` : ""}{ev?.viaDelegation && <span className="ml-1 px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 text-[10px] font-bold">{ev.evaluatorType}</span>}</td>}
                                             <td className="px-3 py-2 text-right tabular-nums text-[#333] font-bold">{fmtScore(stageScore(e, stage)) || "—"}</td>
                                             <td className="px-3 py-2">{stageShortlisted(e, stage)
                                                 ? <span className="px-2 py-0.5 rounded-full bg-[#E9F7EF] text-[#00843D] text-[11px] font-bold">Yes</span>

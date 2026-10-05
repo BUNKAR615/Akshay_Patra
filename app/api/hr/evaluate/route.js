@@ -9,6 +9,7 @@ import { normalizeScore, calculateBranchFinalScore, hrBandMarks } from "../../..
 import { regenerateBranchStage4 } from "../../../../lib/branchPromotion";
 import { createNotification } from "../../../../lib/notifications";
 import { stageGate } from "../../../../lib/stageScheduler";
+import { authorizeEvaluator, accessDeniedMessage } from "../../../../lib/evaluatorDelegation";
 
 /**
  * POST /api/hr/evaluate
@@ -42,19 +43,39 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
         });
         if (!stage3Entry) return fail("Employee is not in Stage 3 shortlist");
 
-        // Branch-scope check: HR must be assigned to this employee's branch (ADMIN bypasses)
+        // Authorization (ADMIN bypasses, as before): the branch-default HR
+        // (HrBranchAssignment), or the holder of the employee's department HR
+        // POA — never the employee themselves.
+        let viaDelegation = false;
         if (user.role !== "ADMIN") {
             const employeeBranch = await prisma.user.findUnique({
                 where: { id: employeeId },
-                select: { department: { select: { branchId: true } } },
+                select: { departmentId: true, department: { select: { branchId: true } } },
             });
             const branchId = employeeBranch?.department?.branchId;
             if (!branchId) return fail("Employee has no branch");
-            const hrAssignment = await prisma.hrBranchAssignment.findUnique({
-                where: { hrUserId_branchId: { hrUserId: user.userId, branchId } },
+            const access = await authorizeEvaluator({
+                userId: user.userId,
+                type: "HR",
+                employee: { id: employeeId, departmentId: employeeBranch.departmentId, branchId },
             });
-            if (!hrAssignment) return fail("You are not assigned to this branch", 403);
+            if (!access.allowed) {
+                return fail(access.reason === "NOT_ASSIGNED"
+                    ? "You are not assigned to this branch"
+                    : accessDeniedMessage("HR", access.reason), 403);
+            }
+            viaDelegation = access.viaDelegation;
         }
+
+        // One HR evaluation per employee per quarter. The evaluating HR may
+        // edit their own submission (upsert below); a different HR user —
+        // e.g. after a POA change mid-stage — may not add a second one, which
+        // would double-count the employee in the Stage 4 ranking.
+        const otherHrEval = await prisma.hrEvaluation.findFirst({
+            where: { employeeId, quarterId: quarter.id, hrUserId: { not: user.userId } },
+            select: { id: true },
+        });
+        if (otherHrEval) return fail("This employee has already been evaluated for Stage 4 by another HR evaluator.", 409);
 
         // Get employee's scores from previous stages
         const selfAssessment = await prisma.selfAssessment.findUnique({
@@ -98,6 +119,7 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
             cmContribution,
             hrContribution,
             stage4CombinedScore: finalScore,
+            viaDelegation,
         };
         await prisma.hrEvaluation.upsert({
             where: { hrUserId_employeeId_quarterId: { hrUserId: user.userId, employeeId, quarterId: quarter.id } },
@@ -109,7 +131,7 @@ export const POST = withRole(["HR", "ADMIN"], async (request, { user }) => {
             data: {
                 userId: user.userId,
                 action: "HR_EVALUATION",
-                details: { employeeId, quarterId: quarter.id, hrScore, finalScore }
+                details: { employeeId, quarterId: quarter.id, hrScore, finalScore, viaDelegation }
             }
         }).catch((err) => { console.error("[HR-EVALUATE] Audit log failed:", err); });
 

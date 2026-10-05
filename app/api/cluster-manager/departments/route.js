@@ -4,7 +4,12 @@ export const runtime = 'nodejs'
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { ok, notFound, serverError, forbidden } from "../../../../lib/api-response";
-import { resolveScopeBranch, resolveAllScopeBranches } from "../../../../lib/auth/resolveScopeBranch";
+import {
+    getEvaluatorBranchScope,
+    getUserDelegations,
+    loadDelegationIndex,
+    filterRowsForEvaluator,
+} from "../../../../lib/evaluatorDelegation";
 
 // Fisher-Yates shuffle
 function shuffleArray(array) {
@@ -16,15 +21,39 @@ function shuffleArray(array) {
 }
 
 /**
+ * Stage 2 shortlist rows of ONE branch that `userId` evaluates at Stage 3:
+ * all of them as the branch-default CM, minus departments delegated (POA) to
+ * another CM; or only the POA departments when reached through a delegation.
+ * Never the user themselves.
+ */
+async function cmRowsForBranch(userId, branchId, isBranchDefault, quarterId, select) {
+    const [stage2, index] = await Promise.all([
+        prisma.branchShortlistStage2.findMany({
+            where: { branchId, quarterId },
+            select,
+            orderBy: { rank: "asc" },
+        }),
+        loadDelegationIndex("CLUSTER_MANAGER", [branchId]),
+    ]);
+    const rows = stage2.map((s) => ({ ...s, employeeId: s.userId, departmentId: s.user?.departmentId || null }));
+    return { rows: filterRowsForEvaluator({ userId, rows, index, isBranchDefault }), index };
+}
+
+/**
  * GET /api/cluster-manager/departments
  *
  * Branch-scope semantics:
  *   - ?branchId=<id>  → focus on that branch (must be in the CM's
- *                       ClusterManagerBranchAssignment table; otherwise 403).
- *   - omitted / empty → focus the CM's first assigned branch (initial load).
+ *                       ClusterManagerBranchAssignment table, or a branch where
+ *                       they hold a Cluster Manager POA; otherwise 403).
+ *   - omitted / empty → focus the CM's first branch (initial load).
  *
  * There is no "all branches" mode — the dashboard always shows a single
- * assigned branch and the in-page dropdown switches between assigned branches.
+ * branch and the in-page dropdown switches between the CM's branches.
+ *
+ * Department POA: in a branch where the CM is the branch default, departments
+ * delegated to another CM are excluded; in a POA-only branch only the
+ * delegated departments are shown (lib/evaluatorDelegation).
  */
 export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
     try {
@@ -34,86 +63,76 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         const { searchParams } = new URL(request.url);
         const requested = (searchParams.get("branchId") || "").trim();
 
-        // All branches this CM is assigned to — drives the dropdown. Source
-        // of truth: the ClusterManagerBranchAssignment table (NOT user.branchId).
-        const allAssignedBranches = await resolveAllScopeBranches({
-            userId: user.userId,
-            role: "CLUSTER_MANAGER",
-        });
+        // All branches this CM evaluates in — drives the dropdown. Source of
+        // truth: ClusterManagerBranchAssignment (NOT user.branchId), plus any
+        // branch reached through a department POA.
+        const { branches: allAssignedBranches, defaultBranchIds } = await getEvaluatorBranchScope(user.userId, "CLUSTER_MANAGER");
         if (allAssignedBranches.length === 0) {
             return forbidden("You are not assigned to any branch. Please contact your administrator.");
         }
 
-        // Resolve the focus branch. There is no "all branches" mode — when no
-        // branch is requested (initial dashboard load) we focus the CM's
-        // first assigned branch. A requested branch must be present in the
-        // CM's assignment table; we never fall back to the JWT branchId
-        // (that was the source of the old branch-leak bug).
+        // Resolve the focus branch. A requested branch must be one of the
+        // CM's branches; we never fall back to the JWT branchId (that was the
+        // source of the old branch-leak bug).
         let focusBranch;
         if (requested) {
-            const { branch } = await resolveScopeBranch({
-                userId: user.userId,
-                role: "CLUSTER_MANAGER",
-                branchId: requested,
-            });
-            if (!branch) {
+            focusBranch = allAssignedBranches.find((b) => b.id === requested);
+            if (!focusBranch) {
                 return forbidden("You are not authorized for this branch. Please sign in again.");
             }
-            focusBranch = branch;
         } else {
-            const first = allAssignedBranches[0];
-            focusBranch = { id: first.id, name: first.name, branchType: first.branchType };
+            focusBranch = allAssignedBranches[0];
         }
+        const isBranchDefault = defaultBranchIds.has(focusBranch.id);
 
-        const targetBranches = [{ id: focusBranch.id, name: focusBranch.name, branchType: focusBranch.branchType }];
-        const targetBranchIds = targetBranches.map((b) => b.id);
-        const branchById = new Map(targetBranches.map((b) => [b.id, b]));
-
-        // Stage 2 shortlist for the target branches. Each row carries
-        // branchId so we can group by branch in Total mode.
-        const stage2 = await prisma.branchShortlistStage2.findMany({
-            where: { branchId: { in: targetBranchIds }, quarterId: activeQuarter.id },
-            select: {
-                userId: true,
-                branchId: true,
-                collarType: true,
-                user: {
-                    select: {
-                        id: true,
-                        name: true,
-                        empCode: true,
-                        designation: true,
-                        departmentId: true,
-                        collarType: true,
-                        department: { select: { id: true, name: true, branchId: true } },
-                    },
+        // Stage 2 shortlist for the focus branch, restricted to the employees
+        // this user is the resolved Stage 3 evaluator for.
+        const { rows: stage2 } = await cmRowsForBranch(user.userId, focusBranch.id, isBranchDefault, activeQuarter.id, {
+            userId: true,
+            branchId: true,
+            collarType: true,
+            user: {
+                select: {
+                    id: true,
+                    name: true,
+                    empCode: true,
+                    designation: true,
+                    departmentId: true,
+                    collarType: true,
+                    department: { select: { id: true, name: true, branchId: true } },
                 },
             },
-            orderBy: { rank: "asc" },
         });
 
-        // CM's already-submitted evaluations for these candidates.
+        // Already-submitted Stage 3 evaluations for these candidates (one CM
+        // evaluation per employee — see the evaluate route).
         const candidateIds = stage2.map((s) => s.userId);
         const evaluated = candidateIds.length > 0
             ? await prisma.clusterManagerEvaluation.findMany({
                 where: {
-                    clusterId: user.userId,
                     quarterId: activeQuarter.id,
                     employeeId: { in: candidateIds },
                 },
-                select: { employeeId: true, cmNormalized: true, cmRawScore: true, finalScore: true },
+                select: { employeeId: true },
             })
             : [];
-        const evalMap = new Map(evaluated.map((e) => [e.employeeId, e]));
+        const evalSet = new Set(evaluated.map((e) => e.employeeId));
 
-        // Departments under the target branch(es) so empty departments are
-        // visible as zero-state cards in the focused-branch view. In Total
-        // mode the dashboard renders by branch tags on each row instead.
-        const allDepts = await prisma.department.findMany({
-            where: { branchId: { in: targetBranchIds } },
-            select: { id: true, name: true, branchId: true },
-            orderBy: [{ branchId: "asc" }, { name: "asc" }],
-        });
+        // Departments of the focus branch so empty departments are visible as
+        // zero-state cards. A POA-only branch shows just the POA departments.
+        let allDepts;
+        if (isBranchDefault) {
+            allDepts = await prisma.department.findMany({
+                where: { branchId: focusBranch.id },
+                select: { id: true, name: true, branchId: true },
+                orderBy: [{ branchId: "asc" }, { name: "asc" }],
+            });
+        } else {
+            const poa = await getUserDelegations(user.userId, "CLUSTER_MANAGER");
+            allDepts = poa
+                .filter((d) => d.branchId === focusBranch.id)
+                .map((d) => ({ id: d.departmentId, name: d.department?.name || "", branchId: d.branchId }));
+        }
 
         const stage2ByDept = new Map();
         for (const s of stage2) {
@@ -124,10 +143,9 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
 
         const departmentsData = allDepts.map((dept) => {
             const rows = stage2ByDept.get(dept.id) || [];
-            const evaluatedCount = rows.reduce((n, r) => n + (evalMap.has(r.userId) ? 1 : 0), 0);
+            const evaluatedCount = rows.reduce((n, r) => n + (evalSet.has(r.userId) ? 1 : 0), 0);
             const shuffledEmployees = shuffleArray(rows.map((s) => {
-                const ev = evalMap.get(s.userId);
-                const b = branchById.get(s.branchId);
+                const done = evalSet.has(s.userId);
                 return {
                     id: s.user.id,
                     userId: s.userId,
@@ -141,9 +159,11 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
                     // Branch tag — enables the dashboard's "Branch: X" badge
                     // in Total mode without an extra round-trip.
                     branchId: s.branchId,
-                    branchName: b?.name || "",
-                    isEvaluated: !!ev,
-                    alreadyEvaluated: !!ev,
+                    branchName: focusBranch.name || "",
+                    // true → evaluated under a department POA, not as branch CM.
+                    delegated: !!s.viaDelegation,
+                    isEvaluated: done,
+                    alreadyEvaluated: done,
                     // Scores are intentionally NOT returned — only the
                     // Committee may see evaluation scores.
                     user: s.user,
@@ -153,7 +173,7 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
                 id: dept.id,
                 name: dept.name,
                 branchId: dept.branchId,
-                branchName: branchById.get(dept.branchId)?.name || "",
+                branchName: focusBranch.name || "",
                 totalToEvaluate: rows.length,
                 evaluated: evaluatedCount,
                 completed: rows.length > 0 && evaluatedCount >= rows.length,
@@ -163,19 +183,17 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
 
         // Per-branch summary strip for the dashboard — same shape as before
         // so the existing UI chips keep rendering. We compute these for
-        // EVERY assigned branch regardless of focus mode, so Total and
-        // single-branch views show identical counts.
+        // EVERY branch regardless of focus, so all views show identical counts.
         const assignedBranches = await Promise.all(
             allAssignedBranches.map(async (b) => {
-                const stage2Rows = await prisma.branchShortlistStage2.findMany({
-                    where: { branchId: b.id, quarterId: activeQuarter.id },
-                    select: { userId: true },
-                });
-                const stage2UserIds = stage2Rows.map((r) => r.userId);
+                const { rows } = await cmRowsForBranch(
+                    user.userId, b.id, defaultBranchIds.has(b.id), activeQuarter.id,
+                    { userId: true, user: { select: { departmentId: true } } },
+                );
+                const stage2UserIds = rows.map((r) => r.userId);
                 const evaluatedHere = stage2UserIds.length > 0
                     ? await prisma.clusterManagerEvaluation.count({
                         where: {
-                            clusterId: user.userId,
                             quarterId: activeQuarter.id,
                             employeeId: { in: stage2UserIds },
                         },
@@ -185,6 +203,8 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
                     id: b.id,
                     name: b.name,
                     branchType: b.branchType,
+                    // true → reached only through a department POA.
+                    delegated: b.viaDelegationOnly,
                     totalToEvaluate: stage2UserIds.length,
                     evaluated: evaluatedHere,
                     completed: stage2UserIds.length > 0 && evaluatedHere >= stage2UserIds.length,
@@ -195,14 +215,23 @@ export const GET = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         const totalToEvaluate = assignedBranches.reduce((n, b) => n + b.totalToEvaluate, 0);
         const totalEvaluated = assignedBranches.reduce((n, b) => n + b.evaluated, 0);
 
+        const delegations = (await getUserDelegations(user.userId, "CLUSTER_MANAGER")).map((d) => ({
+            id: d.id,
+            branchId: d.branchId,
+            branchName: d.branch?.name || "",
+            departmentId: d.departmentId,
+            departmentName: d.department?.name || "",
+        }));
+
         return ok({
             departments: departmentsData,
             quarter: activeQuarter,
-            // The dashboard always focuses a single assigned branch.
-            branch: { id: focusBranch.id, name: focusBranch.name, branchType: focusBranch.branchType },
+            // The dashboard always focuses a single branch.
+            branch: { id: focusBranch.id, name: focusBranch.name, branchType: focusBranch.branchType, delegated: !isBranchDefault },
             mode: "BRANCH",
             assignedBranchCount,
             assignedBranches,
+            delegations,
             totals: { totalToEvaluate, evaluated: totalEvaluated },
         });
     } catch (err) {

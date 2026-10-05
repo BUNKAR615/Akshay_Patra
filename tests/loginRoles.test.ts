@@ -20,6 +20,7 @@ const cmFindMany = vi.fn();
 const hrFindMany = vi.fn();
 const committeeFindMany = vi.fn();
 const bmFindUniqueForScope = vi.fn();
+const delegationFindMany = vi.fn();
 
 vi.mock("../lib/prisma", () => ({
     default: {
@@ -41,6 +42,9 @@ vi.mock("../lib/prisma", () => ({
         hodAssignment: {
             findFirst: (args: any) => hodFindFirst(args),
             findMany: (args: any) => hodFindMany(args),
+        },
+        evaluatorDelegation: {
+            findMany: (args: any) => delegationFindMany(args),
         },
     },
 }));
@@ -68,6 +72,7 @@ beforeEach(() => {
     hrFindMany.mockReset().mockResolvedValue([]);
     committeeFindMany.mockReset().mockResolvedValue([]);
     bmFindUniqueForScope.mockReset().mockResolvedValue([]);
+    delegationFindMany.mockReset().mockResolvedValue([]);
 });
 
 describe("computeOfferedRoles — picker decision", () => {
@@ -120,6 +125,56 @@ describe("computeOfferedRoles — picker decision", () => {
     it("Admin with no HOD assignment → [ADMIN]", async () => {
         const out = await computeOfferedRoles({ id: "u-admin", passwordHod: "hash" }, "ADMIN");
         expect(out).toEqual(["ADMIN"]);
+    });
+});
+
+describe("computeOfferedRoles — department POA (EvaluatorDelegation)", () => {
+    it("employee-password login never unlocks a POA role", async () => {
+        delegationFindMany.mockResolvedValue([{ evaluatorType: "BRANCH_MANAGER" }]);
+        const out = await computeOfferedRoles({ id: "u-fin-head" }, "EMPLOYEE");
+        expect(out).toEqual(["EMPLOYEE"]);
+        expect(delegationFindMany).not.toHaveBeenCalled();
+    });
+
+    it("Cluster Manager with an HR POA → [CLUSTER_MANAGER, HR]", async () => {
+        delegationFindMany.mockResolvedValueOnce([{ evaluatorType: "HR" }]);
+        const out = await computeOfferedRoles({ id: "u-cm" }, "CLUSTER_MANAGER");
+        expect(out).toEqual(["CLUSTER_MANAGER", "HR"]);
+    });
+
+    it("POA of the role already held is not duplicated", async () => {
+        delegationFindMany.mockResolvedValueOnce([{ evaluatorType: "CLUSTER_MANAGER" }]);
+        const out = await computeOfferedRoles({ id: "u-cm" }, "CLUSTER_MANAGER");
+        expect(out).toEqual(["CLUSTER_MANAGER"]);
+    });
+
+    it("HOD holding BM + Committee POAs → [HOD, BRANCH_MANAGER, COMMITTEE] in canonical order", async () => {
+        delegationFindMany.mockResolvedValueOnce([{ evaluatorType: "COMMITTEE" }, { evaluatorType: "BRANCH_MANAGER" }]);
+        const out = await computeOfferedRoles({ id: "u-hod" }, "HOD");
+        expect(out).toEqual(["HOD", "BRANCH_MANAGER", "COMMITTEE"]);
+    });
+});
+
+describe("resolveRoleScope — department POA fallback", () => {
+    it("BRANCH_MANAGER with no BM assignment → first POA branch", async () => {
+        bmFindUniqueForScope.mockResolvedValueOnce([]);
+        delegationFindMany.mockResolvedValueOnce([{ branch: JAIPUR }]);
+        const out = await resolveRoleScope("u-fin-head", "BRANCH_MANAGER", { departmentId: "dept-fin" });
+        expect(out).toEqual({ branchId: JAIPUR.id, branchType: JAIPUR.branchType, branchName: JAIPUR.name, departmentIds: [] });
+    });
+
+    it("real BM assignment wins over any POA (no POA lookup)", async () => {
+        bmFindUniqueForScope.mockResolvedValueOnce([JODHPUR]);
+        const out = await resolveRoleScope("u-bm", "BRANCH_MANAGER", {});
+        expect((out as any).branchId).toBe(JODHPUR.id);
+        expect(delegationFindMany).not.toHaveBeenCalled();
+    });
+
+    it("HR with no branch assignment but a POA → POA branch instead of an error", async () => {
+        bmFindUniqueForScope.mockResolvedValueOnce([]);
+        delegationFindMany.mockResolvedValueOnce([{ branch: JAIPUR }]);
+        const out = await resolveRoleScope("u-hr-b", "HR", {});
+        expect((out as any).branchId).toBe(JAIPUR.id);
     });
 });
 

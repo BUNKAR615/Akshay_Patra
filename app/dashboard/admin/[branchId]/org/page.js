@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
+import DepartmentEvaluatorConfig from "../../../../../components/admin/DepartmentEvaluatorConfig";
 
 async function api(url, opts) {
     const res = await fetch(url, opts);
@@ -376,6 +377,9 @@ export default function BranchOrgPage() {
                 deptNames={deptNames}
                 note="Committee is global — assigning a member here applies to all branches automatically (max 3 members). Members can be chosen from the employee list or added manually."
             />
+
+            {/* Department-level evaluator overrides (Power of Attorney). */}
+            <DepartmentEvaluatorConfig branchId={branchId} />
 
             {hods.length > 0 && (
                 <div className="bg-white border border-[#E0E0E0] rounded-xl p-5">

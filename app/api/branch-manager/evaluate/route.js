@@ -4,22 +4,28 @@ export const runtime = 'nodejs'
 import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { created, fail, notFound, conflict, validateBody, handleApiError } from "../../../../lib/api-response";
-import { resolveScopeBranch } from "../../../../lib/auth/resolveScopeBranch";
 import { evaluateSchema } from "../../../../lib/validators";
 import { createNotification } from "../../../../lib/notifications";
 import { normalizeScore, calculateBranchStage2Score, EVALUATOR_MAX_SCORE } from "../../../../lib/scoreCalculator";
 import { regenerateBranchStage2 } from "../../../../lib/branchPromotion";
 import { collarPrismaFilter, effectiveCollar } from "../../../../lib/questionCollar";
 import { stageGate } from "../../../../lib/stageScheduler";
+import { authorizeEvaluator, accessDeniedMessage } from "../../../../lib/evaluatorDelegation";
+import { buildBmQueue } from "../../../../lib/bmEvaluationQueue";
 
 /**
  * POST /api/branch-manager/evaluate
- * Branch-scoped Stage 2 evaluation by the Branch Manager.
+ * Branch-scoped Stage 2 evaluation by the Branch Manager — or by the holder of
+ * a department-level Branch Manager POA (EvaluatorDelegation).
  *
  * Rules:
- *   - Employee must be in BranchShortlistStage1 for the BM's branch.
+ *   - Evaluator resolution (lib/evaluatorDelegation): the employee's
+ *     department POA if one is configured (excluding the employee themselves),
+ *     otherwise the branch BM. Nobody may evaluate themselves.
+ *   - Employee must be in BranchShortlistStage1 for their branch.
  *   - BIG branches: BM only evaluates WHITE_COLLAR (BC goes through HOD).
  *   - SMALL branches: BM evaluates every Stage 1 shortlisted employee.
+ *   - One Stage 2 BM-type evaluation per employee per quarter.
  *   - Weighting: self 60% / BM 40% via calculateBranchStage2Score.
  *   - When the BM has evaluated every target, BranchShortlistStage2 is
  *     auto-populated using the configured stage2Limit (BranchEvalConfig
@@ -37,12 +43,6 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         const gate = await stageGate(activeQuarter.id, 2);
         if (!gate.open) return fail(gate.message, 403);
 
-        // Resolve BM's branch (source of truth for the ownership check) —
-        // honors User.branchId from the JWT first, then BranchManagerAssignment.
-        const { branchId: bmBranchId, branch: bmBranch } = await resolveScopeBranch(user);
-        const bmBranchType = bmBranch?.branchType;
-        if (!bmBranchId) return fail("No branch is assigned to this Branch Manager. Please contact admin.");
-
         const employee = await prisma.user.findUnique({
             where: { id: data.employeeId },
             select: {
@@ -55,18 +55,23 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         if (!employee) return notFound("Employee not found");
 
         const empBranchId = employee.department?.branchId;
-        const branchType = employee.department?.branch?.branchType || bmBranchType;
+        const branchType = employee.department?.branch?.branchType;
+        if (!empBranchId) return fail("You can only evaluate employees in your own branch.", 403);
 
-        // Branch ownership: BM can only evaluate employees in their own branch.
-        if (!empBranchId || empBranchId !== bmBranchId) {
-            return fail("You can only evaluate employees in your own branch.", 403);
-        }
+        // Authorization (server-side, source of truth): branch BM, or the
+        // department's BM POA holder — never the employee themselves.
+        const access = await authorizeEvaluator({
+            userId: user.userId,
+            type: "BRANCH_MANAGER",
+            employee: { id: employee.id, departmentId: employee.departmentId, branchId: empBranchId },
+        });
+        if (!access.allowed) return fail(accessDeniedMessage("BRANCH_MANAGER", access.reason), 403);
 
-        // Employee must be Stage 1 shortlisted for this branch+quarter.
+        // Employee must be Stage 1 shortlisted for their branch+quarter.
         const branchStage1Entry = await prisma.branchShortlistStage1.findUnique({
             where: { userId_quarterId: { userId: data.employeeId, quarterId: activeQuarter.id } },
         });
-        if (!branchStage1Entry || branchStage1Entry.branchId !== bmBranchId) {
+        if (!branchStage1Entry || branchStage1Entry.branchId !== empBranchId) {
             return fail("Employee is not in the Stage 1 shortlist for your branch.");
         }
 
@@ -76,9 +81,9 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         // for this quarter (e.g. the BM removed their HOD, or one was never
         // assigned). HOD-covered employees are rejected so they aren't
         // double-evaluated. This mirrors the orphaned-BC inclusion rule in
-        // app/api/branch-manager/shortlist/route.js — previously this guard
-        // rejected EVERY blue-collar submission, leaving orphaned BCs with no
-        // possible evaluator and permanently stuck at Stage 1.
+        // lib/bmEvaluationQueue.js — previously this guard rejected EVERY
+        // blue-collar submission, leaving orphaned BCs with no possible
+        // evaluator and permanently stuck at Stage 1.
         if (branchType === "BIG" && employee.collarType !== "WHITE_COLLAR") {
             const hodLink = await prisma.employeeHodAssignment.findUnique({
                 where: { employeeId_quarterId: { employeeId: data.employeeId, quarterId: activeQuarter.id } },
@@ -90,11 +95,18 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
             // No HOD link → orphaned → the BM is the correct evaluator. Continue.
         }
 
-        // Duplicate guard
-        const existing = await prisma.branchManagerEvaluation.findUnique({
-            where: { managerId_employeeId_quarterId: { managerId: user.userId, employeeId: data.employeeId, quarterId: activeQuarter.id } },
+        // Duplicate guard — one Stage 2 BM-type evaluation per employee per
+        // quarter, whoever submitted it (the branch BM or a department POA), so
+        // a POA change mid-stage can never double-count an employee.
+        const existing = await prisma.branchManagerEvaluation.findFirst({
+            where: { employeeId: data.employeeId, quarterId: activeQuarter.id },
+            select: { managerId: true },
         });
-        if (existing) return conflict("Already evaluated this employee");
+        if (existing) {
+            return conflict(existing.managerId === user.userId
+                ? "Already evaluated this employee"
+                : "This employee has already been evaluated for Stage 2 by another evaluator.");
+        }
 
         // Validate answers against this quarter's BM question set, restricted
         // to the questions applicable to THIS employee's category (shared +
@@ -133,6 +145,7 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
                 supervisorContribution: 0,
                 bmContribution: evaluatorContribution,
                 stage3CombinedScore: combined,
+                viaDelegation: access.viaDelegation,
             },
         });
 
@@ -142,7 +155,7 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         // no-ops once the Cluster Manager round has started for this branch, so
         // a late BM evaluation can't reshuffle a round CM is already working on.
         const { locked: stage2Locked, added } = await regenerateBranchStage2(prisma, {
-            branchId: bmBranchId,
+            branchId: empBranchId,
             branchType,
             quarterId: activeQuarter.id,
         });
@@ -154,31 +167,13 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
             ).catch((err) => { console.error(`[BM-EVALUATE] Stage 2 notification failed for user ${shortlistedId}:`, err); });
         }
 
-        // Progress for the BM UI (generation no longer waits for completion).
-        // In a BIG branch the BM's targets are all WHITE_COLLAR Stage-1
-        // employees PLUS any orphaned blue-collar/unclassified ones (no active
-        // HOD). HOD-covered BCs are excluded — they are the HOD's targets.
-        const stage1Targets = await prisma.branchShortlistStage1.findMany({
-            where: { branchId: bmBranchId, quarterId: activeQuarter.id },
-            select: { userId: true, collarType: true, user: { select: { collarType: true } } },
-        });
-        let bmTargetRows = stage1Targets;
-        if (branchType === "BIG") {
-            const hodRows = await prisma.employeeHodAssignment.findMany({
-                where: { quarterId: activeQuarter.id, employee: { department: { branchId: bmBranchId } } },
-                select: { employeeId: true },
-            });
-            const hodCovered = new Set(hodRows.map((r) => r.employeeId));
-            bmTargetRows = stage1Targets.filter((s) => {
-                const collar = s.user?.collarType || s.collarType;
-                if (collar === "WHITE_COLLAR") return true;
-                return !hodCovered.has(s.userId); // orphaned BC only
-            });
-        }
-        const targetIds = bmTargetRows.map((s) => s.userId);
+        // Progress for the evaluator's UI — the same queue the dashboard shows
+        // (branch-default scope and/or department POA scope).
+        const { rows: queueRows } = await buildBmQueue(user.userId, activeQuarter.id);
+        const targetIds = queueRows.map((s) => s.userId);
         const bmEvalCount = targetIds.length
             ? await prisma.branchManagerEvaluation.count({
-                where: { managerId: user.userId, quarterId: activeQuarter.id, employeeId: { in: targetIds } },
+                where: { quarterId: activeQuarter.id, employeeId: { in: targetIds } },
             })
             : 0;
 
@@ -192,6 +187,7 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
                     bmNormalized,
                     combined,
                     stage2Generated,
+                    viaDelegation: access.viaDelegation,
                 },
             },
         }).catch((err) => { console.error("[BM-EVALUATE] Audit log failed:", err); });

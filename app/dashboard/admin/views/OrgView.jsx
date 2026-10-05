@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../../../../lib/clientApi";
 import { Modal, useToast } from "../../../../components/ui";
+import DepartmentEvaluatorConfig from "../../../../components/admin/DepartmentEvaluatorConfig";
 
 /**
  * Organization structure tab. The departments payload is cached in page.js
@@ -177,6 +178,15 @@ export default function OrgView({ orgStructure, orgLoading, fetchOrg, onRequestA
                                                 </div>
                                             ) : <p className="text-sm text-gray-400 italic m-0">Not Assigned</p>}
                                         </div>
+
+                                        {/* Department evaluators — Branch Default vs Department POA */}
+                                        {dept.branchId && (
+                                            <div className="rounded-lg p-4 border border-orange-100 bg-orange-50/30">
+                                                <p className="text-xs font-bold text-ap-blue uppercase tracking-wider m-0 mb-1">Evaluators for this department</p>
+                                                <p className="text-[11px] text-gray-500 m-0 mb-2">Branch Default unless a Department POA is assigned. A POA never changes the person&apos;s own role, branch or department.</p>
+                                                <DepartmentEvaluatorConfig branchId={dept.branchId} departmentId={dept.id} compact />
+                                            </div>
+                                        )}
 
                                         {/* Employee List */}
                                         <div>

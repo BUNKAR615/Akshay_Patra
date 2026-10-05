@@ -236,10 +236,10 @@ function buildEvaluator(emps) {
         map.get(k).count++;
     };
     for (const e of emps) {
-        if (e.stage2?.bmEval) bump(e.stage2.bmEval.evaluatorEmpCode, e.stage2.bmEval.evaluatorName, "Stage 2 (BM)");
+        if (e.stage2?.bmEval) bump(e.stage2.bmEval.evaluatorEmpCode, e.stage2.bmEval.evaluatorName, e.stage2.bmEval.viaDelegation ? "Stage 2 (Delegated BM)" : "Stage 2 (BM)");
         if (e.stage2?.hodEval) bump(e.stage2.hodEval.evaluatorEmpCode, e.stage2.hodEval.evaluatorName, "Stage 2 (HOD)");
-        if (e.stage3?.cmEval) bump(e.stage3.cmEval.evaluatorEmpCode, e.stage3.cmEval.evaluatorName, "Stage 3 (CM)");
-        if (e.stage4?.hrEval) bump(e.stage4.hrEval.evaluatorEmpCode, e.stage4.hrEval.evaluatorName, "Stage 4 (HR)");
+        if (e.stage3?.cmEval) bump(e.stage3.cmEval.evaluatorEmpCode, e.stage3.cmEval.evaluatorName, e.stage3.cmEval.viaDelegation ? "Stage 3 (Delegated CM)" : "Stage 3 (CM)");
+        if (e.stage4?.hrEval) bump(e.stage4.hrEval.evaluatorEmpCode, e.stage4.hrEval.evaluatorName, e.stage4.hrEval.viaDelegation ? "Stage 4 (Delegated HR)" : "Stage 4 (HR)");
     }
     return {
         title: "Evaluator-wise Report",

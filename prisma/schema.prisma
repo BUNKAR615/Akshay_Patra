@@ -31,6 +31,7 @@ model Branch {
   committeeAssignments CommitteeBranchAssignment[]
   cmAssignments        ClusterManagerBranchAssignment[]
   bmAssignment         BranchManagerAssignment?
+  evaluatorDelegations EvaluatorDelegation[]
 
   @@map("branches")
 }
@@ -52,6 +53,7 @@ model Department {
   shortlistStage3 ShortlistStage3[]
   users           User[]
   hodAssignments  HodAssignment[]
+  evaluatorDelegations EvaluatorDelegation[]
 
   @@unique([name, branchId])
   @@index([branchId])
@@ -119,6 +121,10 @@ model User {
 
   // Per-user feature grants (granular access control layered on top of role)
   permission UserPermission?
+
+  // Department-scoped evaluation authority ("Power of Attorney") held by this
+  // user. Never changes the user's own role / branch / department.
+  evaluatorDelegations EvaluatorDelegation[] @relation("DelegatedEvaluator")
 
   @@index([departmentId])
   @@index([role])
@@ -275,6 +281,9 @@ model BranchManagerEvaluation {
   selfContribution       Float
   stage3CombinedScore    Float
   supervisorContribution Float
+  // true when submitted under a department POA (EvaluatorDelegation) rather
+  // than as the branch-default Branch Manager. Historical rows default false.
+  viaDelegation          Boolean  @default(false)
   employee               User     @relation("EmployeeBMEval", fields: [employeeId], references: [id], onDelete: Cascade)
   manager                User     @relation("BMGiven", fields: [managerId], references: [id], onDelete: Cascade)
   quarter                Quarter  @relation(fields: [quarterId], references: [id], onDelete: Cascade)
@@ -302,6 +311,8 @@ model ClusterManagerEvaluation {
   cmRawScore             Float
   selfContribution       Float
   supervisorContribution Float
+  // true when submitted under a department POA (see BranchManagerEvaluation).
+  viaDelegation          Boolean  @default(false)
   cluster                User     @relation("CMGiven", fields: [clusterId], references: [id], onDelete: Cascade)
   employee               User     @relation("EmployeeCMEval", fields: [employeeId], references: [id], onDelete: Cascade)
   quarter                Quarter  @relation(fields: [quarterId], references: [id], onDelete: Cascade)
@@ -604,6 +615,8 @@ model HrEvaluation {
   cmContribution        Float    @default(0)
   hrContribution        Float    @default(0)
   stage4CombinedScore   Float    @default(0)
+  // true when submitted under a department POA (see BranchManagerEvaluation).
+  viaDelegation         Boolean  @default(false)
   hr                    User     @relation("HRGiven", fields: [hrUserId], references: [id], onDelete: Cascade)
   employee              User     @relation("EmployeeHREval", fields: [employeeId], references: [id], onDelete: Cascade)
   quarter               Quarter  @relation(fields: [quarterId], references: [id], onDelete: Cascade)
@@ -858,6 +871,40 @@ model UserPermission {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_permissions")
+}
+
+/// EvaluatorDelegation — department-scoped "Power of Attorney" for one of the
+/// four evaluator types. When a row exists for (department, evaluatorType) the
+/// delegated user(s) evaluate that department's employees for that stage
+/// INSTEAD of the branch default (BM / CM / HR / Committee assignment tables);
+/// with no row, the branch default applies exactly as before. A delegate never
+/// evaluates themselves — for their own record the branch default is used.
+///
+/// Purely an authority grant: the delegate's own role, home branch and
+/// department are untouched, and nothing carries over to other departments or
+/// branches (every row is explicit).
+///
+/// slotKey enforces "one active POA per department + type" for BM / CM / HR
+/// ("SINGLE") while Committee may hold several members (slotKey = user id).
+model EvaluatorDelegation {
+  id              String     @id @default(cuid())
+  branchId        String
+  departmentId    String
+  evaluatorType   Role //       BRANCH_MANAGER | CLUSTER_MANAGER | HR | COMMITTEE
+  evaluatorUserId String
+  slotKey         String
+  assignedBy      String
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  branch          Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  department      Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  evaluator       User       @relation("DelegatedEvaluator", fields: [evaluatorUserId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, evaluatorType, slotKey])
+  @@unique([departmentId, evaluatorType, evaluatorUserId])
+  @@index([evaluatorUserId, evaluatorType])
+  @@index([branchId, evaluatorType])
+  @@map("evaluator_delegations")
 }
 
 // ═══════════════════════════════════════════════════════════════

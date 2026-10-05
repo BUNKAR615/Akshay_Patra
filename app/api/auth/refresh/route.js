@@ -6,6 +6,7 @@ import { signToken, verifyRefreshToken } from "../../../../lib/auth";
 import { ok, fail, serverError } from "../../../../lib/api-response";
 import { resolveScopeBranch } from "../../../../lib/auth/resolveScopeBranch";
 import { loadOpClaim } from "../../../../lib/auth/operatorClaim";
+import { getDelegatedBranches } from "../../../../lib/evaluatorDelegation";
 
 /**
  * POST /api/auth/refresh
@@ -65,11 +66,17 @@ export async function POST(request) {
         let branchId = "";
         let branchType = "";
         if (activeRole === "BRANCH_MANAGER" || activeRole === "CLUSTER_MANAGER" || activeRole === "HR" || activeRole === "COMMITTEE") {
-            const { branch } = await resolveScopeBranch({
+            let { branch } = await resolveScopeBranch({
                 userId: user.id,
                 role: activeRole,
                 branchId: decoded.branchId || "",
             });
+            // Department-POA evaluators: the token branch is valid while they
+            // still hold a POA of this type in it.
+            if (!branch) {
+                const poaBranches = await getDelegatedBranches(user.id, activeRole);
+                branch = poaBranches.find((b) => b.id === decoded.branchId) || null;
+            }
             if (!branch) {
                 return fail("Your branch assignment has changed. Please sign in again.", 401);
             }

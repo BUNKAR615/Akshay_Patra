@@ -11,6 +11,7 @@ import { getClientIp, withDbRetry } from "../../../../lib/http";
 import { sanitize } from "../../../../lib/sanitize";
 import { computeOfferedRoles, resolveRoleScope } from "../../../../lib/auth/loginRoles";
 import { hasAnyAdminAccess } from "../../../../lib/permissions";
+import { getDelegatedTypes } from "../../../../lib/evaluatorDelegation";
 
 /**
  * POST /api/auth/login
@@ -102,7 +103,17 @@ export async function POST(request) {
                         where: { hodUserId: user.id, quarter: { status: "ACTIVE" } },
                         select: { id: true },
                     });
-                    if (hasHodAssignment) resolvedRole = "HOD";
+                    if (hasHodAssignment) {
+                        resolvedRole = "HOD";
+                    } else {
+                        // Department evaluator POA (EvaluatorDelegation): the
+                        // secondary password opens the delegated evaluator
+                        // dashboard. The user's stored role is NOT changed —
+                        // any further delegated types are offered by the
+                        // "Continue as …" picker (computeOfferedRoles).
+                        const [poaType] = await getDelegatedTypes(user.id);
+                        if (poaType) resolvedRole = poaType;
+                    }
                 }
             }
         }

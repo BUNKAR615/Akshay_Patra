@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import DashboardShell from "../../../components/DashboardShell";
+import DelegationBanner from "../../../components/DelegationBanner";
 
 async function api(url, opts) {
     const res = await fetch(url, opts);
@@ -65,6 +66,8 @@ export default function HRDashboard() {
     // login picker is gone — Total is the default and per-branch is
     // selectable inline. "" === Total.
     const [assignedBranches, setAssignedBranches] = useState([]);
+    // Department POAs (HR) this user holds — banner only; scoping is server-side.
+    const [delegations, setDelegations] = useState([]);
     const [selectedBranchId, setSelectedBranchId] = useState("");
     const [progressTotals, setProgressTotals] = useState({ evaluated: 0, total: 0 });
 
@@ -142,6 +145,7 @@ export default function HRDashboard() {
             const d = await api(url);
             setShortlist(d.employees || []);
             setAssignedBranches(d.assignedBranches || []);
+            setDelegations(d.delegations || []);
             setSelectedBranchId(d.branch?.id || "");
             setProgressTotals({
                 evaluated: d.totalEvaluated || 0,
@@ -417,6 +421,10 @@ export default function HRDashboard() {
        ────────────────────────────────────── */
     const renderEvaluateTab = () => (
         <div className="space-y-6">
+            <DelegationBanner
+                delegations={delegations}
+                message="You also evaluate Stage 4 (HR) for these departments under a department POA. Your own role, branch and department are unchanged."
+            />
             {/* Branch dropdown — Total + per-branch. This replaces the old
                 pre-login branch picker. Total is the default. */}
             {(assignedBranches.length > 0) && (
@@ -590,6 +598,9 @@ export default function HRDashboard() {
                                 <div>
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <h3 className="text-base font-bold text-[#003087]">{emp.name}</h3>
+                                        {emp.delegated && (
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-orange-50 text-orange-700 border-orange-200">Dept POA</span>
+                                        )}
                                         {/* Branch tag — visible in Total mode so HR can
                                             see at a glance which branch the candidate is
                                             from when looking at the combined list. */}
@@ -754,7 +765,9 @@ export default function HRDashboard() {
                                 </div>
                             )}
 
-                            {isLocked ? (
+                            {isLocked && emp.hrEvaluatedByOther ? (
+                                <p className="text-[12px] text-[#666666] text-right m-0">Evaluated by another HR evaluator — read-only.</p>
+                            ) : isLocked ? (
                                 <div className="flex justify-end">
                                     <button
                                         onClick={() => handleEditClick(emp)}

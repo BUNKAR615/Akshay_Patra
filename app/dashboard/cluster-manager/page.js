@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import DashboardShell from "../../../components/DashboardShell";
 import EvaluationForm from "../../../components/EvaluationForm";
 import UserProfileCard from "../../../components/UserProfileCard";
+import DelegationBanner from "../../../components/DelegationBanner";
 import { filterQuestionsByCollar, effectiveCollar } from "../../../lib/questionCollar";
 
 async function api(url, opts) {
@@ -38,6 +39,8 @@ export default function ClusterManagerDashboard() {
     const [selectedBranchId, setSelectedBranchId] = useState("");
     const [branchInfo, setBranchInfo] = useState(null);
     const [assignedBranches, setAssignedBranches] = useState([]);
+    // Department POAs (CM) this user holds — banner only; scoping is server-side.
+    const [delegations, setDelegations] = useState([]);
 
     const [questions, setQuestions] = useState([]);
     const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -98,6 +101,7 @@ export default function ClusterManagerDashboard() {
             setQuestions(qData.questions);
             setBranchInfo(deptsData.branch || null);
             setAssignedBranches(deptsData.assignedBranches || []);
+            setDelegations(deptsData.delegations || []);
             // Keep the dropdown in sync with the branch the server scoped to.
             setSelectedBranchId(deptsData.branch?.id || "");
             setSelectedEmployee(null);
@@ -187,6 +191,13 @@ export default function ClusterManagerDashboard() {
                 />
             )}
 
+            <DelegationBanner
+                delegations={delegations}
+                message={branchInfo?.delegated
+                    ? "In this branch you evaluate Stage 3 only for the departments delegated to you. Your own role, branch and department are unchanged."
+                    : "You also evaluate Stage 3 (Cluster Manager) for these departments under a department POA:"}
+            />
+
             {/* Branch selector + branch-wise counts. Replaces the old multi-
                 department selector and the logout-required Switch Branch
                 button. Selecting a branch refetches in place. */}
@@ -221,7 +232,7 @@ export default function ClusterManagerDashboard() {
                                     >
                                         {assignedBranches.map((b) => (
                                             <option key={b.id} value={b.id}>
-                                                {b.name}
+                                                {b.name}{b.delegated ? " (Dept POA)" : ""}
                                                 {b.totalToEvaluate > 0 ? ` — ${b.evaluated}/${b.totalToEvaluate}` : " — 0 eligible"}
                                             </option>
                                         ))}

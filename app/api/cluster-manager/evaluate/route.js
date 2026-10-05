@@ -11,6 +11,7 @@ import { getEvaluatorPool } from "../../../../lib/evaluatorPool";
 import { regenerateBranchStage3 } from "../../../../lib/branchPromotion";
 import { collarPrismaFilter, effectiveCollar } from "../../../../lib/questionCollar";
 import { stageGate } from "../../../../lib/stageScheduler";
+import { authorizeEvaluator, accessDeniedMessage, isBranchDefaultEvaluator, loadDelegationIndex, filterRowsForEvaluator } from "../../../../lib/evaluatorDelegation";
 
 /**
  * POST /api/cluster-manager/evaluate
@@ -39,12 +40,20 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         const branchId = employee.department?.branchId;
         const branchType = employee.department?.branch?.branchType;
 
-        // Branch-scope check: CM must be assigned to this employee's branch
+        // Authorization (server-side, source of truth): the branch-default CM
+        // (ClusterManagerBranchAssignment), or the holder of the employee's
+        // department CM POA — never the employee themselves.
         if (!branchId) return fail("Employee has no branch");
-        const cmAssignment = await prisma.clusterManagerBranchAssignment.findUnique({
-            where: { cmUserId_branchId: { cmUserId: user.userId, branchId } },
+        const access = await authorizeEvaluator({
+            userId: user.userId,
+            type: "CLUSTER_MANAGER",
+            employee: { id: employee.id, departmentId: employee.departmentId, branchId },
         });
-        if (!cmAssignment) return fail("You are not assigned to this branch", 403);
+        if (!access.allowed) {
+            return fail(access.reason === "NOT_ASSIGNED"
+                ? "You are not assigned to this branch"
+                : accessDeniedMessage("CLUSTER_MANAGER", access.reason), 403);
+        }
 
         // Check if employee is in branch Stage 2 shortlist (new flow)
         const branchStage2Entry = await prisma.branchShortlistStage2.findUnique({
@@ -65,6 +74,18 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
             where: { clusterId_employeeId_quarterId: { clusterId: user.userId, employeeId: data.employeeId, quarterId: activeQuarter.id } },
         });
         if (existing) return conflict(`Already evaluated this employee on ${existing.submittedAt.toISOString()}`);
+
+        // Branch-level flow: one Stage 3 evaluation per employee per quarter,
+        // whoever submitted it (branch CM or department POA), so a POA change
+        // mid-stage can never double-count an employee. (The legacy
+        // department-pool flow below intentionally keeps multi-CM pools.)
+        if (branchStage2Entry) {
+            const other = await prisma.clusterManagerEvaluation.findFirst({
+                where: { employeeId: data.employeeId, quarterId: activeQuarter.id },
+                select: { id: true },
+            });
+            if (other) return conflict("This employee has already been evaluated for Stage 3 by another evaluator.");
+        }
 
         // Validate answers against the CM question set, restricted to the
         // questions applicable to THIS employee's category (shared + own-collar)
@@ -109,7 +130,8 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
                     supervisorContribution: evaluatorContribution,
                     bmContribution: 0,
                     cmContribution,
-                    finalScore: combined
+                    finalScore: combined,
+                    viaDelegation: access.viaDelegation,
                 },
             });
 
@@ -128,14 +150,25 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
                     .catch((err) => { console.error(`[CM-EVALUATE] Stage 3 notification failed for user ${shortlistedId}:`, err); });
             }
 
-            // Progress for the CM UI (generation no longer waits for completion).
-            const allStage2 = await prisma.branchShortlistStage2.findMany({
-                where: { branchId, quarterId: activeQuarter.id },
-                select: { userId: true },
+            // Progress for the CM UI (generation no longer waits for completion)
+            // — over the employees of this branch this user evaluates (branch
+            // default and/or department POA scope).
+            const [branchStage2, cmIndex, cmIsDefault] = await Promise.all([
+                prisma.branchShortlistStage2.findMany({
+                    where: { branchId, quarterId: activeQuarter.id },
+                    select: { userId: true, user: { select: { departmentId: true } } },
+                }),
+                loadDelegationIndex("CLUSTER_MANAGER", [branchId]),
+                isBranchDefaultEvaluator(user.userId, "CLUSTER_MANAGER", branchId),
+            ]);
+            const allStage2 = filterRowsForEvaluator({
+                userId: user.userId,
+                rows: branchStage2.map((s) => ({ ...s, employeeId: s.userId, departmentId: s.user?.departmentId || null })),
+                index: cmIndex,
+                isBranchDefault: cmIsDefault,
             });
             const cmEvalCount = await prisma.clusterManagerEvaluation.count({
                 where: {
-                    clusterId: user.userId,
                     quarterId: activeQuarter.id,
                     employeeId: { in: allStage2.map((s) => s.userId) },
                 },
@@ -145,7 +178,7 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
                 data: {
                     userId: user.userId,
                     action: stage3Generated ? "BRANCH_STAGE3_GENERATED" : "CM_EVALUATION_SUBMITTED",
-                    details: { employeeId: data.employeeId, quarterId: activeQuarter.id, cmNormalized, combined }
+                    details: { employeeId: data.employeeId, quarterId: activeQuarter.id, cmNormalized, combined, viaDelegation: access.viaDelegation }
                 }
             }).catch((err) => { console.error("[CM-EVALUATE] Audit log failed:", err); });
 

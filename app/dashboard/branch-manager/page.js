@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import DashboardShell from "../../../components/DashboardShell";
 import EvaluationForm from "../../../components/EvaluationForm";
 import UserProfileCard from "../../../components/UserProfileCard";
+import DelegationBanner from "../../../components/DelegationBanner";
 import { Tabs, Badge, Btn, Drawer, SearchInput, EmptyState, Avatar, ProgressBar, useToast } from "../../../components/ui";
 import { filterQuestionsByCollar, effectiveCollar } from "../../../lib/questionCollar";
 
@@ -528,7 +529,14 @@ export default function BranchManagerDashboard() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const toast = useToast();
-    const activeView = searchParams.get("view") || "evaluate";
+    // Department POA: a pure delegate (holds a Branch Manager POA but is not a
+    // branch BM) gets an evaluation-only dashboard — the branch-management
+    // views (overview stats, HOD management) are the branch BM's alone.
+    const [delegateOnly, setDelegateOnly] = useState(false);
+    const delegateOnlyRef = useRef(false);
+    const [delegations, setDelegations] = useState([]);
+    const requestedView = searchParams.get("view") || "evaluate";
+    const activeView = delegateOnly && (requestedView === "shortlist" || requestedView === "departments") ? "evaluate" : requestedView;
 
     // In-page tab strip mirrors the sidebar's ?view= URLs (same shapes the
     // nav config uses) so views are reachable without opening the sidebar.
@@ -582,6 +590,7 @@ export default function BranchManagerDashboard() {
     const [bmStats, setBmStats] = useState(null);
 
     const fetchBmStats = async () => {
+        if (delegateOnlyRef.current) return;
         try {
             const data = await api("/api/branch-manager/stats");
             setBmStats(data);
@@ -626,8 +635,11 @@ export default function BranchManagerDashboard() {
             setBranch(deptsData.branch);
             setDepartments(deptsData.departments || []);
             setQuestions(qData.questions);
+            delegateOnlyRef.current = !!deptsData.delegateOnly;
+            setDelegateOnly(!!deptsData.delegateOnly);
+            setDelegations(deptsData.delegations || []);
 
-            if (deptsData.branch?.branchType === "BIG") {
+            if (deptsData.branch?.branchType === "BIG" && !deptsData.delegateOnly) {
                 fetchHodAssignments();
             }
             await Promise.all([fetchShortlist(), fetchBmStats()]);
@@ -647,7 +659,7 @@ export default function BranchManagerDashboard() {
         setRefreshing(true);
         try {
             const tasks = [fetchShortlist(), fetchBmStats()];
-            if ((branch?.branchType || user?.branchType) === "BIG") {
+            if ((branch?.branchType || user?.branchType) === "BIG" && !delegateOnlyRef.current) {
                 tasks.push(fetchHodAssignments());
             }
             await Promise.all(tasks);
@@ -875,14 +887,28 @@ export default function BranchManagerDashboard() {
             {/* Profile Card */}
             {user && (
                 <UserProfileCard
-                    user={user}
-                    extraInfo={{
+                    // A pure delegate is NOT a Branch Manager — label the pill
+                    // as the delegated authority it is (their real role is unchanged).
+                    user={delegateOnly ? { ...user, role: "Delegated BM (POA)" } : user}
+                    extraInfo={delegateOnly ? {
+                        label: "Delegated Branch Manager evaluator (POA)",
+                        value: `${departments.length} department${departments.length === 1 ? "" : "s"} delegated to you`,
+                        color: "text-ap-orange-700"
+                    } : {
                         label: branch?.name ? `Branch: ${branch.name}` : (user.branchName ? `Branch: ${user.branchName}` : "Evaluating"),
                         value: `${branch?.branchType || user.branchType || "STANDARD"} branch — ${departments.length} department${departments.length === 1 ? "" : "s"}`,
                         color: "text-ap-green"
                     }}
                 />
             )}
+
+            {/* Department POA banner — evaluation authority only, no role change. */}
+            <DelegationBanner
+                delegations={delegations}
+                message={delegateOnly
+                    ? "You evaluate Stage 2 for the departments below on behalf of the Branch Manager. Your own role, branch and department are unchanged, and your own evaluation stays with the Branch Manager."
+                    : "In addition to your branch, you evaluate Stage 2 for these departments under a department POA:"}
+            />
 
             {/* ═══════ COMMAND CENTER RIBBON ═══════ */}
             {ribbonTiles.length > 0 && (
@@ -898,8 +924,10 @@ export default function BranchManagerDashboard() {
                 ariaLabel="Branch manager views"
                 tabs={[
                     { id: "evaluate", label: "Evaluation", count: shortlistMeta.remainingCount ?? undefined },
-                    { id: "shortlist", label: "Branch Overview" },
-                    { id: "departments", label: isBigBranch ? "HOD Management" : "Departments" },
+                    ...(delegateOnly ? [] : [
+                        { id: "shortlist", label: "Branch Overview" },
+                        { id: "departments", label: isBigBranch ? "HOD Management" : "Departments" },
+                    ]),
                     { id: "history", label: "History" },
                 ]}
                 active={activeView}
@@ -975,7 +1003,7 @@ export default function BranchManagerDashboard() {
             )}
 
             {/* ═══════ HOD MANAGEMENT (BIG branches) ═══════ */}
-            {activeView === "departments" && isBigBranch && (
+            {activeView === "departments" && isBigBranch && !delegateOnly && (
                 <div className="space-y-6 mb-8">
                     {/* Quick statistics (spec) — refreshed after every nomination/assignment */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2 sm:gap-3">
@@ -1170,7 +1198,7 @@ export default function BranchManagerDashboard() {
             )}
 
             {/* Departments view — STANDARD branches have no HODs. */}
-            {activeView === "departments" && !isBigBranch && (
+            {activeView === "departments" && !isBigBranch && !delegateOnly && (
                 <div className="bg-white border border-ap-border rounded-card p-6 mb-8 shadow-card">
                     <div className="flex items-center gap-3 mb-5">
                         <div className="w-10 h-10 rounded-full bg-ap-blue/10 flex items-center justify-center shrink-0">
@@ -1341,6 +1369,7 @@ export default function BranchManagerDashboard() {
                                                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                             <p className="text-[17px] font-bold text-ap-blue leading-tight truncate">{entry.name}</p>
                                                             <CollarBadge collar={entry.collarType} />
+                                                            {entry.delegated && !delegateOnly && <Badge label="Dept POA" color="orange" />}
                                                             {entry.alreadyEvaluated
                                                                 ? <Badge label="Done" color="green" />
                                                                 : <Badge label="Pending" color="orange" />}

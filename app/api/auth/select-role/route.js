@@ -11,6 +11,7 @@ import { ok, fail, serverError } from "../../../../lib/api-response";
 import { selectRoleSchema } from "../../../../lib/validators";
 import { resolveRoleScope } from "../../../../lib/auth/loginRoles";
 import { hasAnyAdminAccess } from "../../../../lib/permissions";
+import { getDelegatedTypes } from "../../../../lib/evaluatorDelegation";
 
 /**
  * POST /api/auth/select-role
@@ -165,6 +166,11 @@ export async function POST(request) {
  * that was removed between login and this request.
  */
 async function roleStillAvailable(userId, role, user) {
+    // A department evaluator POA (EvaluatorDelegation) also backs the
+    // evaluator roles — see lib/auth/loginRoles computeOfferedRoles.
+    if (role === "BRANCH_MANAGER" || role === "CLUSTER_MANAGER" || role === "HR" || role === "COMMITTEE") {
+        if ((await getDelegatedTypes(userId)).includes(role)) return true;
+    }
     switch (role) {
         case "HOD":
             return !!(await prisma.hodAssignment.findFirst({

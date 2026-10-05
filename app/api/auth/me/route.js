@@ -5,6 +5,7 @@ import prisma from "../../../../lib/prisma";
 import { ok, unauthorized, notFound, fail, serverError } from "../../../../lib/api-response";
 import { withDbRetry, isTransientDbError } from "../../../../lib/http";
 import { expandGrants, hasAnyAdminAccess } from "../../../../lib/permissions";
+import { getUserDelegations } from "../../../../lib/evaluatorDelegation";
 
 /** GET /api/auth/me */
 export async function GET(request) {
@@ -89,6 +90,18 @@ export async function GET(request) {
         const permissions = [...expandGrants(permRecord?.permissions || [])];
         const isOperator = sessionRole !== "ADMIN" && hasAnyAdminAccess(permRecord);
 
+        // Department evaluator POAs this user holds (authority only — their
+        // role / branch / department above are unchanged). Dashboards show a
+        // "Delegated evaluator" banner from this.
+        const delegations = (await withDbRetry(() => getUserDelegations(user.id))).map((d) => ({
+            id: d.id,
+            evaluatorType: d.evaluatorType,
+            branchId: d.branchId,
+            branchName: d.branch?.name || "",
+            departmentId: d.departmentId,
+            departmentName: d.department?.name || "",
+        }));
+
         return ok({
             user: {
                 ...user,
@@ -99,6 +112,7 @@ export async function GET(request) {
                 permissions,
                 isOperator,
                 operatorTitle: isOperator ? (permRecord?.operatorTitle || null) : null,
+                delegations,
             },
             currentQuarter: activeQuarter?.name || null,
         });
