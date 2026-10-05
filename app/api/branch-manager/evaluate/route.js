@@ -7,7 +7,7 @@ import { created, fail, notFound, conflict, validateBody, handleApiError } from 
 import { resolveScopeBranch } from "../../../../lib/auth/resolveScopeBranch";
 import { evaluateSchema } from "../../../../lib/validators";
 import { createNotification } from "../../../../lib/notifications";
-import { normalizeScore, calculateBranchStage2Score } from "../../../../lib/scoreCalculator";
+import { normalizeScore, calculateBranchStage2Score, EVALUATOR_MAX_SCORE } from "../../../../lib/scoreCalculator";
 import { regenerateBranchStage2 } from "../../../../lib/branchPromotion";
 import { collarPrismaFilter, effectiveCollar } from "../../../../lib/questionCollar";
 import { stageGate } from "../../../../lib/stageScheduler";
@@ -116,7 +116,7 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
         }
 
         const bmRawScore = data.answers.reduce((s, a) => s + a.score, 0);
-        const bmNormalized = normalizeScore(bmRawScore, lockedIds.size);
+        const bmNormalized = normalizeScore(bmRawScore, lockedIds.size, EVALUATOR_MAX_SCORE);
         const selfNorm = branchStage1Entry.selfScore;
 
         const { selfContribution, evaluatorContribution, combined } = calculateBranchStage2Score(selfNorm, bmNormalized);

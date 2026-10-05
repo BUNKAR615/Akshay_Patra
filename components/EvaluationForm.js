@@ -13,21 +13,21 @@ const CATEGORY_COLORS = {
     INTEGRITY: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
 };
 
+// Evaluator scale (Stage 2 BM/HOD, Stage 3 CM): the button label IS the mark
+// awarded — selecting 1 submits score 1, selecting 5 submits score 5.
 const SCALE = [
-    { value: -2, label: "Strongly Disagree", labelHindi: "पूर्णतः असहमत", short: "-2", color: "bg-[#D32F2F] text-white border-[#D32F2F]", idle: "bg-white border border-[#D32F2F] text-[#D32F2F] hover:bg-[#D32F2F]/10" },
-    { value: -1, label: "Disagree", labelHindi: "असहमत", short: "-1", color: "bg-[#F57C00] text-white border-[#F57C00]", idle: "bg-white border border-[#F57C00] text-[#F57C00] hover:bg-[#F57C00]/10" },
-    { value: 0, label: "Neutral", labelHindi: "तटस्थ", short: "0", color: "bg-[#616161] text-white border-[#616161]", idle: "bg-white border border-[#616161] text-[#616161] hover:bg-[#616161]/10" },
-    { value: 1, label: "Agree", labelHindi: "सहमत", short: "+1", color: "bg-[#388E3C] text-white border-[#388E3C]", idle: "bg-white border border-[#388E3C] text-[#388E3C] hover:bg-[#388E3C]/10" },
-    { value: 2, label: "Strongly Agree", labelHindi: "पूर्णतः सहमत", short: "+2", color: "bg-[#1B5E20] text-white border-[#1B5E20]", idle: "bg-white border border-[#1B5E20] text-[#1B5E20] hover:bg-[#1B5E20]/10" },
+    { value: 1, color: "bg-[#D32F2F] text-white border-[#D32F2F]", idle: "bg-white border border-[#D32F2F] text-[#D32F2F] hover:bg-[#D32F2F]/10" },
+    { value: 2, color: "bg-[#F57C00] text-white border-[#F57C00]", idle: "bg-white border border-[#F57C00] text-[#F57C00] hover:bg-[#F57C00]/10" },
+    { value: 3, color: "bg-[#616161] text-white border-[#616161]", idle: "bg-white border border-[#616161] text-[#616161] hover:bg-[#616161]/10" },
+    { value: 4, color: "bg-[#388E3C] text-white border-[#388E3C]", idle: "bg-white border border-[#388E3C] text-[#388E3C] hover:bg-[#388E3C]/10" },
+    { value: 5, color: "bg-[#1B5E20] text-white border-[#1B5E20]", idle: "bg-white border border-[#1B5E20] text-[#1B5E20] hover:bg-[#1B5E20]/10" },
 ];
 
 const LANG_MODES = ["Both", "English", "हिंदी"];
 
-// Numeric display labels (opt-in via the `numericLabels` prop, e.g. the Cluster
-// Manager Stage 3 form). Only the visible text changes — the submitted score
-// values stay -2..+2: 1 = Strongly Disagree (-2), 2 = Disagree (-1),
-// 3 = Neutral (0), 4 = Agree (+1), 5 = Strongly Agree (+2).
-const NUMERIC_LABELS = { "-2": "1", "-1": "2", "0": "3", "1": "4", "2": "5" };
+// Drafts saved before the 1–5 scale hold -2..+2 values; a distinct storage key
+// keeps them from being re-read as (wrong) 1–5 answers.
+const DRAFT_VERSION = "v5";
 
 export default function EvaluationForm({
     questions,
@@ -35,9 +35,9 @@ export default function EvaluationForm({
     submitLabel = "Submit Evaluation",
     confirmMessage = "Are you sure you want to submit this evaluation? This action cannot be undone.",
     disabled = false,
-    draftKey = null,
-    numericLabels = false,
+    draftKey: baseDraftKey = null,
 }) {
+    const draftKey = baseDraftKey ? `${baseDraftKey}_${DRAFT_VERSION}` : null;
     const [scores, setScores] = useState({});
     const [submitting, setSubmitting] = useState(false);
     const [langMode, setLangMode] = useState("Both");
@@ -210,7 +210,7 @@ export default function EvaluationForm({
                     {SCALE.map((s) => (
                         <span key={s.value} className="text-[12px] text-[#333333] flex items-center gap-1.5 font-medium">
                             <span className={`inline-block w-3 h-3 rounded-full ${s.color.split(' ')[0]}`} />
-                            <span>{numericLabels ? NUMERIC_LABELS[String(s.value)] : langMode === "हिंदी" ? s.labelHindi : langMode === "English" ? s.label : `${s.label} / ${s.labelHindi}`}</span>
+                            <span>{s.value}</span>
                         </span>
                     ))}
                 </div>
@@ -260,7 +260,7 @@ export default function EvaluationForm({
                                     </div>
                                 </div>
 
-                                {/* -2 to +2 Rating Buttons Container */}
+                                {/* 1 to 5 Rating Buttons Container */}
                                 <div className="ml-0 sm:ml-12">
                                     <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
                                         {SCALE.map((s) => (
@@ -268,7 +268,7 @@ export default function EvaluationForm({
                                                 key={s.value}
                                                 onClick={() => handleScore(q.id, s.value)}
                                                 disabled={disabled}
-                                                title={numericLabels ? NUMERIC_LABELS[String(s.value)] : s.label}
+                                                title={String(s.value)}
                                                 className={`min-h-[44px] sm:min-h-[48px] sm:min-w-[48px] p-2 sm:p-2 rounded-lg text-[14px] transition-all cursor-pointer box-border flex items-center justify-center sm:flex-col shadow-sm hover:shadow
                                                     ${scores[q.id] === s.value
                                                         ? `${s.color} ring-2 ring-offset-1 ring-${s.color.split(' ')[0].replace('bg-', '')}`
@@ -277,11 +277,7 @@ export default function EvaluationForm({
                                                     ${disabled ? "opacity-50 !bg-[#CCCCCC] !text-[#666666] !border-transparent cursor-not-allowed shadow-none" : ""}
                                                 `}
                                             >
-                                                {numericLabels ? (
-                                                    <span className="block text-[18px] sm:text-[17px] font-bold opacity-90 leading-tight text-center px-1">{NUMERIC_LABELS[String(s.value)]}</span>
-                                                ) : (
-                                                    <span className="block text-[13px] sm:text-[12px] sm:text-[13px] font-bold opacity-90 leading-tight text-center px-1">{langMode === "हिंदी" ? s.labelHindi : langMode === "English" ? s.label : `${s.label} / ${s.labelHindi}`}</span>
-                                                )}
+                                                <span className="block text-[18px] sm:text-[17px] font-bold opacity-90 leading-tight text-center px-1">{s.value}</span>
                                             </button>
                                         ))}
                                     </div>

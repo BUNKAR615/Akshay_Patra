@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
     api, fmtScore, fmtDate, collarLabel,
     reachedStage, evaluatedAtStage, stageScore,
-    LIKERT_OPTIONS, likertOption,
+    scaleOptions, likertOption, markText,
 } from "./reports/helpers.js";
 
 // ── Per-stage presentation metadata ──────────────────────────────────────
@@ -639,15 +639,15 @@ function ScriptSheet({ s }) {
                 <p className="p-4 text-center text-[#999] text-[12px]">No question-level answers recorded.</p>
             ) : (
                 <div className="divide-y divide-[#F2F2F2]">
-                    {s.questions.map(q => <ScriptRow key={q.number} q={q} />)}
+                    {s.questions.map(q => <ScriptRow key={q.number} q={q} scaleMax={s.scaleMax} />)}
                 </div>
             )}
         </div>
     );
 }
 
-function ScriptRow({ q }) {
-    const selected = likertOption(q.score);
+function ScriptRow({ q, scaleMax }) {
+    const selected = likertOption(q.score, scaleMax);
     return (
         <div className="px-3 py-2.5 flex items-start gap-2.5">
             <span className="shrink-0 w-6 h-6 rounded-full bg-[#003087] text-white text-[11px] font-bold flex items-center justify-center mt-0.5">{q.number}</span>
@@ -655,7 +655,7 @@ function ScriptRow({ q }) {
                 <p className="text-[12.5px] font-semibold text-[#222] leading-snug">{q.text}</p>
                 {q.textHindi && <p className="text-[11.5px] text-[#777] leading-snug mt-0.5">{q.textHindi}</p>}
                 <div className="flex flex-wrap gap-1 mt-1.5">
-                    {LIKERT_OPTIONS.map(o => {
+                    {scaleOptions(scaleMax).map(o => {
                         const isSel = o.value === q.score;
                         return (
                             <span key={o.value}
@@ -670,7 +670,7 @@ function ScriptRow({ q }) {
             </div>
             <div className="shrink-0 text-right">
                 <div className="text-[16px] font-black" style={{ color: selected?.color || "#333" }}>
-                    {q.score === null || q.score === undefined ? "—" : (q.score > 0 ? `+${q.score}` : q.score)}
+                    {markText(q.score, scaleMax)}
                 </div>
             </div>
         </div>

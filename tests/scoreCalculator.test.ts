@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+    EVALUATOR_MAX_SCORE,
+    evaluatorScaleMax,
     normalizeScore,
     calculateBranchStage2Score,
     calculateBranchStage3Score,
@@ -18,6 +20,57 @@ describe("normalizeScore", () => {
     it("rounds to two decimal places", () => {
         // 7 out of 20 max → 35.00
         expect(normalizeScore(7, 10)).toBe(35);
+    });
+});
+
+describe("evaluator 1..5 scale (Stage 2 BM/HOD, Stage 3 CM)", () => {
+    const n = 10;
+
+    it("awards exactly the selected mark per question", () => {
+        // every answer = k → raw = k × n, normalized = k/5 of 100
+        for (const k of [1, 2, 3, 4, 5]) {
+            expect(normalizeScore(k * n, n, EVALUATOR_MAX_SCORE)).toBe(k * 20);
+        }
+    });
+
+    it("all 5s is full marks and all 1s is the 20% floor", () => {
+        expect(normalizeScore(5 * n, n, EVALUATOR_MAX_SCORE)).toBe(100);
+        expect(normalizeScore(1 * n, n, EVALUATOR_MAX_SCORE)).toBe(20);
+    });
+
+    it("is question-count independent, and the stage weights still total 100", () => {
+        for (const count of [5, 8, 10, 12, 15, 20]) {
+            const full = normalizeScore(5 * count, count, EVALUATOR_MAX_SCORE);
+            expect(full).toBe(100);
+            expect(calculateBranchStage2Score(100, full).combined).toBe(100);
+            expect(calculateBranchStage3Score(full, full, full).combined).toBe(100);
+        }
+    });
+
+    it("feeds the weighted stage combiners (all 3s → 60% of the evaluator share)", () => {
+        const norm = normalizeScore(3 * n, n, EVALUATOR_MAX_SCORE); // 60
+        expect(calculateBranchStage2Score(0, norm).evaluatorContribution).toBe(24); // 60% of 40
+        expect(calculateBranchStage3Score(0, 0, norm).cmContribution).toBe(18);     // 60% of 30
+    });
+
+    it("leaves the default (self, -2..+2) scale untouched", () => {
+        expect(normalizeScore(2 * n, n)).toBe(100);
+        expect(normalizeScore(-2 * n, n)).toBe(-100);
+    });
+});
+
+describe("evaluatorScaleMax (legacy vs 1..5 record detection)", () => {
+    it("recognizes 1..5 records", () => {
+        for (const k of [1, 2, 3, 4, 5]) {
+            expect(evaluatorScaleMax(k * 10, normalizeScore(k * 10, 10, 5), 10)).toBe(5);
+        }
+    });
+
+    it("recognizes legacy -2..+2 records, including zero and negative raw", () => {
+        expect(evaluatorScaleMax(20, normalizeScore(20, 10, 2), 10)).toBe(2);
+        expect(evaluatorScaleMax(7, normalizeScore(7, 10, 2), 10)).toBe(2);
+        expect(evaluatorScaleMax(0, 0, 10)).toBe(2);
+        expect(evaluatorScaleMax(-9, normalizeScore(-9, 10, 2), 10)).toBe(2);
     });
 });
 

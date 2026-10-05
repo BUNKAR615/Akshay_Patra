@@ -3,18 +3,49 @@
 //
 //  Every questionnaire stage (self / BM / HOD / CM) is first normalized here
 //  to a question-count-independent percentage: rawScore is the sum of the
-//  -2..+2 Likert answers, maxPossible = questionCount × 2. The stage
-//  combiners below then apply FIXED weights to that percentage, so the total
-//  weightage of a stage never depends on how many questions the admin
+//  per-question answers, maxPossible = questionCount × maxPerQuestion. The
+//  stage combiners below then apply FIXED weights to that percentage, so the
+//  total weightage of a stage never depends on how many questions the admin
 //  configured — each question automatically carries stageWeight/questionCount
 //  marks. 10 questions → each worth W/10; 20 questions → each worth W/20.
 //  Adding, removing, or reordering questions never changes a stage's total.
+//
+//  Two answer scales exist:
+//    • Self assessment (Stage 1) — Likert -2..+2, max 2 per question (default).
+//    • Evaluator stages (BM / HOD Stage 2 and CM Stage 3) — 1..5 marks,
+//      max 5 per question (EVALUATOR_MAX_SCORE). Records submitted before that
+//      change keep their stored -2..+2 scores (see evaluatorScaleMax).
 // ═══════════════════════════════════════════════════════════════
-function normalizeScore(rawScore: number, questionCount: number): number {
-    const maxPossible = questionCount * 2
+const SELF_MAX_SCORE = 2
+const EVALUATOR_MIN_SCORE = 1
+const EVALUATOR_MAX_SCORE = 5
+
+function normalizeScore(
+    rawScore: number,
+    questionCount: number,
+    maxPerQuestion: number = SELF_MAX_SCORE
+): number {
+    const maxPossible = questionCount * maxPerQuestion
     if (maxPossible === 0) return 0
     const normalized = (rawScore / maxPossible) * 100
     return Math.round(normalized * 100) / 100
+}
+
+// Which per-question maximum (2 = legacy -2..+2, 5 = current 1..5) produced a
+// stored evaluator record? Inferred from the stored raw/normalized pair so no
+// schema change is needed: the two scales only agree when raw is 0, and a
+// 1..5 record can never have raw 0 (its minimum is questionCount × 1).
+function evaluatorScaleMax(
+    rawScore: number | null | undefined,
+    normalized: number | null | undefined,
+    answerCount: number
+): number {
+    if (typeof rawScore !== "number") return EVALUATOR_MAX_SCORE
+    if (rawScore <= 0) return SELF_MAX_SCORE
+    if (typeof normalized !== "number" || answerCount <= 0) return EVALUATOR_MAX_SCORE
+    return Math.abs(normalized - normalizeScore(rawScore, answerCount, SELF_MAX_SCORE)) < 0.02
+        ? SELF_MAX_SCORE
+        : EVALUATOR_MAX_SCORE
 }
 
 function calculateStage2Score(
@@ -142,6 +173,10 @@ function calculateBranchFinalScore(
 }
 
 export {
+    SELF_MAX_SCORE,
+    EVALUATOR_MIN_SCORE,
+    EVALUATOR_MAX_SCORE,
+    evaluatorScaleMax,
     normalizeScore,
     calculateStage2Score,
     calculateStage3Score,

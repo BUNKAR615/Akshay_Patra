@@ -5,7 +5,7 @@ import prisma from "../../../../lib/prisma";
 import { withRole } from "../../../../lib/withRole";
 import { ok, fail, validateBody, handleApiError } from "../../../../lib/api-response";
 import { evaluateSchema } from "../../../../lib/validators";
-import { normalizeScore, calculateBranchStage2Score } from "../../../../lib/scoreCalculator";
+import { normalizeScore, calculateBranchStage2Score, EVALUATOR_MAX_SCORE } from "../../../../lib/scoreCalculator";
 import { regenerateBranchStage2 } from "../../../../lib/branchPromotion";
 import { createNotification } from "../../../../lib/notifications";
 import { stageGate } from "../../../../lib/stageScheduler";
@@ -111,7 +111,7 @@ export const POST = withRole(["HOD"], async (request, { user }) => {
 
         // Calculate scores
         const rawScore = answers.reduce((sum, a) => sum + a.score, 0);
-        const hodNormalized = normalizeScore(rawScore, validQIds.size);
+        const hodNormalized = normalizeScore(rawScore, validQIds.size, EVALUATOR_MAX_SCORE);
 
         // Get self-assessment score
         const selfAssessment = await prisma.selfAssessment.findUnique({

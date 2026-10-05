@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, fmtScore, fmtDate, collarLabel, LIKERT_OPTIONS, likertOption } from "./helpers.js";
+import { api, fmtScore, fmtDate, collarLabel, scaleOptions, likertOption, optionText, markText } from "./helpers.js";
 import ExportButtons from "./ExportButtons.jsx";
 
 const STAGES = [
@@ -118,13 +118,13 @@ function answerSheetRows(sheet) {
     const out = [];
     (sheet?.sheets || []).forEach(s => {
         (s.questions || []).forEach(q => {
-            const opt = likertOption(q.score);
+            const opt = likertOption(q.score, s.scaleMax);
             out.push({
                 section: `${s.role}${s.evaluatorName ? ` · ${s.evaluatorName}` : ""}`,
                 number: q.number,
                 question: q.text,
                 questionHindi: q.textHindi || "",
-                answer: opt ? `${opt.label} (${q.score > 0 ? `+${q.score}` : q.score})` : "",
+                answer: opt ? optionText(opt, s.scaleMax) : "",
                 score: q.score === null || q.score === undefined ? "" : q.score,
             });
         });
@@ -208,15 +208,15 @@ function QuestionSheet({ s }) {
                 <div className="p-8 text-center text-[#999] text-sm">No question-level answers were recorded.</div>
             ) : (
                 <div className="divide-y divide-[#F0F0F0]">
-                    {s.questions.map(q => <QuestionRow key={q.number} q={q} />)}
+                    {s.questions.map(q => <QuestionRow key={q.number} q={q} scaleMax={s.scaleMax} />)}
                 </div>
             )}
         </div>
     );
 }
 
-function QuestionRow({ q }) {
-    const selected = likertOption(q.score);
+function QuestionRow({ q, scaleMax }) {
+    const selected = likertOption(q.score, scaleMax);
     return (
         <div className="px-4 py-3">
             <div className="flex items-start gap-3">
@@ -227,14 +227,14 @@ function QuestionRow({ q }) {
 
                     {/* Options — the selected one is highlighted */}
                     <div className="flex flex-wrap gap-1.5 mt-2">
-                        {LIKERT_OPTIONS.map(o => {
+                        {scaleOptions(scaleMax).map(o => {
                             const isSel = o.value === q.score;
                             return (
                                 <span key={o.value}
                                     style={isSel ? { background: o.color, borderColor: o.color, color: "#fff" } : { borderColor: "#DDD", color: "#888" }}
                                     className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-bold ${isSel ? "" : "bg-white"}`}>
                                     {isSel && <span aria-hidden>✓</span>}
-                                    {o.label} ({o.value > 0 ? `+${o.value}` : o.value})
+                                    {optionText(o, scaleMax)}
                                 </span>
                             );
                         })}
@@ -243,7 +243,7 @@ function QuestionRow({ q }) {
                 <div className="shrink-0 text-right">
                     <div className="text-[10px] font-bold uppercase tracking-wide text-[#999]">Marks</div>
                     <div className="text-[18px] font-black" style={{ color: selected?.color || "#333" }}>
-                        {q.score === null || q.score === undefined ? "—" : (q.score > 0 ? `+${q.score}` : q.score)}
+                        {markText(q.score, scaleMax)}
                     </div>
                 </div>
             </div>

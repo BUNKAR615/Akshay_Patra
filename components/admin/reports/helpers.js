@@ -148,7 +148,7 @@ export function activeFilterSummary(f) {
 export const CHART_COLORS = ["#003087", "#00843D", "#F7941D", "#6C3FB0", "#C0392B", "#1E88A8", "#9B7B0A", "#3C6E47", "#B0436A", "#5A6B8C"];
 export const STAGE_COLORS = { 1: "#003087", 2: "#00843D", 3: "#F7941D", 4: "#6C3FB0" };
 
-// The 5-point Likert scale used by every questionnaire stage (self / BM / HOD / CM).
+// Stage 1 (self) answers use the 5-point Likert scale -2..+2.
 // Mirrors components/TimedEvaluationForm.js so the answer sheet shows the same options.
 export const LIKERT_OPTIONS = [
     { value: -2, label: "Strongly Disagree", labelHindi: "पूर्णतः असहमत", color: "#D32F2F" },
@@ -157,4 +157,21 @@ export const LIKERT_OPTIONS = [
     { value: 1, label: "Agree", labelHindi: "सहमत", color: "#388E3C" },
     { value: 2, label: "Strongly Agree", labelHindi: "पूर्णतः सहमत", color: "#1B5E20" },
 ];
-export const likertOption = (score) => LIKERT_OPTIONS.find(o => o.value === score) || null;
+
+// Stage 2 (BM / HOD) and Stage 3 (CM) answers are 1..5 marks. Records submitted
+// before that change keep the Likert scale — the answer-sheet API flags each
+// sheet with `scaleMax` (5 = marks, 2 = legacy Likert).
+export const MARK_OPTIONS = [
+    { value: 1, label: "1", color: "#D32F2F" },
+    { value: 2, label: "2", color: "#F57C00" },
+    { value: 3, label: "3", color: "#616161" },
+    { value: 4, label: "4", color: "#388E3C" },
+    { value: 5, label: "5", color: "#1B5E20" },
+];
+export const scaleOptions = (scaleMax) => (scaleMax === 5 ? MARK_OPTIONS : LIKERT_OPTIONS);
+export const likertOption = (score, scaleMax) => scaleOptions(scaleMax).find(o => o.value === score) || null;
+// Option text on the sheet: "1".."5" for marks, "Agree (+1)" for legacy Likert.
+export const optionText = (o, scaleMax) => (scaleMax === 5 ? o.label : `${o.label} (${o.value > 0 ? `+${o.value}` : o.value})`);
+// Marks cell: plain number for 1..5, signed for legacy Likert.
+export const markText = (score, scaleMax) =>
+    score === null || score === undefined ? "—" : (scaleMax !== 5 && score > 0 ? `+${score}` : String(score));

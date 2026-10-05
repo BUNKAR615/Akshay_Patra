@@ -6,7 +6,7 @@ import { withRole } from "../../../../lib/withRole";
 import { created, fail, notFound, conflict, validateBody, handleApiError } from "../../../../lib/api-response";
 import { evaluateSchema } from "../../../../lib/validators";
 import { createNotification } from "../../../../lib/notifications";
-import { normalizeScore, calculateFinalScore, calculateBranchStage3Score } from "../../../../lib/scoreCalculator";
+import { normalizeScore, calculateFinalScore, calculateBranchStage3Score, EVALUATOR_MAX_SCORE } from "../../../../lib/scoreCalculator";
 import { getEvaluatorPool } from "../../../../lib/evaluatorPool";
 import { regenerateBranchStage3 } from "../../../../lib/branchPromotion";
 import { collarPrismaFilter, effectiveCollar } from "../../../../lib/questionCollar";
@@ -84,7 +84,7 @@ export const POST = withRole(["CLUSTER_MANAGER"], async (request, { user }) => {
         }
 
         const cmRawScore = data.answers.reduce((s, a) => s + a.score, 0);
-        const cmNormalized = normalizeScore(cmRawScore, lockedIds.size);
+        const cmNormalized = normalizeScore(cmRawScore, lockedIds.size, EVALUATOR_MAX_SCORE);
 
         // ── Branch-level flow (new) ──
         if (branchStage2Entry && branchId) {

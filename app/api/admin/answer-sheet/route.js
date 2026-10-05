@@ -5,6 +5,7 @@ import prisma from "../../../../lib/prisma";
 import { withPermission } from "../../../../lib/withPermission";
 import { REPORTS_ANY } from "../../../../lib/permissions";
 import { ok, fail, notFound, serverError } from "../../../../lib/api-response";
+import { SELF_MAX_SCORE, evaluatorScaleMax } from "../../../../lib/scoreCalculator";
 
 /**
  * GET /api/admin/answer-sheet?employeeId=&stage=1|2|3|4&quarterId=
@@ -12,8 +13,10 @@ import { ok, fail, notFound, serverError } from "../../../../lib/api-response";
  * Admin-only. Returns the FULL question-by-question answer sheet for one
  * employee at one stage of one quarter — the live evaluation records.
  *
- * Answer shape across every stage is `[{ questionId, score }]` (score is the
- * Likert value -2..+2). We resolve each questionId to its text so the report
+ * Answer shape across every stage is `[{ questionId, score }]`. Stage 1 (self)
+ * scores are the Likert value -2..+2; Stage 2/3 evaluator scores are 1..5 marks
+ * (records submitted before that change keep -2..+2). Each sheet carries
+ * `scaleMax` (2 or 5) so the UI renders the right options. We resolve each questionId to its text so the report
  * shows question number, text, the selected option, and the per-question mark.
  *
  * Stage map:
@@ -96,6 +99,13 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
             });
         };
 
+        // Evaluator sheet fields: scale-aware max marks (1..5 → ×5, legacy -2..+2 → ×2).
+        const evaluatorScale = (answers, raw, norm) => {
+            const n = Array.isArray(answers) ? answers.length : 0;
+            const scaleMax = evaluatorScaleMax(raw, norm, n);
+            return { scaleMax, maxScore: n * scaleMax };
+        };
+
         if (stage === 1) {
             const self = await prisma.selfAssessment.findUnique({
                 where: { userId_quarterId: { userId: employeeId, quarterId } },
@@ -108,6 +118,7 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
                     evaluatorEmpCode: employee.empCode || "",
                     submittedAt: self.submittedAt,
                     rawScore: self.rawScore, maxScore: self.maxScore, normalizedScore: self.normalizedScore,
+                    scaleMax: SELF_MAX_SCORE,
                     questions: await buildQuestions(self.answers),
                 });
             }
@@ -128,7 +139,8 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
                     evaluatorName: bm.manager?.name || "—",
                     evaluatorEmpCode: bm.manager?.empCode || "",
                     submittedAt: bm.submittedAt,
-                    rawScore: bm.bmRawScore, maxScore: (Array.isArray(bm.answers) ? bm.answers.length : 0) * 2, normalizedScore: bm.bmNormalized,
+                    rawScore: bm.bmRawScore, normalizedScore: bm.bmNormalized,
+                    ...evaluatorScale(bm.answers, bm.bmRawScore, bm.bmNormalized),
                     questions: await buildQuestions(bm.answers),
                 });
             }
@@ -138,7 +150,8 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
                     evaluatorName: hod.hod?.name || "—",
                     evaluatorEmpCode: hod.hod?.empCode || "",
                     submittedAt: hod.submittedAt,
-                    rawScore: hod.hodRawScore, maxScore: (Array.isArray(hod.answers) ? hod.answers.length : 0) * 2, normalizedScore: hod.hodNormalized,
+                    rawScore: hod.hodRawScore, normalizedScore: hod.hodNormalized,
+                    ...evaluatorScale(hod.answers, hod.hodRawScore, hod.hodNormalized),
                     questions: await buildQuestions(hod.answers),
                 });
             }
@@ -153,7 +166,8 @@ export const GET = withPermission(REPORTS_ANY, async (request) => {
                     evaluatorName: cm.cluster?.name || "—",
                     evaluatorEmpCode: cm.cluster?.empCode || "",
                     submittedAt: cm.submittedAt,
-                    rawScore: cm.cmRawScore, maxScore: (Array.isArray(cm.answers) ? cm.answers.length : 0) * 2, normalizedScore: cm.cmNormalized,
+                    rawScore: cm.cmRawScore, normalizedScore: cm.cmNormalized,
+                    ...evaluatorScale(cm.answers, cm.cmRawScore, cm.cmNormalized),
                     questions: await buildQuestions(cm.answers),
                 });
             }
