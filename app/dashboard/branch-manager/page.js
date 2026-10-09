@@ -712,7 +712,7 @@ export default function BranchManagerDashboard() {
 
     const handleRemoveHod = async (assignment) => {
         const hodName = assignment.hod?.name || "this HOD";
-        if (!window.confirm(`Remove ${hodName} as HOD? All blue-collar employees assigned to them will return to your evaluation queue.`)) return;
+        if (!window.confirm(`Remove ${hodName} as HOD? Blue-collar employees they have not evaluated yet will return to your evaluation queue.`)) return;
         setRemovingHodId(assignment.hodUserId);
         try {
             const data = await api("/api/branch-manager/hod/remove", {
@@ -878,7 +878,8 @@ export default function BranchManagerDashboard() {
     const ribbonTiles = bmStats ? [
         { label: "Stage 1 Cleared", value: bmStats.stage1?.shortlisted, color: "#003087" },
         { label: "Awaiting Your Action", value: shortlistMeta.remainingCount, color: "#F7941D", accent: true },
-        { label: isBigBranch ? "You Evaluated (WC)" : "You Evaluated", value: bmStats.bmEvaluatedCount, color: "#00843D" },
+        // Big branch: the BM's own queue is WC + blue-collar not assigned to an HOD.
+        { label: "You Evaluated", value: bmStats.bmEvaluatedCount, color: "#00843D" },
         { label: "HODs Evaluated (BC)", value: bmStats.stage2?.totalBcEvaluated, color: "#6A1B9A" },
     ] : [];
 
@@ -960,7 +961,7 @@ export default function BranchManagerDashboard() {
                         <StatBox label="Blue Collar" value={bmStats.totalBlueCollar} color="#00843D" />
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mt-3">
-                        <StatBox label={isBigBranch ? "BM Evaluated (WC)" : "BM Evaluated"} value={bmStats.bmEvaluatedCount} color="#003087" compact />
+                        <StatBox label={isBigBranch ? "BM Evaluated (WC + unassigned BC)" : "BM Evaluated"} value={bmStats.bmEvaluatedCount} color="#003087" compact />
                         <StatBox label="HOD Evaluated (BC)" value={bmStats.stage2.totalBcEvaluated} color="#00843D" compact />
                         <StatBox label="Stage 2 Shortlist" value={bmStats.stage2.shortlisted} color="#F7941D" compact />
                     </div>

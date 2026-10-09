@@ -14,39 +14,31 @@ export const GET = withRole(["HOD"], async (request, { user }) => {
         const quarter = await prisma.quarter.findFirst({ where: { status: "ACTIVE" } });
         if (!quarter) return fail("No active quarter");
 
-        // Prefer per-employee HOD assignments (new flow). Fall back to department-level.
-        const empAssignments = await prisma.employeeHodAssignment.findMany({
-            where: { hodUserId: user.userId, quarterId: quarter.id },
-            select: { employeeId: true },
-        });
+        // The BM's per-employee links are the only grant — exactly the list the
+        // BM dashboard shows under this HOD (no department-level fallback; see
+        // lib/hodCoverage).
+        const [empAssignments, hodAssignments] = await Promise.all([
+            prisma.employeeHodAssignment.findMany({
+                where: { hodUserId: user.userId, quarterId: quarter.id },
+                select: { employeeId: true },
+            }),
+            // Nominated departments — display only.
+            prisma.hodAssignment.findMany({
+                where: { hodUserId: user.userId, quarterId: quarter.id },
+                include: { department: { select: { id: true, name: true, branchId: true } } }
+            }),
+        ]);
         const assignedEmployeeIds = empAssignments.map(a => a.employeeId);
 
-        // Department-level assignments (legacy / fallback)
-        const hodAssignments = await prisma.hodAssignment.findMany({
-            where: { hodUserId: user.userId, quarterId: quarter.id },
-            include: { department: { select: { id: true, name: true, branchId: true } } }
-        });
-
-        if (assignedEmployeeIds.length === 0 && hodAssignments.length === 0) {
+        if (assignedEmployeeIds.length === 0) {
             return ok({ employees: [], message: "No employees assigned to you for this quarter" });
         }
 
-        // Build the shortlist query. If per-employee assignments exist, use those only.
-        const whereClause = {
-            quarterId: quarter.id,
-            collarType: "BLUE_COLLAR",
-        };
-        if (assignedEmployeeIds.length > 0) {
-            whereClause.userId = { in: assignedEmployeeIds };
-        } else {
-            const deptIds = hodAssignments.map(a => a.departmentId);
-            const branchId = hodAssignments[0].department.branchId;
-            whereClause.branchId = branchId;
-            whereClause.user = { departmentId: { in: deptIds } };
-        }
-
         const shortlisted = await prisma.branchShortlistStage1.findMany({
-            where: whereClause,
+            // No collar filter on the Stage-1 snapshot: the assign route already
+            // refuses white-collar employees, and unclassified (null) ones are
+            // blue-collar everywhere else (BM queue, Stage 2 promotion).
+            where: { quarterId: quarter.id, userId: { in: assignedEmployeeIds } },
             include: {
                 user: {
                     select: { id: true, name: true, empCode: true, designation: true, departmentId: true,

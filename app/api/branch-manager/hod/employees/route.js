@@ -86,17 +86,28 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
             orderBy: { assignedAt: "desc" },
         });
 
-        // Additive, read-only enrichment: whether this HOD has already submitted
-        // a Stage-2 evaluation for each assigned employee this quarter. Powers
-        // the evaluation-status badge in the BM's "View Assigned" panel.
-        const empIds = rows.map((r) => r.employee.id);
-        const evalRows = empIds.length > 0
-            ? await prisma.hodEvaluation.findMany({
-                where: { hodId: hodUserId, quarterId, employeeId: { in: empIds } },
-                select: { employeeId: true },
-            })
-            : [];
+        // Whether this HOD has already submitted a Stage-2 evaluation for each
+        // employee this quarter — powers the evaluation-status badge in the
+        // BM's "View Assigned" panel. Employees this HOD evaluated without a
+        // link (pre-fix department-level access) are listed too, so the panel
+        // matches the HOD's coverage (lib/hodCoverage) and the admin pipeline.
+        const evalRows = await prisma.hodEvaluation.findMany({
+            where: { hodId: hodUserId, quarterId },
+            select: {
+                employeeId: true,
+                employee: {
+                    select: {
+                        id: true, name: true, empCode: true, designation: true, collarType: true,
+                        department: { select: { id: true, name: true } },
+                    },
+                },
+            },
+        });
         const evaluatedSet = new Set(evalRows.map((e) => e.employeeId));
+        const linkedIds = new Set(rows.map((r) => r.employee.id));
+        for (const e of evalRows) {
+            if (!linkedIds.has(e.employeeId)) rows.push({ employee: e.employee, assignedAt: null });
+        }
 
         return ok({
             hodUserId,
@@ -166,6 +177,25 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
             if (e.id === hodUserId) {
                 return fail("HOD cannot be assigned to themselves");
             }
+        }
+
+        // An employee whose Stage 2 is already done (by an HOD, or by the BM
+        // while orphaned) can't be moved — the evaluation stays with whoever
+        // submitted it, and moving them would make the BM page disagree with
+        // the admin pipeline.
+        const [doneByHod, doneByBm] = await Promise.all([
+            prisma.hodEvaluation.findMany({
+                where: { quarterId, employeeId: { in: uniqueEmpIds }, hodId: { not: hodUserId } },
+                select: { employee: { select: { name: true } } },
+            }),
+            prisma.branchManagerEvaluation.findMany({
+                where: { quarterId, employeeId: { in: uniqueEmpIds } },
+                select: { employee: { select: { name: true } } },
+            }),
+        ]);
+        const alreadyDone = [...doneByHod, ...doneByBm].map((r) => r.employee.name);
+        if (alreadyDone.length > 0) {
+            return fail(`Already evaluated for Stage 2 and cannot be reassigned: ${alreadyDone.join(", ")}`);
         }
 
         // Snapshot any previous HOD owners (so we can audit-log moves).
@@ -240,6 +270,14 @@ export const DELETE = withRole(["BRANCH_MANAGER"], async (request, { user }) => 
         });
         if (!existing) {
             return ok({ message: `${employee.name} was not assigned to any HOD.`, removed: false });
+        }
+
+        const evaluated = await prisma.hodEvaluation.findFirst({
+            where: { employeeId, quarterId, hodId: existing.hodUserId },
+            select: { id: true },
+        });
+        if (evaluated) {
+            return fail(`${employee.name} has already been evaluated by their HOD and cannot be returned to your queue.`);
         }
 
         await prisma.employeeHodAssignment.delete({ where: { id: existing.id } });

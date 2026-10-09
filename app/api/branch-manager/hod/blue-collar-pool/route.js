@@ -112,6 +112,15 @@ export const GET = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
             })
             : [];
         const hodByEmp = new Map(empHodRows.map((r) => [r.employeeId, r]));
+        // An HOD who already evaluated the employee is their current HOD even
+        // without a link (lib/hodCoverage) — the evaluator wins.
+        const evalRows = employeeIds.length > 0
+            ? await prisma.hodEvaluation.findMany({
+                where: { quarterId: quarter.id, employeeId: { in: employeeIds } },
+                select: { employeeId: true, hodId: true, hod: { select: { id: true, name: true, empCode: true } } },
+            })
+            : [];
+        for (const r of evalRows) hodByEmp.set(r.employeeId, { employeeId: r.employeeId, hodUserId: r.hodId, hod: r.hod });
 
         return ok({
             department: { id: dept.id, name: dept.name },

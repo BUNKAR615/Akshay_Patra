@@ -77,18 +77,24 @@ export const POST = withRole(["BRANCH_MANAGER"], async (request, { user }) => {
 
         // BIG branches: blue-collar (and unclassified) employees normally go
         // through their assigned HOD. The BM may evaluate such an employee ONLY
-        // when they are ORPHANED — i.e. there is no active EmployeeHodAssignment
-        // for this quarter (e.g. the BM removed their HOD, or one was never
-        // assigned). HOD-covered employees are rejected so they aren't
-        // double-evaluated. This mirrors the orphaned-BC inclusion rule in
-        // lib/bmEvaluationQueue.js — previously this guard rejected EVERY
-        // blue-collar submission, leaving orphaned BCs with no possible
-        // evaluator and permanently stuck at Stage 1.
+        // when they are ORPHANED — no active EmployeeHodAssignment for this
+        // quarter AND no HOD has already evaluated them (lib/hodCoverage, the
+        // same rule lib/bmEvaluationQueue.js applies to the dashboard list).
+        // HOD-covered employees are rejected so they aren't double-evaluated.
         if (branchType === "BIG" && employee.collarType !== "WHITE_COLLAR") {
-            const hodLink = await prisma.employeeHodAssignment.findUnique({
-                where: { employeeId_quarterId: { employeeId: data.employeeId, quarterId: activeQuarter.id } },
-                select: { hodUserId: true },
-            });
+            const [hodLink, hodEval] = await Promise.all([
+                prisma.employeeHodAssignment.findUnique({
+                    where: { employeeId_quarterId: { employeeId: data.employeeId, quarterId: activeQuarter.id } },
+                    select: { hodUserId: true },
+                }),
+                prisma.hodEvaluation.findFirst({
+                    where: { employeeId: data.employeeId, quarterId: activeQuarter.id },
+                    select: { id: true },
+                }),
+            ]);
+            if (hodEval) {
+                return conflict("This blue collar employee has already been evaluated for Stage 2 by their HOD.");
+            }
             if (hodLink) {
                 return fail("This blue collar employee has an assigned HOD and must be evaluated by that HOD, not the Branch Manager. Remove the HOD assignment first if the BM should evaluate them.");
             }

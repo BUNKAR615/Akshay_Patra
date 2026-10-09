@@ -15,7 +15,7 @@ import { resolveScopeBranch } from "../../../../lib/auth/resolveScopeBranch";
  *   branchId, branchName,
  *   totalEmployees, totalWhiteCollar, totalBlueCollar,
  *   stage1: { submitted, total },
- *   stage2: { shortlisted, evaluatedByBm, evaluatedByHods, totalBcEvaluated },
+ *   stage2: { shortlisted, evaluatedByBm, totalBcEvaluated, evaluationsCompleted, pending },
  *   bmEvaluatedCount, hodBreakdown: [{ hodUserId, hodName, assigned, evaluated }]
  * }
  */
@@ -38,6 +38,7 @@ export const GET = withRole(["BRANCH_MANAGER", "ADMIN"], async (request, { user 
             stage1Rows,
             stage2Rows,
             bmEvaluations,
+            branchBmEvals,
             hodEvals,
             hodEmpAssignments,
         ] = await Promise.all([
@@ -61,9 +62,15 @@ export const GET = withRole(["BRANCH_MANAGER", "ADMIN"], async (request, { user 
                 where: { branchId: branch.id, quarterId: quarter.id },
                 select: { collarType: true },
             }),
-            // Stage 2: BM evaluates WC. BM evaluations count (for WC in this branch)
+            // Stage 2: this BM's own evaluations (WC + orphaned BC in big branches).
             prisma.branchManagerEvaluation.findMany({
                 where: { managerId: user.userId, quarterId: quarter.id },
+                select: { employeeId: true },
+            }),
+            // Every BM-type evaluation in the branch — includes department POA
+            // delegates — for the branch-wide completion count.
+            prisma.branchManagerEvaluation.findMany({
+                where: { quarterId: quarter.id, employee: { department: { branchId: branch.id } } },
                 select: { employeeId: true },
             }),
             // HOD evaluations for BC in this branch
@@ -93,13 +100,28 @@ export const GET = withRole(["BRANCH_MANAGER", "ADMIN"], async (request, { user 
         const stage2Wc = stage2Rows.filter(r => r.collarType === "WHITE_COLLAR").length;
         const stage2Bc = stage2Rows.filter(r => r.collarType === "BLUE_COLLAR").length;
 
-        const bmEvaluatedCount = bmEvaluations.length;
-        const totalBcEvaluated = hodEvals.length;
+        // Branch-wide Stage 2 progress uses the SAME rule as the admin pipeline
+        // (/api/admin/quarter-progress): distinct Stage 1 cohort members scored
+        // by a BM-type evaluator or an HOD. Raw row counts drifted from admin
+        // (POA delegates' evaluations missing, pruned employees still counted).
+        const cohort = new Set(stage1Rows.map(r => r.userId));
+        const inCohort = (rows) => new Set(rows.map(r => r.employeeId).filter(id => cohort.has(id)));
+        const bmDoneIds = inCohort(branchBmEvals);
+        const hodDoneIds = inCohort(hodEvals);
+        const completedIds = new Set([...bmDoneIds, ...hodDoneIds]);
 
+        const bmEvaluatedCount = inCohort(bmEvaluations).size;
+        const totalBcEvaluated = hodDoneIds.size;
+
+        // "Assigned" = the HOD's coverage (lib/hodCoverage): employees linked
+        // to them plus any they already evaluated, so assigned ≥ evaluated and
+        // an evaluated employee is never shown as unassigned.
+        const coverage = new Map(hodEmpAssignments.map(a => [a.employeeId, a.hodUserId]));
+        for (const e of hodEvals) coverage.set(e.employeeId, e.hodId);
         const byHodAssign = new Map();
-        for (const a of hodEmpAssignments) {
-            if (!byHodAssign.has(a.hodUserId)) byHodAssign.set(a.hodUserId, new Set());
-            byHodAssign.get(a.hodUserId).add(a.employeeId);
+        for (const [employeeId, hodUserId] of coverage) {
+            if (!byHodAssign.has(hodUserId)) byHodAssign.set(hodUserId, new Set());
+            byHodAssign.get(hodUserId).add(employeeId);
         }
         const byHodEval = new Map();
         for (const e of hodEvals) {
@@ -145,9 +167,10 @@ export const GET = withRole(["BRANCH_MANAGER", "ADMIN"], async (request, { user 
                 shortlisted: stage2Count,
                 shortlistedWhite: stage2Wc,
                 shortlistedBlue: stage2Bc,
-                evaluatedByBm: bmEvaluatedCount,
+                evaluatedByBm: bmDoneIds.size,
                 totalBcEvaluated,
-                evaluationsCompleted: bmEvaluatedCount + totalBcEvaluated,
+                evaluationsCompleted: completedIds.size,
+                pending: Math.max(0, stage1Count - completedIds.size),
             },
             bmEvaluatedCount,
             hodBreakdown,

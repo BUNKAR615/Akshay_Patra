@@ -37,38 +37,21 @@ export const POST = withRole(["HOD"], async (request, { user }) => {
             select: { id: true, name: true, departmentId: true, collarType: true, department: { select: { branchId: true } } }
         });
         if (!employee) return fail("Employee not found");
-        if (employee.collarType !== "BLUE_COLLAR") return fail("HOD can only evaluate blue collar employees");
+        // Unclassified (null) counts as blue-collar, as in the BM queue.
+        if (employee.collarType === "WHITE_COLLAR") return fail("HOD can only evaluate blue collar employees");
 
-        // HOD-employee link check.
-        //
-        // In the new BM flow, the BM nominates an HOD (HodAssignment is on the
-        // HOD's WHITE_COLLAR home department) and then attaches BC employees
-        // to that HOD per-employee via EmployeeHodAssignment — so a BC
-        // employee's `departmentId` will almost never equal the HOD's
-        // HodAssignment.departmentId. The previous dept-level check therefore
-        // rejected every legitimate submission (e.g. Om Prakash → Ajay K R).
-        //
-        // We now consult EmployeeHodAssignment first (the BM's explicit
-        // per-employee link). If that row exists for the active quarter, it
-        // IS the source of truth; otherwise we fall back to the legacy
-        // dept-level HodAssignment so seeded / older data keeps working.
+        // HOD-employee link check. The BM nominates an HOD (HodAssignment) and
+        // then attaches BC employees per-employee via EmployeeHodAssignment —
+        // that link is the ONLY grant. The old dept-level fallback (HOD of the
+        // employee's department) let an HOD evaluate employees the BM
+        // dashboard never showed as assigned to them (see lib/hodCoverage).
         const empHodLink = await prisma.employeeHodAssignment.findUnique({
             where: { employeeId_quarterId: { employeeId, quarterId: quarter.id } },
             select: { hodUserId: true },
         });
-        if (empHodLink) {
-            if (empHodLink.hodUserId !== user.userId) {
-                return fail("You are not the HOD assigned to evaluate this employee");
-            }
-        } else {
-            const hodAssignment = await prisma.hodAssignment.findFirst({
-                where: {
-                    hodUserId: user.userId,
-                    departmentId: employee.departmentId,
-                    quarterId: quarter.id,
-                },
-            });
-            if (!hodAssignment) return fail("You are not assigned as HOD for this employee");
+        if (!empHodLink) return fail("This employee is not assigned to you. Ask your Branch Manager to assign them.");
+        if (empHodLink.hodUserId !== user.userId) {
+            return fail("You are not the HOD assigned to evaluate this employee");
         }
 
         // Verify employee is in Stage 1 shortlist
@@ -82,6 +65,16 @@ export const POST = withRole(["HOD"], async (request, { user }) => {
             where: { hodId_employeeId_quarterId: { hodId: user.userId, employeeId, quarterId: quarter.id } }
         });
         if (existing) return fail("You have already evaluated this employee");
+
+        // One Stage 2 evaluation per employee per quarter, whoever submitted it
+        // — e.g. the BM evaluated them while they were orphaned, or a previous
+        // HOD did before a reassignment. Admin progress counts BM ∪ HOD, so a
+        // second evaluation would never show up there anyway.
+        const [otherHodEval, bmEval] = await Promise.all([
+            prisma.hodEvaluation.findFirst({ where: { employeeId, quarterId: quarter.id }, select: { id: true } }),
+            prisma.branchManagerEvaluation.findFirst({ where: { employeeId, quarterId: quarter.id }, select: { id: true } }),
+        ]);
+        if (otherHodEval || bmEval) return fail("This employee has already been evaluated for Stage 2 by another evaluator.");
 
         // HOD evaluators reuse the BRANCH_MANAGER question bank — there is
         // no separate HOD bank loaded at quarter start (see

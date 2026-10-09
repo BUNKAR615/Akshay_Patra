@@ -16,10 +16,12 @@ const bodySchema = z.object({
  * BM removes an HOD nomination for the active quarter.
  *
  * Effects (single transaction):
- *   - Drops every EmployeeHodAssignment row for (hodUserId, quarterId).
- *     The BC employees those rows pointed at become "orphaned" — the BM
- *     shortlist endpoint then picks them up so they don't fall through the
- *     cracks (see app/api/branch-manager/shortlist/route.js).
+ *   - Drops the EmployeeHodAssignment rows for (hodUserId, quarterId) of
+ *     employees this HOD has NOT evaluated yet. Those become "orphaned" — the
+ *     BM shortlist endpoint then picks them up so they don't fall through the
+ *     cracks (see lib/bmEvaluationQueue.js). Employees the HOD already
+ *     evaluated keep their link: their Stage 2 is done and stays credited to
+ *     this HOD on the BM page, matching the admin pipeline.
  *   - Drops every HodAssignment row for (hodUserId, branchId, quarterId).
  *   - Drops the matching DepartmentRoleMapping rows so the user is no longer
  *     listed as HOD of those departments.
@@ -65,15 +67,22 @@ export const DELETE = withRole(["BRANCH_MANAGER"], async (request, { user }) => 
         });
         const departmentIds = existingAssignments.map((a) => a.departmentId);
 
-        const empRows = await prisma.employeeHodAssignment.findMany({
-            where: { hodUserId, quarterId: quarter.id },
-            select: { employeeId: true },
-        });
-        const releasedEmployeeIds = empRows.map((r) => r.employeeId);
+        const [empRows, evalRows] = await Promise.all([
+            prisma.employeeHodAssignment.findMany({
+                where: { hodUserId, quarterId: quarter.id },
+                select: { employeeId: true },
+            }),
+            prisma.hodEvaluation.findMany({
+                where: { hodId: hodUserId, quarterId: quarter.id },
+                select: { employeeId: true },
+            }),
+        ]);
+        const evaluatedIds = new Set(evalRows.map((r) => r.employeeId));
+        const releasedEmployeeIds = empRows.map((r) => r.employeeId).filter((id) => !evaluatedIds.has(id));
 
         await prisma.$transaction([
             prisma.employeeHodAssignment.deleteMany({
-                where: { hodUserId, quarterId: quarter.id },
+                where: { hodUserId, quarterId: quarter.id, employeeId: { in: releasedEmployeeIds } },
             }),
             prisma.hodAssignment.deleteMany({
                 where: { hodUserId, branchId, quarterId: quarter.id },
@@ -94,12 +103,14 @@ export const DELETE = withRole(["BRANCH_MANAGER"], async (request, { user }) => 
                     quarterId: quarter.id,
                     departmentIdsCleared: departmentIds,
                     employeesReleasedCount: releasedEmployeeIds.length,
+                    employeesKeptEvaluated: evaluatedIds.size,
                 },
             },
         }).catch(() => { });
 
         return ok({
-            message: `${hodUser.name} removed as HOD. ${releasedEmployeeIds.length} blue-collar employee${releasedEmployeeIds.length === 1 ? "" : "s"} returned to your evaluation queue.`,
+            message: `${hodUser.name} removed as HOD. ${releasedEmployeeIds.length} blue-collar employee${releasedEmployeeIds.length === 1 ? "" : "s"} returned to your evaluation queue.`
+                + (evaluatedIds.size > 0 ? ` ${evaluatedIds.size} already evaluated by them stay credited to them.` : ""),
             releasedEmployeeIds,
             departmentIdsCleared: departmentIds,
         });
